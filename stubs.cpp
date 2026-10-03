@@ -26,8 +26,13 @@
  * answers those modules instead.
  * -----------------------------------------------------------------------*/
 
+extern "C" void dod3_register_spurs_lfqueue(void);   /* src/spurs_lfqueue.cpp */
+
 extern "C" void ps3_load_prx_modules(void)
 {
+    /* No PRX image is loaded, but this runs before ppu_hle_init and
+     * ppu_sysprx_register, so handlers registered here win over theirs. */
+    dod3_register_spurs_lfqueue();
 }
 
 /* ---------------------------------------------------------------------------

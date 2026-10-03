@@ -156,9 +156,38 @@ if(PORT_ENABLE_SPU)
     endif()
 endif()
 
+# ---------------------------------------------------------------------------
+# libsre's LFQueue push path, lifted from the firmware PRX at build time
+# ---------------------------------------------------------------------------
+# src/spurs_lfqueue.cpp drives the real Get/CompletePushPointer(2) out of
+# libsre.prx; tools/gen_libsre_lfqueue.py lifts them into the build tree. The
+# result is firmware-derived, so it is generated, never committed.
+set(LIBSRE_PRX "${PS3RECOMP_DIR}/fw_spu/libsre.prx" CACHE FILEPATH
+    "Decrypted libsre.prx the LFQueue push path is lifted from")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python")
+    set(DOD3_PYTHON "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python")
+else()
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    set(DOD3_PYTHON "${Python3_EXECUTABLE}")
+endif()
+set(LIBSRE_LFQUEUE_CPP "${CMAKE_CURRENT_BINARY_DIR}/gen/libsre_lfqueue.cpp")
+add_custom_command(
+    OUTPUT "${LIBSRE_LFQUEUE_CPP}"
+    COMMAND "${DOD3_PYTHON}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_libsre_lfqueue.py"
+            "${PS3RECOMP_DIR}" "${LIBSRE_PRX}"
+            "${CMAKE_CURRENT_BINARY_DIR}/libsre" "${LIBSRE_LFQUEUE_CPP}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_libsre_lfqueue.py"
+            "${LIBSRE_PRX}"
+            "${PS3RECOMP_DIR}/tools/ppu_lifter.py"
+            "${PS3RECOMP_DIR}/tools/lift_prx.py"
+    COMMENT "Lifting libsre's LFQueue push path")
+set_source_files_properties("${LIBSRE_LFQUEUE_CPP}" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off")
+
 add_executable(${PROJECT_NAME}
     main.cpp
     stubs.cpp
+    src/spurs_lfqueue.cpp
+    ${LIBSRE_LFQUEUE_CPP}
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
     ${RECOMP_SOURCES}

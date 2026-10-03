@@ -40,9 +40,16 @@ PS3_VFS_ROOT=game/disc ./build/dod3 elf/EBOOT.ELF
 `--code-end 0x157e770` is the end of the last executable section, so
 `.rodata` in the R-X segment is never promoted to functions.
 
+The build also lifts libsre's LFQueue push path out of
+`ps3recomp/fw_spu/libsre.prx` (`tools/gen_libsre_lfqueue.py`, into
+`build/gen/`). That output is firmware-derived and never committed; point
+`-DLIBSRE_PRX=` at your own decrypted copy to use a different one.
+
 ## Title facts
 
 - 30,134 unique functions from 38,848 OPD descriptors
 - 252 firmware imports across 17 libraries (cellSpurs, sysPrxForUser,
   cellSysutil and cellGcmSys make up most of them)
 - MultiStream audio (`cellMS*`) is linked statically and runs on the SPUs
+- Package decompression runs on an SPU zlib task fed through an ANY2ANY SPURS
+  LFQueue; `src/spurs_lfqueue.cpp` drives Sony's own push path for it
