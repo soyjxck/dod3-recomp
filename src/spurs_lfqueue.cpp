@@ -27,6 +27,8 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <chrono>
 #include <thread>
 
 extern "C" {
@@ -83,6 +85,35 @@ static uint32_t call_libsre(ppu_context* ctx, uint32_t fn, uint64_t a3, uint64_t
     return (uint32_t)ctx->gpr[3];
 }
 
+/* LFQ_DUMP=1: print every queue's 128-byte line once a second, so a stalled
+ * producer/consumer pair can be read off the state machine directly. */
+static uint32_t s_queues[8];
+static int      s_nqueues;
+
+static void lfq_dump_thread()
+{
+    for (;;) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        for (int i = 0; i < s_nqueues; i++) {
+            const uint32_t q = s_queues[i];
+            fprintf(stderr, "[lfq-dump] q=0x%08X", q);
+            for (uint32_t o = 0; o < 128; o += 4) {
+                if (!(o & 0x1F)) fprintf(stderr, "\n[lfq-dump]   +%02X:", o);
+                fprintf(stderr, " %08X", vm_read32(q + o));
+            }
+            fprintf(stderr, "\n");
+        }
+    }
+}
+
+static void lfq_track(uint32_t q)
+{
+    static bool on = getenv("LFQ_DUMP") != nullptr;
+    if (!on || s_nqueues >= 8) return;
+    s_queues[s_nqueues++] = q;
+    if (s_nqueues == 1) std::thread(lfq_dump_thread).detach();
+}
+
 /* _cellSpursLFQueueInitialize(void* pTasksetOrSpurs, CellSpursLFQueue* q,
  *                             const void* buffer, u32 size, u32 depth, u32 dir)
  *
@@ -126,6 +157,7 @@ static void lfq_initialize(ppu_context* ctx)
     }
     /* m_v2, m_eq_id and init stay 0. */
 
+    lfq_track(q);
     printf("[lfq] init q=0x%08X owner=0x%08X buf=0x%08X size=%u depth=%u dir=%u\n",
            q, owner, buf, size, depth, dir);
     ctx->gpr[3] = 0;
@@ -162,14 +194,20 @@ static void lfq_push_body(ppu_context* ctx)
     if (rc) {
         ctx->gpr[1] = sp;
         ctx->gpr[3] = (int64_t)(int32_t)spurs_err(rc);
+        fprintf(stderr, "[lfq] push q=0x%08X GetPushPointer failed 0x%08X (blocking=%u)\n",
+                q, rc, blocking);
         return;
     }
 
     const uint32_t depth = vm_read32(q + LFQ_M_DEPTH);
     const uint32_t size  = vm_read32(q + LFQ_M_SIZE);
-    int32_t pos = (int32_t)vm_read32(pos_ea);
-    if ((int32_t)depth <= pos) pos -= (int32_t)depth;
-    const uint32_t dst = ((uint32_t)vm_read64(q + LFQ_M_BUFFER) & ~1u) + size * (uint32_t)pos;
+    /* The pointer runs over [0, 2*depth): the slot is pointer mod depth, but
+     * CompletePushPointer takes the pointer itself, exactly as libsre passes it.
+     * Handing it the slot instead works for the first `depth` pushes and then
+     * never advances the completion pointer past the wrap. */
+    const int32_t pos  = (int32_t)vm_read32(pos_ea);
+    const int32_t slot = pos >= (int32_t)depth ? pos - (int32_t)depth : pos;
+    const uint32_t dst = ((uint32_t)vm_read64(q + LFQ_M_BUFFER) & ~1u) + size * (uint32_t)slot;
     for (uint32_t o = 0; o < size; o += 4) vm_write32(dst + o, vm_read32(src + o));
 
     /* fpSendSignal: the lifted code only dereferences it as an OPD on the way to
@@ -182,6 +220,11 @@ static void lfq_push_body(ppu_context* ctx)
     if (rc == 0x80410902u || rc == 0x8041090Fu) rc = CELL_SPURS_TASK_ERROR_SRCH;
     else if ((int32_t)rc < 0)                   rc = spurs_err(rc);
     ctx->gpr[3] = (int64_t)(int32_t)rc;
+
+    static int s_n = 0;
+    if (rc || s_n++ < 64)
+        fprintf(stderr, "[lfq] push q=0x%08X pos=%d blocking=%u rc=0x%08X lr=0x%08X tid=%u\n",
+                q, pos, blocking, rc, (uint32_t)ctx->lr, (unsigned)ctx->thread_id);
 }
 
 /* The fpSendSignal both CompletePushPointer variants call to wake an SPU task
