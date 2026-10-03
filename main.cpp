@@ -187,6 +187,32 @@ static DWORD WINAPI frame_clock(LPVOID)
 
     for (;;) {
         Sleep(4);
+        /* DOD3_GCM_WATCH=1 (temporary): every 5 s, the FIFO pointers, the sync
+         * label, and the command words at `get` -- parked with work pending, or
+         * drained dry? */
+        { static int on = -1; if (on < 0) on = getenv("DOD3_GCM_WATCH") ? 1 : 0;
+          static ULONGLONG last = 0; ULONGLONG t = GetTickCount64();
+          if (on && t - last >= 5000) { last = t;
+              uint32_t put = vm_read32(0x20002000u), get = vm_read32(0x20002004u), ref = vm_read32(0x20002008u);
+              uint32_t ea = 0x40000000u + get;
+              fprintf(stderr, "[gcm-watch] put=0x%08X get=0x%08X ref=0x%08X label=0x%08X cache64=0x%016llX words@get: %08X %08X %08X %08X flips=%u\n",
+                      put, get, ref, vm_read32(0x20000FF0u), (unsigned long long)vm_read64(0x01A2A1D0u),
+                      vm_read32(ea), vm_read32(ea + 4), vm_read32(ea + 8),
+                      vm_read32(ea + 12), cellGcm_flip_request_count());
+              fprintf(stderr, "[gcm-watch] malloc lwmutex 0x40400010: owner=%u waiter=%u attr=0x%X recur=%u\n",
+                      vm_read32(0x40400010u), vm_read32(0x40400014u), vm_read32(0x40400018u), vm_read32(0x4040001Cu));
+              uint32_t gctx = vm_read32(0x01AC3E38u);   /* CellGcmContextData* the title got */
+              uint32_t cur = vm_read32(gctx + 8);
+              fprintf(stderr, "[gcm-watch] ctx=0x%08X begin=0x%08X end=0x%08X current=0x%08X (io 0x%08X) cb=0x%08X words@current-16: %08X %08X %08X %08X\n",
+                      gctx, vm_read32(gctx), vm_read32(gctx + 4), cur, cur - 0x40000000u, vm_read32(gctx + 12),
+                      vm_read32(cur - 16), vm_read32(cur - 12), vm_read32(cur - 8), vm_read32(cur - 4));
+              static int dumped = 0; static unsigned last_flips = 0; static int same = 0;
+              unsigned fl = cellGcm_flip_request_count();
+              same = (fl == last_flips) ? same + 1 : 0; last_flips = fl;
+              if (!dumped && same >= 4) { dumped = 1;   /* no flip for 20 s: stalled */
+                  for (uint32_t a = cur - 0x8000; a < cur; a += 16)
+                      fprintf(stderr, "[gcm-tail] io %08X: %08X %08X %08X %08X\n", a - 0x40000000u,
+                              vm_read32(a), vm_read32(a + 4), vm_read32(a + 8), vm_read32(a + 12)); } } }
         ULONGLONG now = GetTickCount64();
 
         int fired = 0;
@@ -344,6 +370,12 @@ int main(int argc, char** argv)
 #endif
 
     printf("=== ps3recomp game runner ===\n");
+
+    /* Drakengard 3's RHI appends commands behind a JUMP-to-self park and patches
+     * the park shortly after. The toolkit's FIFO resyncs skip past such a park
+     * and drop the back-end label releases the render thread waits on, so keep
+     * the FIFO waiting instead. An explicit GCM_FIFO_NO_RESYNC=0 overrides. */
+    setenv("GCM_FIFO_NO_RESYNC", "1", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
