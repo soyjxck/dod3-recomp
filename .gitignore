@@ -1,0 +1,15 @@
+# Game data and copyrighted binaries -- never commit
+game/
+elf/
+*.ELF
+*.elf
+*.BIN
+
+# Generated
+out/
+recompiled/
+build/
+build-*/
+
+.venv/
+.DS_Store
