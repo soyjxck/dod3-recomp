@@ -39,8 +39,8 @@ PS3_VFS_ROOT=game/disc ./build/dod3 elf/EBOOT.ELF
 `--code-end 0x157e770` is the end of the last executable section, so
 `.rodata` in the R-X segment is never promoted to functions.
 
-The build also lifts libsre's LFQueue push path out of
-`ps3recomp/fw_spu/libsre.prx` (`tools/gen_libsre_lfqueue.py`, into
+The build also lifts libsre's SPURS LFQueue push and SPURS queue paths out of
+`ps3recomp/fw_spu/libsre.prx` (`tools/gen_libsre.py`, into
 `build/gen/`). That output is firmware-derived and never committed; point
 `-DLIBSRE_PRX=` at your own decrypted copy to use a different one.
 

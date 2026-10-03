@@ -14,7 +14,7 @@
  *   _cellSpursLFQueuePushBody    the same control flow as libsre's (0x010171B8),
  *                                calling the real Get/CompletePushPointer(2)
  *                                lifted out of libsre.prx at build time by
- *                                tools/gen_libsre_lfqueue.py.
+ *                                tools/gen_libsre.py.
  *
  * One deliberate difference from libsre: it pushes with isBlocking=0 and
  * useEventQueue=0 and does the blocking itself, by retrying while the queue is
@@ -39,7 +39,7 @@ void spu_taskset_signal_task(uint32_t taskset_ea, uint32_t taskId);
 int  spurs_tasksets_on(uint32_t spurs_ea, uint32_t* out, int max);
 }
 
-/* libsre entry points (see tools/gen_libsre_lfqueue.py) */
+/* libsre entry points (see tools/gen_libsre.py) */
 enum : uint32_t {
     LIBSRE_GET_PUSH_POINTER       = 0x010024F4,
     LIBSRE_COMPLETE_PUSH_POINTER  = 0x01002708,
