@@ -28,13 +28,12 @@ python3 -m venv .venv && .venv/bin/pip install -r ps3recomp/tools/requirements.t
     --code-end 0x157e770 \
     -o recompiled/
 
-.venv/bin/python ps3recomp/tools/extract_spu_images.py elf/EBOOT.ELF --output spu/images
-.venv/bin/python ps3recomp/tools/build_spu_workloads.py --images spu/images --lifted spu \
-    --out spu/spu_workloads.c --register-fn dod3_spu_register_all --constructor --title dod3
+tools/lift_spu.sh     # SPU tasks, the ShaderPatching job, MultiStream DSP plugins
 
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 PS3_VFS_ROOT=game/disc ./build/dod3 elf/EBOOT.ELF
+# or, for a bounded run with a log:  tools/run_timed.sh 120 out/run.log
 ```
 
 `--code-end 0x157e770` is the end of the last executable section, so
@@ -50,6 +49,10 @@ The build also lifts libsre's LFQueue push path out of
 - 30,134 unique functions from 38,848 OPD descriptors
 - 252 firmware imports across 17 libraries (cellSpurs, sysPrxForUser,
   cellSysutil and cellGcmSys make up most of them)
-- MultiStream audio (`cellMS*`) is linked statically and runs on the SPUs
+- MultiStream audio (`cellMS*`) is linked statically and runs on the SPUs. Its
+  mixer task loads three position-independent DSP plugins into its local store
+  at 0x37000; `tools/make_spu_overlays.py` lifts them at that address
+- One SPURS job (ShaderPatching) is a raw job binary inside the EBOOT at
+  0x01785E00, not an ELF; `tools/lift_spu.sh` wraps and lifts it
 - Package decompression runs on an SPU zlib task fed through an ANY2ANY SPURS
   LFQueue; `src/spurs_lfqueue.cpp` drives Sony's own push path for it
