@@ -14,3 +14,7 @@ build-*/
 .venv/
 .DS_Store
 spu/
+
+# Runtime-written state (trophy progress, saves)
+gamedata/
+__pycache__/
