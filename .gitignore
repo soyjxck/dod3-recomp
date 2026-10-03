@@ -13,3 +13,4 @@ build-*/
 
 .venv/
 .DS_Store
+spu/

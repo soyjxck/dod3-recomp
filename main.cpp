@@ -311,6 +311,22 @@ static void harness_guest_caller(uint32_t opd, uint64_t a0, uint64_t a1,
     ppu_guest_call(opd, a0, a1, a2, a3, a4, a5, a6, a7);
 }
 
+#ifdef __APPLE__
+#include <pthread.h>
+
+static uint32_t s_boot_entry;
+
+/* The guest's half of the Apple split in main(): run the entry OPD, then end
+ * the process the way the non-Apple path's return from main() would. */
+static void* guest_main(void*)
+{
+    int rc = ppu_run(s_boot_entry, STACK_TOP);
+    printf("\n[boot] ppu_run returned %d (entry function unwound)\n", rc);
+    fflush(stdout);
+    exit(g_sys_process_exit_called ? (int)g_sys_process_exit_code : 0);
+}
+#endif
+
 int main(int argc, char** argv)
 {
     if (argc < 2) {
@@ -353,10 +369,33 @@ int main(int argc, char** argv)
     /* Install the guest-callback hook, then start the frame clock. It no-ops
      * until the title registers its vblank and flip handlers during init. */
     g_ps3_guest_caller = harness_guest_caller;
-    CreateThread(NULL, 4u * 1024 * 1024, frame_clock, NULL, 0, NULL);
 
     printf("\n[boot] dispatching entry OPD 0x%08X (stack top 0x%08X)\n\n",
            entry, STACK_TOP);
+
+#ifdef __APPLE__
+    /* AppKit only creates windows on the main thread, and the Metal backend's
+     * init dispatch_syncs onto the main queue when called from anywhere else.
+     * With the guest occupying the main thread nothing drains that queue and
+     * the frame clock deadlocks before it ever walks the FIFO -- the guest then
+     * spins on GCM get forever. So on Apple the roles swap: the guest runs on
+     * a thread with the same 256 MB host stack guest PPU threads get, and the
+     * frame clock owns the main thread. A guest exit ends the process from
+     * its own thread. */
+    s_boot_entry = entry;
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 256u * 1024 * 1024);
+    pthread_t guest;
+    if (pthread_create(&guest, &attr, guest_main, NULL) != 0) {
+        fprintf(stderr, "ERROR: could not start the guest thread\n");
+        return 1;
+    }
+    pthread_attr_destroy(&attr);
+    frame_clock(NULL);
+    return 0;
+#else
+    CreateThread(NULL, 4u * 1024 * 1024, frame_clock, NULL, 0, NULL);
 
     int rc = ppu_run(entry, STACK_TOP);
     printf("\n[boot] ppu_run returned %d (entry function unwound)\n", rc);
@@ -367,4 +406,5 @@ int main(int argc, char** argv)
      * one. Returning a hardcoded 0 would report success for a run that never
      * got anywhere. */
     return g_sys_process_exit_called ? (int)g_sys_process_exit_code : 0;
+#endif
 }
