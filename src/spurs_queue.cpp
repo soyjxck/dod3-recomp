@@ -23,6 +23,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <chrono>
 #include <thread>
@@ -88,6 +89,10 @@ static void queue_initialize(ppu_context* ctx)
 
 static void queue_push_body(ppu_context* ctx)
 {
+    { static int on = -1; if (on < 0) on = getenv("DOD3_QUEUE_LOG") ? 1 : 0;   /* item trace */
+      if (on) { const uint32_t b = (uint32_t)ctx->gpr[4];
+          fprintf(stderr, "[spurs-queue] push q=0x%08X item={%08X %08X %08X %08X}\n", (uint32_t)ctx->gpr[3],
+                  vm_read32(b), vm_read32(b + 4), vm_read32(b + 8), vm_read32(b + 12)); } }
     uint64_t args[4] = { ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], 0 };
     run_blocking(ctx, LIBSRE_QUEUE_PUSH_BODY, args, 2);   /* isBlocking = r5 */
 }
@@ -95,7 +100,13 @@ static void queue_push_body(ppu_context* ctx)
 static void queue_pop_body(ppu_context* ctx)
 {
     uint64_t args[4] = { ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], ctx->gpr[6] };
+    const uint32_t q = (uint32_t)ctx->gpr[3], buf = (uint32_t)ctx->gpr[4];
     run_blocking(ctx, LIBSRE_QUEUE_POP_BODY, args, 3);    /* isBlocking = r6 */
+    { static int on = -1; if (on < 0) on = getenv("DOD3_QUEUE_LOG") ? 1 : 0;   /* item trace */
+      if (on && (uint32_t)ctx->gpr[3] == 0)
+          fprintf(stderr, "[spurs-queue] pop  q=0x%08X item={%08X %08X %08X %08X} tid=%u\n", q,
+                  vm_read32(buf), vm_read32(buf + 4), vm_read32(buf + 8), vm_read32(buf + 12),
+                  (unsigned)ctx->thread_id); }
 }
 
 /* ---- hooks the lifted libsre calls (see tools/gen_libsre.py) ------------- */
