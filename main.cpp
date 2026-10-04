@@ -404,6 +404,10 @@ int main(int argc, char** argv)
      * thread refills its 21 job descriptors every frame, and a job that runs
      * late reads the refilled one and never clears the FIFO park it was for. */
     setenv("SPURS_JC_SYNC", "1", 0);
+    /* The HLE posts a job-chain completion event to every lv2 queue attached
+     * to SPURS. This title's only attached queue belongs to CellMemoryManager,
+     * which reads each one as a request and allocates: 400 MB in five seconds. */
+    setenv("SPURS_JC_DONE_EVENTS", "0", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
