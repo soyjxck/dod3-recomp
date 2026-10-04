@@ -214,6 +214,16 @@ static DWORD WINAPI frame_clock(LPVOID)
               if (!dumped && same >= 4) { dumped = 1;   /* no flip for 20 s: stalled */
                   /* The ShaderPatching job chain as the title left it (entry 0x01A2A880):
                    * did it write jobs the walker never ran? */
+                  /* Which job descriptors (256 B each, from 0x01A2BA00) name a FIFO
+                   * address -- the notify target each job clears on completion. */
+                  for (uint32_t j = 0; j < 40; j++) {
+                      uint32_t d = 0x01A2BA00u + j * 0x100u;
+                      for (uint32_t o = 0; o < 0x100; o += 4) {
+                          uint32_t v = vm_read32(d + o);
+                          if (v >= 0x40000000u && v < 0x40300000u)
+                              fprintf(stderr, "[jc-desc] job@%08X +0x%02X = %08X (io 0x%06X)\n", d, o, v, v - 0x40000000u);
+                      }
+                  }
                   for (uint32_t a = 0x01A2A880u; a < 0x01A2A880u + 48 * 8; a += 32)
                       fprintf(stderr, "[jc-dump] %08X: %016llX %016llX %016llX %016llX\n", a,
                               (unsigned long long)vm_read64(a), (unsigned long long)vm_read64(a + 8),
@@ -390,6 +400,10 @@ int main(int argc, char** argv)
     /* Loading the title peaks around 514 MB, just past the default overflow
      * window's end at 0x80000000; give it room. */
     setenv("SYS_MEM_OVERFLOW_END", "88000000", 0);
+    /* The ShaderPatching job chain must run inside RunJobChain: the render
+     * thread refills its 21 job descriptors every frame, and a job that runs
+     * late reads the refilled one and never clears the FIFO park it was for. */
+    setenv("SPURS_JC_SYNC", "1", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
