@@ -173,6 +173,7 @@ static void present_guest_frame(void)
     InterlockedIncrement(&g_frames_presented);
 }
 
+extern "C" unsigned cellGcm_user_queue_depth(void);
 static DWORD WINAPI frame_clock(LPVOID)
 {
     const char* title = getenv("PS3_TITLE");
@@ -199,6 +200,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                       put, get, ref, vm_read32(0x20000FF0u), (unsigned long long)vm_read64(0x01A2A1D0u),
                       vm_read32(ea), vm_read32(ea + 4), vm_read32(ea + 8),
                       vm_read32(ea + 12), cellGcm_flip_request_count());
+              fprintf(stderr, "[gcm-watch] user commands pending delivery: %u\n", cellGcm_user_queue_depth());
               fprintf(stderr, "[gcm-watch] malloc lwmutex 0x40400010: owner=%u waiter=%u attr=0x%X recur=%u\n",
                       vm_read32(0x40400010u), vm_read32(0x40400014u), vm_read32(0x40400018u), vm_read32(0x4040001Cu));
               uint32_t gctx = vm_read32(0x01AC3E38u);   /* CellGcmContextData* the title got */
@@ -376,6 +378,12 @@ int main(int argc, char** argv)
      * and drop the back-end label releases the render thread waits on, so keep
      * the FIFO waiting instead. An explicit GCM_FIFO_NO_RESYNC=0 overrides. */
     setenv("GCM_FIFO_NO_RESYNC", "1", 0);
+    /* The memory-manager SPU tasks send on SPU port 1, the port lv2 would hand
+     * a dynamic attach; the toolkit hands out 0x10 upward unless told not to. */
+    setenv("SPURS_DYNPORT_LOW", "1", 0);
+    /* Loading the title peaks around 514 MB, just past the default overflow
+     * window's end at 0x80000000; give it room. */
+    setenv("SYS_MEM_OVERFLOW_END", "88000000", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
