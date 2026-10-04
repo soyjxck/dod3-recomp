@@ -212,6 +212,12 @@ static DWORD WINAPI frame_clock(LPVOID)
               unsigned fl = cellGcm_flip_request_count();
               same = (fl == last_flips) ? same + 1 : 0; last_flips = fl;
               if (!dumped && same >= 4) { dumped = 1;   /* no flip for 20 s: stalled */
+                  /* The ShaderPatching job chain as the title left it (entry 0x01A2A880):
+                   * did it write jobs the walker never ran? */
+                  for (uint32_t a = 0x01A2A880u; a < 0x01A2A880u + 48 * 8; a += 32)
+                      fprintf(stderr, "[jc-dump] %08X: %016llX %016llX %016llX %016llX\n", a,
+                              (unsigned long long)vm_read64(a), (unsigned long long)vm_read64(a + 8),
+                              (unsigned long long)vm_read64(a + 16), (unsigned long long)vm_read64(a + 24));
                   for (uint32_t a = cur - 0x8000; a < cur; a += 16)
                       fprintf(stderr, "[gcm-tail] io %08X: %08X %08X %08X %08X\n", a - 0x40000000u,
                               vm_read32(a), vm_read32(a + 4), vm_read32(a + 8), vm_read32(a + 12)); } } }
