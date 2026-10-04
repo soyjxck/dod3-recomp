@@ -408,6 +408,18 @@ int main(int argc, char** argv)
      * to SPURS. This title's only attached queue belongs to CellMemoryManager,
      * which reads each one as a request and allocates: 400 MB in five seconds. */
     setenv("SPURS_JC_DONE_EVENTS", "0", 0);
+    /* The toolkit's per-event log is on whenever stderr is redirected: two
+     * lines and two flushes per SPURS job, a line per event-queue wait. At
+     * this title's ~2700 jobs/s that is a measurable share of the render
+     * thread, and the threads contend for the FILE lock. Quiet unless asked
+     * (PS3_VERBOSE=1); the port's own milestone lines are not gated by it. */
+    setenv("PS3_VERBOSE", "0", 0);
+    /* Firmware files the title loads at run time. MultiStream fetches its MP3
+     * decoder from /dev_flash/sys/external/flashMP3.pic when the first MP3
+     * stream starts; without it the audio SPU task dies and the game hangs on
+     * the next sound (opening movie, new game). tools/extract_dev_flash.py
+     * unpacks fw/dev_flash from the PS3UPDAT.PUP on the game disc. */
+    setenv("PS3_DEV_FLASH", "fw/dev_flash", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");

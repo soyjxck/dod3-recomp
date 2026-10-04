@@ -18,3 +18,6 @@ spu/
 # Runtime-written state (trophy progress, saves)
 gamedata/
 __pycache__/
+
+# PS3 firmware unpacked from the disc PUP (tools/extract_dev_flash.py); not redistributable
+fw/
