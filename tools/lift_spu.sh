@@ -1,7 +1,7 @@
 #!/bin/sh
 # Extract and lift every SPU program the port runs, into spu/ (git-ignored):
 #   - the SPU ELFs embedded in the EBOOT (SPURS tasks, MultiStream, ...)
-#   - the ShaderPatching SPURS job, a raw job binary at vaddr 0x01785E00
+#   - raw SPURS job binaries embedded in the EBOOT (ShaderPatching and others)
 #   - the MultiStream DSP plugin block, rebuilt at the LS address it runs at
 # then generate the workload and overlay registries the build compiles.
 set -e
@@ -15,14 +15,20 @@ mkdir -p spu/images
 rm -rf spu/spu_ovl_msdsp_37000
 $PY $T/extract_spu_images.py elf/EBOOT.ELF --output spu/images
 
-# ShaderPatching job: 34688 bytes at vaddr 0x01785E00 (file offset 0x01775E00).
+# Raw SPURS job binaries in the EBOOT (not ELFs, so extract_spu_images.py
+# misses them): "<file offset> <bytes>". The vaddr is offset + 0x10000.
 # Named to sort after spu_*, so the task images keep their ids -- the runtime
 # still special-cases some image ids for other titles.
-dd if=elf/EBOOT.ELF of=spu/job_01785E00.bin bs=128 skip=$((0x01775E00 / 128)) \
-   count=$((34688 / 128)) 2>/dev/null
-$PY $T/wrap_spu_elf.py spu/job_01785E00.bin --base 0x0 --entry 0x0 \
-    --out spu/images/spurs_job_01785E00.elf
-rm spu/job_01785E00.bin
+#   0x01775E00  ShaderPatching job chain
+#   0x0177E580  job dispatched as the title loads (fp D6E964B601AB14C0)
+for job in "0x01775E00 34688" "0x0177E580 528"; do
+    set -- $job
+    va=$(printf '%08X' $(( $1 + 0x10000 )))
+    dd if=elf/EBOOT.ELF of=spu/job.bin bs=1 skip=$(( $1 )) count=$2 2>/dev/null
+    $PY $T/wrap_spu_elf.py spu/job.bin --base 0x0 --entry 0x0 \
+        --out spu/images/spurs_job_$va.elf
+    rm spu/job.bin
+done
 
 EXTRA=$($PY tools/make_spu_overlays.py wrap)
 $PY $T/build_spu_workloads.py --images spu/images --lifted spu \
