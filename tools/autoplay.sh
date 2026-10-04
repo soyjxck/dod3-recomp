@@ -8,7 +8,7 @@
 #   opening movie opened        -> START   (skip it)
 #   title music loaded          -> START   (press start), then CROSS x3
 #                                  (New Game is the default item, confirms)
-#   first chapter map loading   -> done
+#   first chapter map loading   -> START x2 after a pause (skip the first cutscene)
 # Masks: START 0x0008, CROSS 0x4000, CIRCLE 0x2000, UP 0x0010, DOWN 0x0040.
 log=$1; pad=$2
 press() { echo "$1" > "$pad"; echo "[autoplay] press $1 ($2)"; }
@@ -26,4 +26,7 @@ for i in 1 2 3 4; do
   grep -q "BG00_CHC_10_MAP.XXX" "$log" && break
   press 0x4000 "confirm #$i"
 done
-wait_for "BG00_CHC_10_MAP.XXX" 60 && echo "[autoplay] new game loading" || echo "[autoplay] new game NOT reached"
+wait_for "BG00_CHC_10_MAP.XXX" 60 && echo "[autoplay] new game loading" || { echo "[autoplay] new game NOT reached"; exit 1; }
+# The chapter opens on a cutscene; START skips it once the level is in.
+perl -e 'sleep 12'; press 0x0008 "skip first cutscene"
+perl -e 'sleep 4';  press 0x0008 "skip first cutscene (again)"

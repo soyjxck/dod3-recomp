@@ -293,6 +293,11 @@ else()
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "-w;-ffp-contract=off")
 endif()
+# PPU_INLINE_VM: the lifted code's loads and stores inline the runtime's fast
+# path (ps3recomp/runtime/ppu/ppu_vm_fast.h) instead of calling vm_read*/
+# vm_write*. The render thread spent ~60% of its time in those calls.
+set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS PPU_INLINE_VM)
+set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/ppu")
 
 # ---------------------------------------------------------------------------
 # Install

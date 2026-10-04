@@ -33,6 +33,14 @@ for job in "0x01775E00 34688" "0x0177E580 528"; do
 done
 
 EXTRA=$($PY tools/make_spu_overlays.py wrap)
+# Function-pointer targets the lifter's table scans miss (words in a task's
+# data segment that point at code): PhysX's spu_0018 called 0x170E0 through
+# one, hit unlifted local store, died, and the chapter load hung. Found by
+# scanning each image's data for 4-aligned text addresses that start a
+# plausible instruction and are not already a lifted function.
+EXTRA="$EXTRA --extra-funcs spu_0018_at_0186AD80=0x3288,0x3298,0xF9E8,0x10000,0x10008,0x170E0,0x17420"
+EXTRA="$EXTRA --extra-funcs spu_0015_at_01840980=0x10000"
+EXTRA="$EXTRA --extra-funcs spu_0000_at_01781700=0x505C"
 $PY $T/build_spu_workloads.py --images spu/images --lifted spu \
     --out spu/spu_workloads.c --register-fn dod3_spu_register_all \
     --constructor --title dod3 $EXTRA
