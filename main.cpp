@@ -154,6 +154,7 @@ extern "C" int  rsx_null_backend_pump_messages(void);
  * The ticks are driven off real elapsed time rather than off how long present()
  * took. A hidden or occluded window makes present block hard, and pacing the
  * ticks behind it paces the whole game behind it. */
+extern "C" uint32_t ppu_hle_inject_base;   /* cellGcmSys.c: the GCM window's home */
 static volatile LONG g_frames_presented = 0;
 
 /* Frames handed to the backend at a guest FLIP boundary -- one per frame the
@@ -194,10 +195,10 @@ static DWORD WINAPI frame_clock(LPVOID)
         { static int on = -1; if (on < 0) on = getenv("DOD3_GCM_WATCH") ? 1 : 0;
           static ULONGLONG last = 0; ULONGLONG t = GetTickCount64();
           if (on && t - last >= 5000) { last = t;
-              uint32_t put = vm_read32(0x20002000u), get = vm_read32(0x20002004u), ref = vm_read32(0x20002008u);
+              uint32_t put = vm_read32(ppu_hle_inject_base + 0x2000u), get = vm_read32(ppu_hle_inject_base + 0x2004u), ref = vm_read32(ppu_hle_inject_base + 0x2008u);
               uint32_t ea = 0x40000000u + get;
               fprintf(stderr, "[gcm-watch] put=0x%08X get=0x%08X ref=0x%08X label=0x%08X cache64=0x%016llX words@get: %08X %08X %08X %08X flips=%u\n",
-                      put, get, ref, vm_read32(0x20000FF0u), (unsigned long long)vm_read64(0x01A2A1D0u),
+                      put, get, ref, vm_read32(ppu_hle_inject_base + 0x0FF0u), (unsigned long long)vm_read64(0x01A2A1D0u),
                       vm_read32(ea), vm_read32(ea + 4), vm_read32(ea + 8),
                       vm_read32(ea + 12), cellGcm_flip_request_count());
               fprintf(stderr, "[gcm-watch] user commands pending delivery: %u\n", cellGcm_user_queue_depth());
@@ -260,13 +261,26 @@ static DWORD WINAPI frame_clock(LPVOID)
          * those at 16 ms apiece paces the guest into single-figure frame rates.
          * The real RSX writes them in microseconds. */
         if (rsx_ok) {
+            /* DOD3_SLOW_STEP=1: report any frame-clock step over 300 ms. This
+             * thread is the FIFO walker; a step that blocks it stalls the
+             * title's command-buffer callback, which waits for the walker. */
+            static int slow = -1; if (slow < 0) slow = getenv("DOD3_SLOW_STEP") ? 1 : 0;
+            ULONGLONG t0 = GetTickCount64();
             if (cellGcm_take_flip_pending()) {
                 present_guest_frame();
                 last_flip = cellGcm_flip_request_count();
             }
+            ULONGLONG t1 = GetTickCount64();
             cellGcm_rsx_process_fifo();
+            ULONGLONG t2 = GetTickCount64();
+            if (slow && (t1 - t0 > 300 || t2 - t1 > 300))
+                fprintf(stderr, "[slow-step] present %llu ms, fifo %llu ms\n", (unsigned long long)(t1 - t0), (unsigned long long)(t2 - t1));
 
-            if (rsx_backend_pump() != 0) {
+            ULONGLONG t3 = GetTickCount64();
+            int pumped = rsx_backend_pump();
+            if (slow && GetTickCount64() - t3 > 300)
+                fprintf(stderr, "[slow-step] window pump %llu ms\n", (unsigned long long)(GetTickCount64() - t3));
+            if (pumped != 0) {
                 rsx_ok = 0;              /* window closed */
                 continue;
             }
@@ -430,6 +444,20 @@ int main(int argc, char** argv)
      * Here image 22 is a PhysX task; it never returned and the serialised
      * taskset stalled behind it a few seconds into the first level. */
     setenv("SPU_CRI_IMAGE", "-1", 0);
+    /* Drakengard 3's libgcm keeps NV0039 (memory-to-memory copy) on
+     * subchannel 1: cellGcmSetTransferReportData is how its occlusion
+     * queries come back. The runtime's default routes subchannel 1 to the 3D
+     * engine (Twisted Metal binds NV4097 there). */
+    setenv("GCM_SUBCH1_2D", "1", 0);
+    /* The runtime's GCM window (labels, reports, the put/get/ref control
+     * block and the IO offset tables) defaults to 0x20000000, and Drakengard 3
+     * maps 10 MB of its own memory there (cellGcmMapMainMemory(0x20000000,
+     * 0xA00000)): its occlusion-query results are copied to the start of it,
+     * straight over the labels and the control block -- put and get turned to
+     * 0xFFFF and misaligned values, the FIFO walker lost its place, and the
+     * picture went black. 0x8F000000 is past the sys_memory overflow window
+     * this port sets (..0x88000000) and below RSX local memory. */
+    ppu_hle_inject_base = 0x8F000000u;
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
