@@ -425,6 +425,11 @@ int main(int argc, char** argv)
      * request record before it is filled, dispatches type 0 to a null
      * handler and dies mid-chapter. One at a time removes that. */
     setenv("SPURS_TASKSET_SERIAL", "01AA7700", 0);
+    /* The runtime treats SPU image 22 as You Don't Know Jack's cri media task
+     * (context from the CreateTask globals, an EXIT that returns to the task).
+     * Here image 22 is a PhysX task; it never returned and the serialised
+     * taskset stalled behind it a few seconds into the first level. */
+    setenv("SPU_CRI_IMAGE", "-1", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
