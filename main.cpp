@@ -371,6 +371,7 @@ static void harness_guest_caller(uint32_t opd, uint64_t a0, uint64_t a1,
 
 #ifdef __APPLE__
 #include <pthread.h>
+#include <sys/stat.h>
 
 static uint32_t s_boot_entry;
 
@@ -458,6 +459,9 @@ int main(int argc, char** argv)
      * picture went black. 0x8F000000 is past the sys_memory overflow window
      * this port sets (..0x88000000) and below RSX local memory. */
     ppu_hle_inject_base = 0x8F000000u;
+    /* Translated shaders survive between runs (see rsx_metal_backend.m). */
+    setenv("PS3RECOMP_MSL_CACHE", "cache/msl", 0);
+    mkdir("cache", 0755);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
