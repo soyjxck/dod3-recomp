@@ -420,6 +420,11 @@ int main(int argc, char** argv)
      * the next sound (opening movie, new game). tools/extract_dev_flash.py
      * unpacks fw/dev_flash from the PS3UPDAT.PUP on the game disc. */
     setenv("PS3_DEV_FLASH", "fw/dev_flash", 0);
+    /* The PhysX taskset (five memory-manager/physics tasks sharing request
+     * blocks). Run concurrently on host threads they race: a task reads a
+     * request record before it is filled, dispatches type 0 to a null
+     * handler and dies mid-chapter. One at a time removes that. */
+    setenv("SPURS_TASKSET_SERIAL", "01AA7700", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
