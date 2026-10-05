@@ -27,6 +27,10 @@ for i in 1 2 3 4; do
   press 0x4000 "confirm #$i"
 done
 wait_for "BG00_CHC_10_MAP.XXX" 60 && echo "[autoplay] new game loading" || { echo "[autoplay] new game NOT reached"; exit 1; }
-# The chapter opens on a cutscene; START skips it once the level is in.
-perl -e 'sleep 12'; press 0x0008 "skip first cutscene"
-perl -e 'sleep 4';  press 0x0008 "skip first cutscene (again)"
+# The chapter opens on a cutscene a few seconds after "Now Loading". It
+# starts at a load-dependent moment, so press START every 2 s for 30 s, each
+# followed by CROSS in case the game asks to confirm the skip.
+for i in $(seq 1 15); do
+  perl -e 'sleep 1.4'; press 0x0008 "skip cutscene #$i"
+  perl -e 'sleep 0.6'; press 0x4000 "confirm skip #$i"
+done
