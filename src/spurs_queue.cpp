@@ -62,6 +62,7 @@ static uint32_t run_libsre(ppu_context* ctx, uint32_t fn, const uint64_t args[4]
 
 /* Run non-blocking, and retry until the queue has room/an item if the caller
  * asked to block. args[block_arg] is the call's isBlocking flag. */
+static thread_local unsigned s_last_spins;   /* retries the last blocking call needed */
 static uint32_t run_blocking(ppu_context* ctx, uint32_t fn, uint64_t args[4], int block_arg)
 {
     const bool blocking = (uint8_t)args[block_arg] != 0;
@@ -69,6 +70,7 @@ static uint32_t run_blocking(ppu_context* ctx, uint32_t fn, uint64_t args[4], in
     uint32_t rc;
     for (unsigned spins = 0;; spins++) {
         rc = run_libsre(ctx, fn, args);
+        s_last_spins = spins;
         if (!blocking || (rc != CELL_SPURS_TASK_ERROR_AGAIN && rc != CELL_SPURS_TASK_ERROR_BUSY))
             return rc;
         if (spins < 64) std::this_thread::yield();
@@ -104,9 +106,9 @@ static void queue_pop_body(ppu_context* ctx)
     run_blocking(ctx, LIBSRE_QUEUE_POP_BODY, args, 3);    /* isBlocking = r6 */
     { static int on = -1; if (on < 0) on = getenv("DOD3_QUEUE_LOG") ? 1 : 0;   /* item trace */
       if (on && (uint32_t)ctx->gpr[3] == 0)
-          fprintf(stderr, "[spurs-queue] pop  q=0x%08X item={%08X %08X %08X %08X} tid=%u\n", q,
+          fprintf(stderr, "[spurs-queue] pop  q=0x%08X item={%08X %08X %08X %08X} tid=%u spins=%u\n", q,
                   vm_read32(buf), vm_read32(buf + 4), vm_read32(buf + 8), vm_read32(buf + 12),
-                  (unsigned)ctx->thread_id); }
+                  (unsigned)ctx->thread_id, s_last_spins); }
 }
 
 /* ---- hooks the lifted libsre calls (see tools/gen_libsre.py) ------------- */
