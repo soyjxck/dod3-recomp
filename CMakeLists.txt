@@ -189,6 +189,7 @@ add_executable(${PROJECT_NAME}
     stubs.cpp
     src/spurs_lfqueue.cpp
     src/spurs_queue.cpp
+    src/dod3_edgezlib.cpp
     ${LIBSRE_LIFTED_CPP}
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}

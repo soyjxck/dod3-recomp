@@ -37,6 +37,7 @@ void ps3_hle_register_ctx(uint32_t nid, const char* name, hle_ctx_fn fn);
 int  dod3_libsre_call(uint32_t addr, ppu_context* ctx);   /* generated */
 void spu_taskset_signal_task(uint32_t taskset_ea, uint32_t taskId);
 int  spurs_tasksets_on(uint32_t spurs_ea, uint32_t* out, int max);
+int  dod3_edgezlib_push(uint32_t lr, uint32_t req[8]);
 }
 
 /* libsre entry points (see tools/gen_libsre.py) */
@@ -173,6 +174,15 @@ static void lfq_push_body(ppu_context* ctx)
     if (q & 0x7F)    { ctx->gpr[3] = (int64_t)(int32_t)CELL_SPURS_TASK_ERROR_ALIGN; return; }
     if (!q || !src)  { ctx->gpr[3] = (int64_t)(int32_t)CELL_SPURS_TASK_ERROR_NULL_POINTER; return; }
 
+    /* An Edge zlib request may be inflated here and queued as a token copy
+     * instead (src/dod3_edgezlib.cpp). */
+    uint32_t zreq[8];
+    bool zlib_native = false;
+    if (vm_read32(q + LFQ_M_SIZE) == sizeof zreq) {
+        for (int i = 0; i < 8; i++) zreq[i] = vm_read32(src + 4u * i);
+        zlib_native = dod3_edgezlib_push((uint32_t)ctx->lr, zreq) != 0;
+    }
+
     const bool any2any = vm_read32(q + LFQ_M_DIRECTION) == LFQ_DIR_ANY2ANY;
 
     /* Frame for the out-parameter: back chain at +0, `pointer` at +0x70, as in
@@ -208,7 +218,8 @@ static void lfq_push_body(ppu_context* ctx)
     const int32_t pos  = (int32_t)vm_read32(pos_ea);
     const int32_t slot = pos >= (int32_t)depth ? pos - (int32_t)depth : pos;
     const uint32_t dst = ((uint32_t)vm_read64(q + LFQ_M_BUFFER) & ~1u) + size * (uint32_t)slot;
-    for (uint32_t o = 0; o < size; o += 4) vm_write32(dst + o, vm_read32(src + o));
+    if (zlib_native) for (int i = 0; i < 8; i++) vm_write32(dst + 4u * i, zreq[i]);
+    else for (uint32_t o = 0; o < size; o += 4) vm_write32(dst + o, vm_read32(src + o));
 
     /* fpSendSignal: the lifted code only dereferences it as an OPD on the way to
      * the (rewritten) indirect call, and refuses a null one, so any readable
