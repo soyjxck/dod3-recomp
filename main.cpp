@@ -897,8 +897,52 @@ __attribute__((target("xsave"))) static bool x86_v3_cpu(void)
 }
 #endif
 
+/* dod3.ini: the player's settings, as KEY = VALUE lines (# and ; start a
+ * comment). Every key is one of the environment switches the runtime already
+ * reads -- RSX_SCALE, RSX_WINDOW, RSX_FULLSCREEN, RSX_VSYNC, DOD3_FPS, ... --
+ * so the file is the friendly spelling of the same thing, and a variable set
+ * in the environment wins over the file (the benchmark and test scripts set
+ * theirs that way). Looked for beside the executable, then in the current
+ * directory. */
+static void load_settings_file(const char* argv0)
+{
+    char path[1024];
+    FILE* f = NULL;
+    const char* tried[2] = { NULL, "dod3.ini" };
+    size_t n = strlen(argv0);
+    while (n && argv0[n - 1] != '/' && argv0[n - 1] != '\\') n--;
+    if (n && n + 9 < sizeof path) { memcpy(path, argv0, n); strcpy(path + n, "dod3.ini"); tried[0] = path; }
+    const char* used = NULL;
+    for (int i = 0; i < 2 && !f; i++) if (tried[i] && (f = fopen(tried[i], "r")) != NULL) used = tried[i];
+    if (!f) return;
+    char line[512]; int applied = 0;
+    while (fgets(line, sizeof line, f)) {
+        char* p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '#' || *p == ';' || *p == '\n' || *p == '\r' || !*p) continue;
+        char* eq = strchr(p, '=');
+        if (!eq) continue;
+        /* key */
+        char* ke = eq; while (ke > p && (ke[-1] == ' ' || ke[-1] == '\t')) ke--;
+        *ke = 0;
+        /* value: up to a comment or the end of the line, trimmed */
+        char* v = eq + 1;
+        while (*v == ' ' || *v == '\t') v++;
+        for (char* c = v; *c; c++) if (*c == '#' || *c == ';' || *c == '\n' || *c == '\r') { *c = 0; break; }
+        char* ve = v + strlen(v); while (ve > v && (ve[-1] == ' ' || ve[-1] == '\t')) ve--;
+        *ve = 0;
+        if (!*p) continue;
+        if (getenv(p)) continue;            /* the environment wins */
+        setenv(p, v, 1);
+        applied++;
+    }
+    fclose(f);
+    if (applied) fprintf(stderr, "[settings] %d from %s\n", applied, used);
+}
+
 int main(int argc, char** argv)
 {
+    if (argc >= 1 && argv[0]) load_settings_file(argv[0]);
 #if defined(DOD3_X86_V3) && defined(_WIN32)
     if (!x86_v3_cpu()) {
         fprintf(stderr, "This build needs a CPU with AVX2, FMA and BMI2 (x86-64-v3). "

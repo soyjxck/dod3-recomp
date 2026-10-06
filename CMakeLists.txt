@@ -249,6 +249,12 @@ if(WIN32 AND DOD3_SYMBOLS)
     target_link_options(${PROJECT_NAME} PRIVATE /DEBUG /OPT:REF /OPT:ICF)
 endif()
 
+# The player's settings file goes beside the executable once; a copy the
+# player has edited is never overwritten.
+if(NOT EXISTS "${CMAKE_BINARY_DIR}/dod3.ini")
+    file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/dod3.ini" DESTINATION "${CMAKE_BINARY_DIR}")
+endif()
+
 # app.rc carries the icon, the version block and the manifest, and needs a
 # resource compiler. Listing it as a source on a host that has none is not a
 # link error, it is a "no rule to make" for a file nothing can consume.
