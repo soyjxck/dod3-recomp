@@ -25,6 +25,7 @@
 #include <string.h>
 
 void spurs_job_01785E00_spu_func_00000528(spu_context* ctx);
+void spurs_job_01785E00_spu_func_00000560(spu_context* ctx);
 void spurs_job_01785E00_spu_func_00000638(spu_context* ctx);
 
 static _Thread_local int t_in_check;      /* 1: fast-forward run, 2: plain run */
@@ -120,5 +121,117 @@ int dod3_spu_lzf_match_hook(spu_context* ctx)
     lanes_add(&ctx->gpr[13], n - 1);
     lanes_add(&ctx->gpr[7], n - 1);
     lanes_add(&ctx->gpr[18], (uint32_t)-(int32_t)(n - 1));
+    return 0;
+}
+
+/* ---- 0x560: whole tokens --------------------------------------------------
+ *
+ * 0x560 starts one LZF token: r17 = input, r16 = output, and the decoder
+ * continues while r23 > r17 (unsigned). A token reads nothing of the tokens
+ * before it but r16, r17 and local store; every other register it touches
+ * it writes first. So this decodes natively every token before the last
+ * literal run and the last back-reference, leaves r16 and r17 exactly as the
+ * lifted code would -- every lane of them -- and returns 0: the lifted code
+ * runs the rest, including the last token of each kind, which is what leaves
+ * every other register as it always was.
+ *
+ * The lanes: a literal run moves all four lanes of r16 and r17 by its length.
+ * A back-reference moves lane k by amounts the lifted code derives from the
+ * byte four*k along the ctrl byte's 16-byte line (and, for the length, the
+ * next byte's line) -- garbage outside lane 0, but deterministic garbage. */
+static uint8_t ls_line_byte(const uint8_t* ls, uint32_t a, uint32_t k)
+{
+    /* Byte 3 of word k of rotqby(LS128[a & ~15], a + 13): the byte 4k past a,
+     * wrapping within a's 16-byte line. */
+    return ls[((a & ~0xFu) + ((a + 4u * k) & 0xFu)) & SPU_LS_MASK];
+}
+
+static int lzf_token_native(spu_context* ctx, uint32_t* out_tokens)
+{
+    uint8_t* ls = ctx->ls;
+    const uint32_t end = ctx->gpr[23]._u32[0];
+    uint32_t ip = ctx->gpr[17]._u32[0];
+    /* Pass 1: where are the last literal run and the last back-reference? */
+    uint32_t n = 0, last_lit = UINT32_MAX, last_ref = UINT32_MAX, p = ip;
+    for (;;) {
+        const uint32_t c = ls[p & SPU_LS_MASK];
+        if (c < 32) { last_lit = n; p += c + 2; }
+        else { last_ref = n; p += ((c >> 5) == 7) ? 3 : 2; }
+        n++;
+        if (!(end > p)) break;
+        if (n > SPU_LS_SIZE) return 0;
+    }
+    const uint32_t stop = last_lit < last_ref ? last_lit : last_ref;
+    if (!stop || stop == UINT32_MAX) return 0;
+    /* Pass 2: decode tokens [0, stop). */
+    u128 r16 = ctx->gpr[16], r17 = ctx->gpr[17];
+    for (uint32_t t = 0; t < stop; t++) {
+        const uint32_t c = ls[ip & SPU_LS_MASK];
+        const uint32_t op = r16._u32[0];
+        if (c < 32) {
+            const uint32_t len = c + 1;
+            ls_copy_forward(ls, op, ip + 1, len);
+            lanes_add(&r16, len);
+            lanes_add(&r17, len + 1);
+            ip += len + 1;
+        } else {
+            uint32_t len = c >> 5, q = ip + 1;
+            if (len == 7) { len += ls[q & SPU_LS_MASK]; q++; }
+            const uint32_t ref = op - ((c & 31u) << 8) - 1u - ls[q & SPU_LS_MASK];
+            for (uint32_t k = 0; k < 4; k++) {
+                const uint32_t r8 = ls_line_byte(ls, ip, k) >> 5;
+                const uint32_t cnt = r8 != 7 ? r8 : (uint32_t)ls_line_byte(ls, ip + 1, k) + 7u;
+                r16._u32[k] += 2u + cnt;
+                r17._u32[k] += r8 != 7 ? 2u : 3u;
+            }
+            ls_copy_forward(ls, op, ref, len + 2);
+            ip = q + 1;
+        }
+    }
+    ctx->gpr[16] = r16;
+    ctx->gpr[17] = r17;
+    *out_tokens = stop;
+    return 1;
+}
+
+static unsigned long long s_tok_checked, s_tok_bad;
+/* Run the decoder from 0x560 to its exit at 0x678 through the lifted
+ * functions alone (they only branch among themselves). */
+static void lzf_run_lifted(spu_context* ctx)
+{
+    spurs_job_01785E00_spu_func_00000560(ctx);
+    while (g_spu_trampoline_fn && ((uint32_t)ctx->pc & SPU_LS_MASK) != 0x678u) {
+        void (*f)(spu_context*) = g_spu_trampoline_fn;
+        g_spu_trampoline_fn = 0;
+        f(ctx);
+    }
+}
+
+int dod3_spu_lzf_token_hook(spu_context* ctx)
+{
+    if (t_in_check == 2 || !hooks_on()) return 0;
+    if (t_in_check == 0 && checking()) {
+        /* Compare the whole decode, both ways, then keep the lifted one. The
+         * output window is bounded by the remaining input's decoded size. */
+        static _Thread_local u128 g0[128], ga[128];
+        static _Thread_local uint8_t l0[SPU_LS_SIZE], la[SPU_LS_SIZE];
+        memcpy(g0, ctx->gpr, sizeof g0); memcpy(l0, ctx->ls, SPU_LS_SIZE);
+        const uint32_t pc0 = (uint32_t)ctx->pc;
+        t_in_check = 3; lzf_run_lifted(ctx); t_in_check = 0;   /* 3: hooks active */
+        memcpy(ga, ctx->gpr, sizeof ga); memcpy(la, ctx->ls, SPU_LS_SIZE);
+        const uint32_t pca = (uint32_t)ctx->pc; void (*tfa)(spu_context*) = g_spu_trampoline_fn;
+        memcpy(ctx->gpr, g0, sizeof g0); memcpy(ctx->ls, l0, SPU_LS_SIZE); ctx->pc = pc0;
+        t_in_check = 2; lzf_run_lifted(ctx); t_in_check = 0;
+        const int bad = memcmp(ga, ctx->gpr, sizeof ga) || memcmp(la, ctx->ls, SPU_LS_SIZE) ||
+                        pca != (uint32_t)ctx->pc || tfa != g_spu_trampoline_fn;
+        s_tok_checked++;
+        if ((s_tok_checked % 2000) == 0 || (bad && s_tok_bad < 8))
+            fprintf(stderr, "[spu-native-check] lzf decodes: %llu compared, %llu mismatched%s\n",
+                    s_tok_checked, s_tok_bad + (bad ? 1 : 0), bad ? " -- MISMATCH" : "");
+        if (bad) s_tok_bad++;
+        return 1;   /* the lifted result stands; the trampoline is set */
+    }
+    uint32_t tokens = 0;
+    lzf_token_native(ctx, &tokens);
     return 0;
 }

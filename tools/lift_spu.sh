@@ -44,6 +44,7 @@ EXTRA="$EXTRA --extra-funcs spu_0000_at_01781700=0x505C"
 # Native fast paths (src/dod3_spu_hooks.c): ShaderPatching's LZF copy loops.
 EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x528:dod3_spu_lzf_literal_hook"
 EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x638:dod3_spu_lzf_match_hook"
+EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x560:dod3_spu_lzf_token_hook"
 $PY $T/build_spu_workloads.py --images spu/images --lifted spu \
     --out spu/spu_workloads.c --register-fn dod3_spu_register_all \
     --constructor --title dod3 $EXTRA
