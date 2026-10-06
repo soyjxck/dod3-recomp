@@ -459,6 +459,12 @@ int main(int argc, char** argv)
      * picture went black. 0x8F000000 is past the sys_memory overflow window
      * this port sets (..0x88000000) and below RSX local memory. */
     ppu_hle_inject_base = 0x8F000000u;
+    /* The point-light shaft mask (fragment program fp-struct
+     * 1a9b74dc1afc2a84) writes max(distance / radius, behind-the-light)^4
+     * unclamped, and the shaft composite multiplies the scene by about
+     * 0.3 + 1.05 * mask^2: the village interior's smoky doorway and windows
+     * blew out to white. Clamped to [0, 1] the room matches the original. */
+    setenv("RSX_FP_SAT_ALPHA", "1a9b74dc1afc2a84", 0);
     /* Translated shaders survive between runs (see rsx_metal_backend.m). */
     setenv("PS3RECOMP_MSL_CACHE", "cache/msl", 0);
     mkdir("cache", 0755);
