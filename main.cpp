@@ -666,6 +666,12 @@ int main(int argc, char** argv)
     /* Translated shaders survive between runs (see rsx_metal_backend.m). */
     setenv("PS3RECOMP_MSL_CACHE", "cache/msl", 0);
     mkdir("cache", 0755);
+    /* The sound driver (CDevSd's MultiStream threads and the MultiStream SPU
+     * task, image 1 = spu_0000) at user-interactive QoS: at default QoS a
+     * busy moment wrote its blocks late, 88 gaps (3.9 s of sound) in a
+     * 4-minute battle, against 2 boosted (AUDIO_GAPS=1 counts them). */
+    setenv("PPU_QOS_INTERACTIVE", "CDevSd", 0);
+    setenv("SPU_QOS_INTERACTIVE", "1", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
