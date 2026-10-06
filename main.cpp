@@ -219,25 +219,54 @@ static void fifo_kick(void)
  * inside that, but the thread slept its whole 200 us (258 with timer slack)
  * every time -- some 5 ms of a frame on the busiest thread. That one poll
  * instead sleeps until the next drain completes, never longer than it asked.
- * DOD3_FAST_POLL_LR=<hex guest return address>, 0 for none. */
+ * DOD3_FAST_POLL_LR=<hex guest return address>, 0 for none.
+ *
+ * It is also woken when the walker writes a label (g_gcm_label_write_hook).
+ * The label the thread waits for comes in the middle of a long drain pass --
+ * the pass that renders the frame up to it, GPU round trip for the occlusion
+ * counts included -- so "the next drain completes" was milliseconds after it
+ * landed, and a wait that times out is no 200 us on Windows but the
+ * scheduler's millisecond or two: three quarters of the polls timed out, at
+ * 1.02 ms apiece, 4 ms of every 11 ms frame, and the game thread behind the
+ * render thread waited with it (Unreal's end-of-frame sync). DOD3_AB=labelwake
+ * switches the label wake in a run. */
+extern "C" void (*g_gcm_label_write_hook)(void);
 static std::atomic<uint64_t> s_drain_gen{0};
+static std::atomic<uint64_t> s_label_gen{0};
 static std::atomic<int>      s_drain_waiters{0};
+static std::atomic<int>      s_label_wake{1};
 static std::mutex              s_drain_mu;
 static std::condition_variable s_drain_cv;
 static uint32_t s_fast_poll_lr = 0x008B0DD8u;
-static void drain_done(void)
+static void drain_wake(void)
 {
-    s_drain_gen.fetch_add(1);
     if (s_drain_waiters.load()) {
         std::lock_guard<std::mutex> lk(s_drain_mu);
         s_drain_cv.notify_all();
     }
+}
+static void drain_done(void)
+{
+    s_drain_gen.fetch_add(1);
+    drain_wake();
+}
+static void label_written(void)
+{
+    if (!s_label_wake.load(std::memory_order_relaxed)) return;
+    s_label_gen.fetch_add(1);
+    drain_wake();
 }
 static std::atomic<uint64_t> s_fp_calls{0}, s_fp_early{0}, s_fp_us{0};
 static int guest_usleep_hook(uint32_t lr, uint64_t usec)
 {
     fifo_kick();
     if (!s_fast_poll_lr || lr != s_fast_poll_lr || usec > 100000) return 0;
+    /* A label written since this thread last looked: let it look again now.
+     * (It reads the label, then calls here; one written in between would
+     * otherwise be noticed a timeout later.) */
+    static thread_local uint64_t labels_seen = 0;
+    const uint64_t gl = s_label_gen.load();
+    if (gl != labels_seen) { labels_seen = gl; s_fp_calls++; s_fp_early++; return 1; }
     const uint64_t g = s_drain_gen.load();
     const auto t0 = std::chrono::steady_clock::now();
     s_drain_waiters.fetch_add(1);
@@ -245,9 +274,10 @@ static int guest_usleep_hook(uint32_t lr, uint64_t usec)
     {
         std::unique_lock<std::mutex> lk(s_drain_mu);
         early = s_drain_cv.wait_for(lk, std::chrono::microseconds(usec),
-                                    [g] { return s_drain_gen.load() != g; });
+                                    [g, gl] { return s_drain_gen.load() != g || s_label_gen.load() != gl; });
     }
     s_drain_waiters.fetch_sub(1);
+    labels_seen = s_label_gen.load();
     s_fp_calls++; if (early) s_fp_early++;
     s_fp_us += (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
         std::chrono::steady_clock::now() - t0).count();
@@ -438,6 +468,10 @@ static void* cpu_watch(void*)
  * DOD3_AB_FROM seconds (default 70: boot and menus) are not counted.
  *   stores   the lifted code's inline store path on / every store a call
  *   icall    ps3_indirect_call's fast path on / the full path always
+ *   labelwake  the fence poll woken by the walker's label writes / by the
+ *            end of a drain pass only
+ *   querysync  the GPU round trip for occlusion counts before their fence
+ *            lands / the fence at once (RSX_QUERY_NOSYNC: objects flicker)
  *   none     nothing: the control, which has to report no difference
  * On Windows each report also gives the CPU time per frame of the busiest
  * threads in either state (thread cycle counters, so exact): a switch that
@@ -448,10 +482,15 @@ extern "C" void ppu_vm_slow_any_update(void);
 static void ab_stores(int on) { g_ppu_vm_slow_stores = on ? 0 : 1; ppu_vm_slow_any_update(); }
 extern "C" int g_ppu_icall_full;
 static void ab_icall(int on) { g_ppu_icall_full = on ? 0 : 1; }
+static void ab_labelwake(int on) { s_label_wake.store(on); }
+extern "C" int g_rsx_query_nosync;
+static void ab_querysync(int on) { g_rsx_query_nosync = on ? 0 : 1; }
 static void ab_none(int) {}
 static const struct { const char* name; void (*set)(int on); } s_ab_switches[] = {
     { "stores", ab_stores },
     { "icall",  ab_icall },
+    { "labelwake", ab_labelwake },
+    { "querysync", ab_querysync },
     { "none",   ab_none },
 };
 #ifdef _WIN32
@@ -461,37 +500,45 @@ static const struct { const char* name; void (*set)(int on); } s_ab_switches[] =
 #include <string>
 #include <vector>
 #include <algorithm>
-struct AbThread { uint64_t last = 0; bool seen = false; double cyc[2] = { 0, 0 }; std::string name; };
+struct AbThread { HANDLE h = NULL; uint64_t last = 0; bool seen = false; double cyc[2] = { 0, 0 }; std::string name; };
 static std::map<DWORD, AbThread> s_ab_threads;
 static double s_ab_frames[2];
 /* Charge each thread's cycles since the last call to `state`. */
 static void ab_cpu_sample(int state, unsigned frames, bool count)
 {
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-    if (snap == INVALID_HANDLE_VALUE) return;
-    const DWORD pid = GetCurrentProcessId();
-    THREADENTRY32 te; te.dwSize = sizeof te;
-    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
-        if (te.th32OwnerProcessID != pid) continue;
-        HANDLE h = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, te.th32ThreadID);
-        if (!h) continue;
-        ULONG64 c = 0;
-        if (QueryThreadCycleTime(h, &c)) {
-            AbThread& t = s_ab_threads[te.th32ThreadID];
-            if (t.seen && count) t.cyc[state] += (double)(c - t.last);
-            t.last = c; t.seen = true;
-            if (t.name.empty()) {
-                PWSTR w = NULL;
-                if (SUCCEEDED(GetThreadDescription(h, &w)) && w) {
-                    for (PWSTR q = w; *q; q++) t.name += (char)(*q < 128 ? *q : '?');
-                    LocalFree(w);
-                }
-                if (t.name.empty()) t.name = "tid " + std::to_string(te.th32ThreadID);
+    /* The snapshot lists every thread in the system and takes tens of
+     * milliseconds -- on the thread that walks the RSX FIFO, so each one is a
+     * long frame. Take it on every 16th window; in between, the handles. */
+    static unsigned calls = 0;
+    if (calls++ % 16 == 0) {
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (snap != INVALID_HANDLE_VALUE) {
+            const DWORD pid = GetCurrentProcessId();
+            THREADENTRY32 te; te.dwSize = sizeof te;
+            for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
+                if (te.th32OwnerProcessID != pid) continue;
+                AbThread& t = s_ab_threads[te.th32ThreadID];
+                if (!t.h) t.h = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, te.th32ThreadID);
             }
+            CloseHandle(snap);
         }
-        CloseHandle(h);
     }
-    CloseHandle(snap);
+    for (auto& kv : s_ab_threads) {
+        AbThread& t = kv.second;
+        ULONG64 c = 0;
+        if (!t.h || !QueryThreadCycleTime(t.h, &c)) continue;
+        if (t.seen && count) t.cyc[state] += (double)(c - t.last);
+        t.last = c; t.seen = true;
+        if (t.name.empty() || t.name.compare(0, 4, "tid ") == 0) {
+            PWSTR w = NULL;
+            t.name.clear();
+            if (SUCCEEDED(GetThreadDescription(t.h, &w)) && w) {
+                for (PWSTR q = w; *q; q++) t.name += (char)(*q < 128 ? *q : '?');
+                LocalFree(w);
+            }
+            if (t.name.empty()) t.name = "tid " + std::to_string(kv.first);
+        }
+    }
     if (count) s_ab_frames[state] += frames;
 }
 static void ab_cpu_report(const char* name)
@@ -584,7 +631,7 @@ static DWORD WINAPI frame_clock(LPVOID)
     if (const char* e = getenv("DOD3_FIFO_SLEEP_MS")) fifo_sleep_ms = (DWORD)atoi(e);
     const bool kick_on = !(getenv("DOD3_FIFO_KICK") && getenv("DOD3_FIFO_KICK")[0] == '0');
     if (const char* e = getenv("DOD3_FAST_POLL_LR")) s_fast_poll_lr = (uint32_t)strtoul(e, 0, 16);
-    if (kick_on) g_lv2_usleep_hook = guest_usleep_hook;
+    if (kick_on) { g_lv2_usleep_hook = guest_usleep_hook; g_gcm_label_write_hook = label_written; }
     uint64_t next_tick = frame_clock_us();
     uint64_t last_pump = 0, last_boot_present = 0;
 

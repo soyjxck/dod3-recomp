@@ -57,6 +57,7 @@ struct ThreadStat {
     std::unordered_map<uint64_t, uint64_t> wait_site;   /* first non-ntdll frame above a wait */
     std::unordered_map<uint64_t, uint64_t> self;   /* leaf address -> count */
     std::unordered_map<uint64_t, uint64_t> incl;   /* DOD3_PROF_TREE: function -> samples with it on the stack */
+    std::map<std::string, uint64_t> wait_chain;    /* DOD3_PROF_TREE: "wait <- caller <- ..." -> samples */
 };
 
 struct Sym { std::string name; uint64_t base; };
@@ -153,6 +154,31 @@ static int safe_read64(uint64_t at, uint64_t* out)
     SIZE_T n = 0;
     return ReadProcessMemory(GetCurrentProcess(), (LPCVOID)at, out, 8, &n) && n == 8;
 }
+/* One frame up. A thread stopped in the middle of a prologue, or in code
+ * whose unwind data does not describe where it is, hands the unwinder a
+ * stack pointer that points nowhere; RtlVirtualUnwind then faults reading
+ * it. That killed the profiler (and with it the report of the run) once the
+ * walk went 64 frames deep. The walk just ends there. */
+static bool unwind_step(CONTEXT* ctx)
+{
+    __try {
+        DWORD64 base = 0;
+        PRUNTIME_FUNCTION rf = RtlLookupFunctionEntry(ctx->Rip, &base, NULL);
+        if (!rf) {
+            /* A leaf function with no unwind data: the return address is
+             * on top of the stack. */
+            uint64_t ret = 0;
+            if (!safe_read64(ctx->Rsp, &ret)) return false;
+            ctx->Rip = ret; ctx->Rsp += 8;
+        } else {
+            PVOID handler = NULL; DWORD64 est = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, ctx->Rip, rf, ctx, &handler, &est, NULL);
+        }
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+}
 static int walk(HANDLE th, uint64_t* out, int cap)
 {
     CONTEXT ctx; memset(&ctx, 0, sizeof ctx);
@@ -160,20 +186,13 @@ static int walk(HANDLE th, uint64_t* out, int cap)
     if (SuspendThread(th) == (DWORD)-1) return 0;
     int n = 0;
     if (GetThreadContext(th, &ctx)) {
+        uint64_t last_sp = 0;
         while (n < cap && ctx.Rip) {
             out[n++] = ctx.Rip;
-            DWORD64 base = 0;
-            PRUNTIME_FUNCTION rf = RtlLookupFunctionEntry(ctx.Rip, &base, NULL);
-            if (!rf) {
-                /* A leaf function with no unwind data: the return address is
-                 * on top of the stack. */
-                uint64_t ret = 0;
-                if (!safe_read64(ctx.Rsp, &ret)) break;
-                ctx.Rip = ret; ctx.Rsp += 8;
-            } else {
-                PVOID handler = NULL; DWORD64 est = 0;
-                RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, ctx.Rip, rf, &ctx, &handler, &est, NULL);
-            }
+            /* The stack only unwinds upward; anything else is garbage. */
+            if (ctx.Rsp < last_sp || (ctx.Rsp & 7)) break;
+            last_sp = ctx.Rsp;
+            if (!unwind_step(&ctx)) break;
         }
     }
     ResumeThread(th);
@@ -265,6 +284,13 @@ static void report(double secs, long interval_ms)
             for (size_t i = 0; i < ws.size() && i < 5; i++)
                 fprintf(stderr, " %.0f%% %s;", 100.0 * ws[i].second / t.waits, symbolize(ws[i].first).name.c_str());
             fputc('\n', stderr);
+            if (!t.wait_chain.empty()) {
+                std::vector<std::pair<uint64_t, std::string>> wc;
+                for (auto& kv : t.wait_chain) wc.push_back({ kv.second, kv.first });
+                std::sort(wc.rbegin(), wc.rend());
+                for (size_t i = 0; i < wc.size() && i < 8; i++)
+                    fprintf(stderr, "[prof]       %.0f%% of its waits: %s\n", 100.0 * wc[i].first / t.waits, wc[i].second.c_str());
+            }
         }
     }
     auto dump = [&](const char* what, std::unordered_map<uint64_t, uint64_t>& m, int n) {
@@ -286,7 +312,7 @@ static void report(double secs, long interval_ms)
     }
     dump("hottest functions (self)", s_self_all, 14);
     dump("hottest functions (inclusive)", s_incl_all, 14);
-    for (auto& kv : s_stats) { kv.second.samples = 0; kv.second.waits = 0; kv.second.self.clear(); kv.second.wait_site.clear(); kv.second.incl.clear(); }
+    for (auto& kv : s_stats) { kv.second.samples = 0; kv.second.waits = 0; kv.second.self.clear(); kv.second.wait_site.clear(); kv.second.incl.clear(); kv.second.wait_chain.clear(); }
     s_self_all.clear(); s_incl_all.clear(); s_total_samples = 0; s_passes = 0;
 }
 
@@ -341,6 +367,12 @@ static DWORD WINAPI prof_thread(LPVOID arg)
                         !strcmp(nm, "SleepConditionVariableCS") || !strcmp(nm, "WaitForMultipleObjectsEx"))
                         continue;
                     st.wait_site[w.base]++;
+                    if (deep) {
+                        /* Who is waiting: the wait and the seven frames above it. */
+                        std::string chain;
+                        for (int k = i; k < n && k < i + 8; k++) { if (k > i) chain += " <- "; chain += symbolize(fr[k]).name; }
+                        st.wait_chain[chain]++;
+                    }
                     break;
                 }
                 continue;
