@@ -293,6 +293,10 @@ extern "C" uint32_t g_rsx_engine_frame;
 static void* stall_watch(void* arg)
 {
     const char* dir = (const char*)arg;
+    /* DOD3_STALL_MS / DOD3_STALL_MAX: the threshold (default 300) and how many
+     * samples a run may take (default 12). */
+    const uint64_t thr_us = (getenv("DOD3_STALL_MS") ? (uint64_t)atoi(getenv("DOD3_STALL_MS")) : 300u) * 1000u;
+    const int max_n = getenv("DOD3_STALL_MAX") ? atoi(getenv("DOD3_STALL_MAX")) : 12;
     uint32_t last = g_rsx_engine_frame;
     uint64_t last_t = frame_clock_us(), last_sample = 0, stall_from = 0;
     int n = 0;
@@ -306,16 +310,17 @@ static void* stall_watch(void* arg)
             last = f; last_t = t; stall_from = 0;
             continue;
         }
-        if (!f || t - last_t < 300000) continue;
+        if (!f || t - last_t < thr_us) continue;
         if (!stall_from) stall_from = t;
-        if (n < 12 && t - last_sample > 2000000 && stall_from == t) {
+        if (n < max_n && t - last_sample > 2000000 && stall_from == t) {
             char path[512], pid[16];
             snprintf(path, sizeof path, "%s/stall_%02d_f%u.txt", dir, n, f);
             snprintf(pid, sizeof pid, "%d", (int)getpid());
             char* const argv[] = { (char*)"/usr/bin/sample", pid, (char*)"1", (char*)"-file", path, NULL };
             pid_t child;
             if (posix_spawn(&child, "/usr/bin/sample", NULL, NULL, argv, environ) == 0) {
-                fprintf(stderr, "[stall] no present for 300 ms after frame %u -> %s\n", f, path);
+                fprintf(stderr, "[stall] no present for %llu ms after frame %u -> %s\n",
+                        (unsigned long long)(thr_us / 1000), f, path);
                 n++; last_sample = t;
             }
         }
