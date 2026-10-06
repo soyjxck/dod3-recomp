@@ -177,6 +177,69 @@ static void present_guest_frame(void)
 
 extern "C" unsigned cellGcm_user_queue_depth(void);
 
+/* The FIFO walker sleeps between drains. A guest thread polling with usleep
+ * is usually waiting on something only a drain writes -- the render thread's
+ * GPU fence wait (func_008B0C70) re-reads a label every 200 us -- so every
+ * guest usleep wakes the walker (sys_timer.c, g_lv2_usleep_hook). It cost the
+ * render thread up to the whole 4 ms sleep, several times a frame.
+ * DOD3_FIFO_KICK=0 goes back to the plain sleep. */
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+static std::mutex              s_kick_mu;
+static std::condition_variable s_kick_cv;
+static std::atomic<bool>       s_kicked{false};
+extern "C" int (*g_lv2_usleep_hook)(uint32_t lr, uint64_t usec);
+static void fifo_kick(void)
+{
+    if (!s_kicked.exchange(true, std::memory_order_acq_rel)) {
+        std::lock_guard<std::mutex> lk(s_kick_mu);
+        s_kick_cv.notify_one();
+    }
+}
+
+/* The render thread's GPU fence wait (func_008B0C70) polls a label with
+ * usleep(200), about 20 times a frame. A drain usually writes the label well
+ * inside that, but the thread slept its whole 200 us (258 with timer slack)
+ * every time -- some 5 ms of a frame on the busiest thread. That one poll
+ * instead sleeps until the next drain completes, never longer than it asked.
+ * DOD3_FAST_POLL_LR=<hex guest return address>, 0 for none. */
+static std::atomic<uint64_t> s_drain_gen{0};
+static std::atomic<int>      s_drain_waiters{0};
+static std::mutex              s_drain_mu;
+static std::condition_variable s_drain_cv;
+static uint32_t s_fast_poll_lr = 0x008B0DD8u;
+static void drain_done(void)
+{
+    s_drain_gen.fetch_add(1);
+    if (s_drain_waiters.load()) {
+        std::lock_guard<std::mutex> lk(s_drain_mu);
+        s_drain_cv.notify_all();
+    }
+}
+static std::atomic<uint64_t> s_fp_calls{0}, s_fp_early{0}, s_fp_us{0};
+static int guest_usleep_hook(uint32_t lr, uint64_t usec)
+{
+    fifo_kick();
+    if (!s_fast_poll_lr || lr != s_fast_poll_lr || usec > 100000) return 0;
+    const uint64_t g = s_drain_gen.load();
+    const auto t0 = std::chrono::steady_clock::now();
+    s_drain_waiters.fetch_add(1);
+    bool early;
+    {
+        std::unique_lock<std::mutex> lk(s_drain_mu);
+        early = s_drain_cv.wait_for(lk, std::chrono::microseconds(usec),
+                                    [g] { return s_drain_gen.load() != g; });
+    }
+    s_drain_waiters.fetch_sub(1);
+    s_fp_calls++; if (early) s_fp_early++;
+    s_fp_us += (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    return 1;
+}
+extern "C" int  ppu_waitprof_on(void);
+extern "C" void ppu_waitprof_report(double window_s);
+
 /* A monotonic microsecond clock: the vblank period is not a whole number of
  * milliseconds once it is raised above 60 Hz. */
 static uint64_t frame_clock_us(void)
@@ -236,10 +299,27 @@ static DWORD WINAPI frame_clock(LPVOID)
     if (const char* e = getenv("DOD3_VBLANK_HZ")) if (atoi(e) > 0) vblank_us = 1000000ull / (uint64_t)atoi(e);
     DWORD fifo_sleep_ms = 4;
     if (const char* e = getenv("DOD3_FIFO_SLEEP_MS")) fifo_sleep_ms = (DWORD)atoi(e);
+    const bool kick_on = !(getenv("DOD3_FIFO_KICK") && getenv("DOD3_FIFO_KICK")[0] == '0');
+    if (const char* e = getenv("DOD3_FAST_POLL_LR")) s_fast_poll_lr = (uint32_t)strtoul(e, 0, 16);
+    if (kick_on) g_lv2_usleep_hook = guest_usleep_hook;
     uint64_t next_tick = frame_clock_us();
+    uint64_t last_pump = 0, last_boot_present = 0;
 
     for (;;) {
-        Sleep(fifo_sleep_ms);
+        if (kick_on) {
+            /* Until a guest poll kicks it, the next vblank, or the usual sleep
+             * -- whichever comes first. */
+            const uint64_t t = frame_clock_us();
+            uint64_t wait_us = (uint64_t)fifo_sleep_ms * 1000ull;
+            if ((long long)(next_tick - t) < (long long)wait_us)
+                wait_us = (long long)(next_tick - t) > 0 ? next_tick - t : 0;
+            std::unique_lock<std::mutex> lk(s_kick_mu);
+            s_kick_cv.wait_for(lk, std::chrono::microseconds(wait_us),
+                               [] { return s_kicked.load(std::memory_order_acquire); });
+            s_kicked.store(false, std::memory_order_release);
+        } else {
+            Sleep(fifo_sleep_ms);
+        }
         /* DOD3_GCM_WATCH=1 (temporary): every 5 s, the FIFO pointers, the sync
          * label, and the command words at `get` -- parked with work pending, or
          * drained dry? */
@@ -284,6 +364,17 @@ static DWORD WINAPI frame_clock(LPVOID)
                       fprintf(stderr, "[gcm-tail] io %08X: %08X %08X %08X %08X\n", a - 0x40000000u,
                               vm_read32(a), vm_read32(a + 4), vm_read32(a + 8), vm_read32(a + 12)); } } }
         uint64_t now = frame_clock_us();
+        /* PPU_WAITPROF=1: where the guest threads waited, every 5 s. */
+        { static uint64_t wp_last = 0;
+          if (!wp_last) wp_last = now;
+          if (now - wp_last >= 5000000ull && ppu_waitprof_on()) {
+              ppu_waitprof_report((double)(now - wp_last) / 1e6);
+              const uint64_t c = s_fp_calls.exchange(0), e = s_fp_early.exchange(0), u = s_fp_us.exchange(0);
+              fprintf(stderr, "[fast-poll] %llu fence polls, %llu woken by a drain, %.1f us avg; drains %llu\n",
+                      (unsigned long long)c, (unsigned long long)e, c ? (double)u / (double)c : 0.0,
+                      (unsigned long long)s_drain_gen.load());
+              wp_last = now;
+          } }
 
         int fired = 0;
         while ((long long)(now - next_tick) >= 0 && fired < 240) {
@@ -301,7 +392,7 @@ static DWORD WINAPI frame_clock(LPVOID)
             /* Drain the FIFO every tick. This is what writes the RSX sync-fence
              * labels the game's per-frame logic blocks on, so it has to keep
              * advancing at 60 Hz even while present() throttles. */
-            if (rsx_ok) cellGcm_rsx_process_fifo();
+            if (rsx_ok) { cellGcm_rsx_process_fifo(); drain_done(); }
             next_tick += vblank_us;
             fired++;
         }
@@ -323,17 +414,24 @@ static DWORD WINAPI frame_clock(LPVOID)
             }
             ULONGLONG t1 = GetTickCount64();
             cellGcm_rsx_process_fifo();
+            drain_done();
             ULONGLONG t2 = GetTickCount64();
             if (slow && (t1 - t0 > 300 || t2 - t1 > 300))
                 fprintf(stderr, "[slow-step] present %llu ms, fifo %llu ms\n", (unsigned long long)(t1 - t0), (unsigned long long)(t2 - t1));
 
-            ULONGLONG t3 = GetTickCount64();
-            int pumped = rsx_backend_pump();
-            if (slow && GetTickCount64() - t3 > 300)
-                fprintf(stderr, "[slow-step] window pump %llu ms\n", (unsigned long long)(GetTickCount64() - t3));
-            if (pumped != 0) {
-                rsx_ok = 0;              /* window closed */
-                continue;
+            /* Window events need no more than a few hundred polls a second,
+             * however often a kick wakes this loop. */
+            const uint64_t pump_now = frame_clock_us();
+            if (pump_now - last_pump >= 2000) {
+                last_pump = pump_now;
+                ULONGLONG t3 = GetTickCount64();
+                int pumped = rsx_backend_pump();
+                if (slow && GetTickCount64() - t3 > 300)
+                    fprintf(stderr, "[slow-step] window pump %llu ms\n", (unsigned long long)(GetTickCount64() - t3));
+                if (pumped != 0) {
+                    rsx_ok = 0;          /* window closed */
+                    continue;
+                }
             }
             /* Present on a guest flip. A present on a fixed clock can catch the
              * drain mid-frame and flash a partial one. Before the first flip
@@ -342,7 +440,8 @@ static DWORD WINAPI frame_clock(LPVOID)
             if (fc != last_flip) {
                 present_guest_frame();
                 last_flip = fc;
-            } else if (fc == 0) {
+            } else if (fc == 0 && pump_now - last_boot_present >= 16000) {
+                last_boot_present = pump_now;
                 rsx_backend_present();
             }
         }
