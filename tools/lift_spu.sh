@@ -7,6 +7,7 @@
 set -e
 cd "$(dirname "$0")/.."
 PY=.venv/bin/python
+[ -x "$PY" ] || PY=.venv/Scripts/python.exe   # a Windows venv (run this from Git Bash)
 T=ps3recomp/tools
 
 # Lifts already in spu/ are kept (build_spu_workloads.py skips them), so an

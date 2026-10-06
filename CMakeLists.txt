@@ -167,6 +167,8 @@ set(LIBSRE_PRX "${PS3RECOMP_DIR}/fw_spu/libsre.prx" CACHE FILEPATH
     "Decrypted libsre.prx the SPURS queue paths are lifted from")
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python")
     set(DOD3_PYTHON "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python")
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.venv/Scripts/python.exe")   # a Windows venv
+    set(DOD3_PYTHON "${CMAKE_CURRENT_SOURCE_DIR}/.venv/Scripts/python.exe")
 else()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(DOD3_PYTHON "${Python3_EXECUTABLE}")

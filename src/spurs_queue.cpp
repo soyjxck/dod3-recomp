@@ -27,6 +27,9 @@
 #include <string.h>
 #include <chrono>
 #include <thread>
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 
 extern "C" {
 typedef void (*hle_ctx_fn)(ppu_context*);
@@ -60,21 +63,80 @@ static uint32_t run_libsre(ppu_context* ctx, uint32_t fn, const uint64_t args[4]
     return (uint32_t)ctx->gpr[3];
 }
 
+/* ---- waking a blocked push/pop -----------------------------------------
+ *
+ * A blocking call retries until the queue has an item/room. It used to retry
+ * on a timer (64 yields, then 100 us sleeps), and PhysX pops 20-30 SPU task
+ * results a frame on the thread the game thread then waits on: the sleeps
+ * alone held the game thread up for about a sixth of every frame. Now a
+ * waiter sleeps until the queue's line changes -- an SPU task pushing or
+ * popping commits it with PUTLLC, which the SPU runtime reports through
+ * g_spu_line_commit_hook2, and the PPU side reports its own calls -- with a
+ * 1 ms timeout in case a change arrives some other way. */
+static std::mutex              s_wait_mu;
+static std::condition_variable s_wait_cv;
+static std::atomic<unsigned>   s_wait_gen{0};
+static std::atomic<int>        s_waiters{0};
+static uint32_t                s_lines[64];
+static std::atomic<int>        s_nlines{0};
+
+static void queue_changed()
+{
+    s_wait_gen.fetch_add(1, std::memory_order_release);
+    if (s_waiters.load(std::memory_order_acquire)) {
+        std::lock_guard<std::mutex> lk(s_wait_mu);
+        s_wait_cv.notify_all();
+    }
+}
+
+static void queue_line_committed(uint32_t line)
+{
+    const int n = s_nlines.load(std::memory_order_acquire);
+    for (int i = 0; i < n; i++)
+        if (s_lines[i] == line) { queue_changed(); return; }
+}
+
+static void watch_queue(uint32_t q)
+{
+    std::lock_guard<std::mutex> lk(s_wait_mu);
+    const int n = s_nlines.load();
+    for (int i = 0; i < n; i++) if (s_lines[i] == (q & ~127u)) return;
+    if (n >= 64) return;
+    s_lines[n] = q & ~127u;
+    s_nlines.store(n + 1, std::memory_order_release);
+    extern void (*g_spu_line_commit_hook2)(uint32_t);
+    g_spu_line_commit_hook2 = queue_line_committed;
+}
+
 /* Run non-blocking, and retry until the queue has room/an item if the caller
- * asked to block. args[block_arg] is the call's isBlocking flag. */
+ * asked to block. args[block_arg] is the call's isBlocking flag.
+ * DOD3_QUEUE_POLL=1: the old timed retry. */
 static thread_local unsigned s_last_spins;   /* retries the last blocking call needed */
 static uint32_t run_blocking(ppu_context* ctx, uint32_t fn, uint64_t args[4], int block_arg)
 {
+    static const bool poll = getenv("DOD3_QUEUE_POLL") != nullptr;
     const bool blocking = (uint8_t)args[block_arg] != 0;
     args[block_arg] = 0;
     uint32_t rc;
     for (unsigned spins = 0;; spins++) {
+        const unsigned gen = s_wait_gen.load(std::memory_order_acquire);
         rc = run_libsre(ctx, fn, args);
         s_last_spins = spins;
-        if (!blocking || (rc != CELL_SPURS_TASK_ERROR_AGAIN && rc != CELL_SPURS_TASK_ERROR_BUSY))
+        if (!blocking || (rc != CELL_SPURS_TASK_ERROR_AGAIN && rc != CELL_SPURS_TASK_ERROR_BUSY)) {
+            if (rc == 0) queue_changed();   /* a PPU push/pop: room or an item for someone */
             return rc;
-        if (spins < 64) std::this_thread::yield();
-        else std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+        if (rc == CELL_SPURS_TASK_ERROR_BUSY || spins < 8) { std::this_thread::yield(); continue; }
+        if (poll) {
+            if (spins < 64) std::this_thread::yield();
+            else std::this_thread::sleep_for(std::chrono::microseconds(100));
+            continue;
+        }
+        std::unique_lock<std::mutex> lk(s_wait_mu);
+        s_waiters.fetch_add(1);
+        s_wait_cv.wait_for(lk, std::chrono::milliseconds(1),
+                           [&] { return s_wait_gen.load(std::memory_order_acquire) != gen; });
+        s_waiters.fetch_sub(1);
     }
 }
 
@@ -84,6 +146,7 @@ static void queue_initialize(ppu_context* ctx)
     uint64_t args[4] = { ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], ctx->gpr[6] };
     const uint64_t r7 = ctx->gpr[7], r8 = ctx->gpr[8];
     const uint32_t rc = run_libsre(ctx, LIBSRE_QUEUE_INITIALIZE, args);
+    if (rc == 0) watch_queue((uint32_t)args[2]);
     printf("[spurs-queue] init taskset=0x%08X q=0x%08X buf=0x%08X size=%u depth=%u -> 0x%08X\n",
            (uint32_t)args[1], (uint32_t)args[2], (uint32_t)args[3],
            (uint32_t)r7, (uint32_t)r8, rc);

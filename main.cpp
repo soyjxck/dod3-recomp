@@ -51,6 +51,15 @@
  * there is nothing to shim: the 15.6 ms default timer granularity this works
  * around is a Windows problem. */
 #include <timeapi.h>
+#include <direct.h>
+/* The defaults main() sets are written with POSIX setenv/mkdir; the CRT has
+ * them as _putenv_s/_mkdir. getenv sees _putenv_s, so the runtime does too. */
+static int setenv(const char* k, const char* v, int overwrite)
+{
+    if (!overwrite && getenv(k)) return 0;
+    return _putenv_s(k, v) ? -1 : 0;
+}
+#define mkdir(path, mode) _mkdir(path)
 #endif
 
 /* ---------------------------------------------------------------------------
@@ -329,8 +338,73 @@ static void* stall_watch(void* arg)
 }
 #endif
 
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <map>
+#include <string>
+#include <vector>
+#include <algorithm>
+/* DOD3_STUTTER_MS=<n> also starts this: at every present it reads each host
+ * thread's CPU time, and for a frame slower than n ms prints the threads that
+ * used the CPU during it ([stutter-cpu]). The guest-side [stutter] report
+ * sees syscalls; this sees the host -- which thread actually burned the
+ * frame, the RSX walker (this process's main thread) included. */
+static void* cpu_watch(void*)
+{
+    pthread_setname_np("stutter cpu watch");
+    const uint64_t thr_us = (uint64_t)atoi(getenv("DOD3_STUTTER_MS")) * 1000u;
+    struct Snap { std::string name; uint64_t cpu_us; };
+    std::map<uint64_t, Snap> prev;
+    uint32_t last = 0;
+    uint64_t last_t = 0;
+    for (;;) {
+        usleep(1000);
+        const uint32_t f = g_rsx_engine_frame;
+        if (f == last) continue;
+        const uint64_t t = frame_clock_us();
+        std::map<uint64_t, Snap> cur;
+        thread_act_array_t th; mach_msg_type_number_t n = 0;
+        if (task_threads(mach_task_self(), &th, &n) == KERN_SUCCESS) {
+            for (mach_msg_type_number_t i = 0; i < n; i++) {
+                thread_identifier_info_data_t idi; mach_msg_type_number_t c1 = THREAD_IDENTIFIER_INFO_COUNT;
+                thread_extended_info_data_t ext;  mach_msg_type_number_t c2 = THREAD_EXTENDED_INFO_COUNT;
+                if (thread_info(th[i], THREAD_IDENTIFIER_INFO, (thread_info_t)&idi, &c1) == KERN_SUCCESS &&
+                    thread_info(th[i], THREAD_EXTENDED_INFO, (thread_info_t)&ext, &c2) == KERN_SUCCESS)
+                    cur[idi.thread_id] = { ext.pth_name[0] ? ext.pth_name : "?",
+                                           (ext.pth_user_time + ext.pth_system_time) / 1000u };
+                mach_port_deallocate(mach_task_self(), th[i]);
+            }
+            vm_deallocate(mach_task_self(), (vm_address_t)th, n * sizeof(thread_act_t));
+        }
+        if (last && t - last_t >= thr_us) {
+            std::vector<std::pair<uint64_t, std::string>> used;
+            for (auto& [id, sn] : cur) {
+                auto it = prev.find(id);
+                const uint64_t d = sn.cpu_us - (it != prev.end() ? it->second.cpu_us : 0);
+                if (d >= 3000) used.push_back({ d, sn.name });
+            }
+            std::sort(used.rbegin(), used.rend());
+            std::string line;
+            char buf[96];
+            for (size_t i = 0; i < used.size() && i < 10; i++) {
+                snprintf(buf, sizeof buf, "%s%s %.0f", i ? ", " : "", used[i].second.c_str(), used[i].first / 1000.0);
+                line += buf;
+            }
+            fprintf(stderr, "[stutter-cpu] frames %u-%u took %.0f ms; CPU ms by host thread: %s\n",
+                    last, f, (t - last_t) / 1000.0, line.c_str());
+        }
+        prev.swap(cur);
+        last = f; last_t = t;
+    }
+    return NULL;
+}
+#endif
+
 static DWORD WINAPI frame_clock(LPVOID)
 {
+#ifdef __APPLE__
+    pthread_setname_np("rsx walker (main)");
+#endif
     const char* title = getenv("PS3_TITLE");
     if (!title || !*title) title = "ps3recomp";
 
@@ -577,6 +651,7 @@ static uint32_t s_boot_entry;
  * the process the way the non-Apple path's return from main() would. */
 static void* guest_main(void*)
 {
+    pthread_setname_np("main");
     int rc = ppu_run(s_boot_entry, STACK_TOP);
     printf("\n[boot] ppu_run returned %d (entry function unwound)\n", rc);
     fflush(stdout);
@@ -689,6 +764,12 @@ int main(int argc, char** argv)
         mkdir(d, 0755);
         pthread_t th;
         if (pthread_create(&th, NULL, stall_watch, (void*)d) == 0) pthread_detach(th);
+    }
+#endif
+#ifdef __APPLE__
+    if (getenv("DOD3_STUTTER_MS")) {
+        pthread_t th;
+        if (pthread_create(&th, NULL, cpu_watch, NULL) == 0) pthread_detach(th);
     }
 #endif
 
