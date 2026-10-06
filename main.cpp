@@ -42,6 +42,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef _WIN32
 /* timeBeginPeriod: <windows.h> arrives with WIN32_LEAN_AND_MEAN set, which
@@ -175,6 +176,48 @@ static void present_guest_frame(void)
 }
 
 extern "C" unsigned cellGcm_user_queue_depth(void);
+
+/* A monotonic microsecond clock: the vblank period is not a whole number of
+ * milliseconds once it is raised above 60 Hz. */
+static uint64_t frame_clock_us(void)
+{
+#ifdef _WIN32
+    static LARGE_INTEGER f; LARGE_INTEGER c;
+    if (!f.QuadPart) QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&c);
+    return (uint64_t)(c.QuadPart / f.QuadPart) * 1000000ull +
+           (uint64_t)(c.QuadPart % f.QuadPart) * 1000000ull / (uint64_t)f.QuadPart;
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000ull + (uint64_t)ts.tv_nsec / 1000u;
+#endif
+}
+
+/* DOD3_FPS=<n>: raise the title's 30 fps cap to n. It has two limiters: a
+ * minimum frame time of (the float at 0x008EDC5C) / 30 s, 1.0 as shipped, and
+ * its vblank handler, which flips on every second vblank. The first is set to
+ * 0.125 (Whatcookie's RPCS3 "Unlock FPS" patch for BLUS31197 1.00) and the
+ * vblank runs at 2n Hz. Its physics hold up to 120 fps; above that jumps get
+ * lower and dragon lock-on fails. 0 when the cap stays. */
+static unsigned s_fps_target;
+static void apply_fps_unlock(void)
+{
+    const char* e = getenv("DOD3_FPS");
+    const int fps = e ? atoi(e) : 30;
+    if (fps <= 30) return;
+    const uint32_t addr = 0x008EDC5Cu;
+    const uint32_t word = vm_read32(addr);
+    if (word != 0x3F800000u) {           /* 1.0f: anything else is another build */
+        fprintf(stderr, "[fps] DOD3_FPS=%d ignored: 0x%08X holds 0x%08X, not 1.0 -- not BLUS31197 1.00?\n",
+                fps, addr, word);
+        return;
+    }
+    vm_write32(addr, 0x3E000000u);       /* 0.125f */
+    s_fps_target = (unsigned)fps;
+    fprintf(stderr, "[fps] frame cap raised to %d (min frame time patch, vblank %d Hz)\n", fps, 2 * fps);
+}
+
 static DWORD WINAPI frame_clock(LPVOID)
 {
     const char* title = getenv("PS3_TITLE");
@@ -185,10 +228,18 @@ static DWORD WINAPI frame_clock(LPVOID)
             rsx_ok ? "OK -- window open" : "FAILED");
 
     unsigned  last_flip = 0;
-    ULONGLONG next_tick = GetTickCount64();
+    /* The vblank period: 16 ms (62.5 Hz) as it has always been, 1/(2n) s for
+     * DOD3_FPS=n, or DOD3_VBLANK_HZ=<hz> outright. The title flips on every
+     * second vblank. DOD3_FIFO_SLEEP_MS=<n>: the walker's sleep between drains. */
+    uint64_t vblank_us = 16000;
+    if (s_fps_target) vblank_us = 1000000ull / (2ull * s_fps_target);
+    if (const char* e = getenv("DOD3_VBLANK_HZ")) if (atoi(e) > 0) vblank_us = 1000000ull / (uint64_t)atoi(e);
+    DWORD fifo_sleep_ms = 4;
+    if (const char* e = getenv("DOD3_FIFO_SLEEP_MS")) fifo_sleep_ms = (DWORD)atoi(e);
+    uint64_t next_tick = frame_clock_us();
 
     for (;;) {
-        Sleep(4);
+        Sleep(fifo_sleep_ms);
         /* DOD3_GCM_WATCH=1 (temporary): every 5 s, the FIFO pointers, the sync
          * label, and the command words at `get` -- parked with work pending, or
          * drained dry? */
@@ -232,7 +283,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                   for (uint32_t a = cur - 0x8000; a < cur; a += 16)
                       fprintf(stderr, "[gcm-tail] io %08X: %08X %08X %08X %08X\n", a - 0x40000000u,
                               vm_read32(a), vm_read32(a + 4), vm_read32(a + 8), vm_read32(a + 12)); } } }
-        ULONGLONG now = GetTickCount64();
+        uint64_t now = frame_clock_us();
 
         int fired = 0;
         while ((long long)(now - next_tick) >= 0 && fired < 240) {
@@ -251,7 +302,7 @@ static DWORD WINAPI frame_clock(LPVOID)
              * labels the game's per-frame logic blocks on, so it has to keep
              * advancing at 60 Hz even while present() throttles. */
             if (rsx_ok) cellGcm_rsx_process_fifo();
-            next_tick += 16;             /* ~60 Hz */
+            next_tick += vblank_us;
             fired++;
         }
         if (fired >= 240) next_tick = now;   /* fell too far behind -- resync */
@@ -479,6 +530,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "ERROR: could not load %s\n", argv[1]);
         return 1;
     }
+    apply_fps_unlock();
 
     derive_vfs_root(argv[1]);
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
