@@ -281,6 +281,49 @@ static void apply_fps_unlock(void)
     fprintf(stderr, "[fps] frame cap raised to %d (min frame time patch, vblank %d Hz)\n", fps, 2 * fps);
 }
 
+#ifndef _WIN32
+#include <spawn.h>
+#include <unistd.h>
+extern char** environ;
+extern "C" uint32_t g_rsx_engine_frame;
+/* DOD3_STALL_SAMPLE=<dir>: a watchdog for hitches. When no frame has been
+ * presented for 300 ms it runs `sample` on this process for a second, so
+ * the stacks of every thread are taken while the stall is happening, and it
+ * logs how long each stall lasted. At most 12 samples a run, 2 s apart. */
+static void* stall_watch(void* arg)
+{
+    const char* dir = (const char*)arg;
+    uint32_t last = g_rsx_engine_frame;
+    uint64_t last_t = frame_clock_us(), last_sample = 0, stall_from = 0;
+    int n = 0;
+    for (;;) {
+        usleep(20000);
+        const uint32_t f = g_rsx_engine_frame;
+        const uint64_t t = frame_clock_us();
+        if (f != last) {
+            if (stall_from)
+                fprintf(stderr, "[stall] frame %u came after %.0f ms\n", f, (t - last_t) / 1000.0);
+            last = f; last_t = t; stall_from = 0;
+            continue;
+        }
+        if (!f || t - last_t < 300000) continue;
+        if (!stall_from) stall_from = t;
+        if (n < 12 && t - last_sample > 2000000 && stall_from == t) {
+            char path[512], pid[16];
+            snprintf(path, sizeof path, "%s/stall_%02d_f%u.txt", dir, n, f);
+            snprintf(pid, sizeof pid, "%d", (int)getpid());
+            char* const argv[] = { (char*)"/usr/bin/sample", pid, (char*)"1", (char*)"-file", path, NULL };
+            pid_t child;
+            if (posix_spawn(&child, "/usr/bin/sample", NULL, NULL, argv, environ) == 0) {
+                fprintf(stderr, "[stall] no present for 300 ms after frame %u -> %s\n", f, path);
+                n++; last_sample = t;
+            }
+        }
+    }
+    return NULL;
+}
+#endif
+
 static DWORD WINAPI frame_clock(LPVOID)
 {
     const char* title = getenv("PS3_TITLE");
@@ -630,6 +673,13 @@ int main(int argc, char** argv)
         return 1;
     }
     apply_fps_unlock();
+#ifndef _WIN32
+    if (const char* d = getenv("DOD3_STALL_SAMPLE")) {
+        mkdir(d, 0755);
+        pthread_t th;
+        if (pthread_create(&th, NULL, stall_watch, (void*)d) == 0) pthread_detach(th);
+    }
+#endif
 
     derive_vfs_root(argv[1]);
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
