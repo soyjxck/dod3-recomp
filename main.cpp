@@ -30,6 +30,11 @@
 
 /* The lifter's generated header, which declares ppu_context and the function
  * table. It comes first: everything below is written against that struct. */
+#ifdef _WIN32
+#include <intrin.h>
+#include <immintrin.h>
+#endif
+#include <math.h>
 #include "ppu_recomp.h"
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
@@ -274,7 +279,17 @@ static uint64_t frame_clock_us(void)
  * 0.125 (Whatcookie's RPCS3 "Unlock FPS" patch for BLUS31197 1.00) and the
  * vblank runs at 2n Hz. Its physics hold up to 120 fps; above that jumps get
  * lower and dragon lock-on fails. 0 when the cap stays. */
+/* Pacing. With the cap left to the vblank count (the original scheme:
+ * minimum frame time 0.125/30 s, vblank at 2n Hz, a flip every second
+ * vblank) frame times are quantised to 1/(2n) s: at n = 60 a frame that
+ * takes 17 ms instead of 16.6 waits for the next vblank and takes 25, so the
+ * title flapped between 60 and 40 fps scene by scene. Now the cap is the
+ * title's own minimum frame time, set to exactly 1/n s (the float is
+ * seconds * 30), and the vblank runs at DOD3_VBLANK_MULT * n Hz (default 8:
+ * 480 Hz at n = 60), so a late frame is late by at most ~2 ms.
+ * DOD3_PACE=vblank restores the old scheme. */
 static unsigned s_fps_target;
+static unsigned s_vblank_mult = 2;
 static void apply_fps_unlock(void)
 {
     const char* e = getenv("DOD3_FPS");
@@ -287,9 +302,21 @@ static void apply_fps_unlock(void)
                 fps, addr, word);
         return;
     }
-    vm_write32(addr, 0x3E000000u);       /* 0.125f */
+    const char* pace = getenv("DOD3_PACE");
+    if (pace && !strcmp(pace, "vblank")) {
+        vm_write32(addr, 0x3E000000u);   /* 0.125f: the vblank count is the cap */
+        s_vblank_mult = 2;
+    } else {
+        const float min_frame = 30.0f / (float)fps;   /* seconds * 30 */
+        uint32_t bits; memcpy(&bits, &min_frame, 4);
+        vm_write32(addr, bits);
+        s_vblank_mult = 8;
+        if (const char* m = getenv("DOD3_VBLANK_MULT")) if (atoi(m) >= 2) s_vblank_mult = (unsigned)atoi(m);
+    }
     s_fps_target = (unsigned)fps;
-    fprintf(stderr, "[fps] frame cap raised to %d (min frame time patch, vblank %d Hz)\n", fps, 2 * fps);
+    fprintf(stderr, "[fps] frame cap raised to %d (%s, vblank %u Hz)\n", fps,
+            s_vblank_mult == 2 && pace ? "capped by vblank count" : "capped by minimum frame time",
+            s_vblank_mult * (unsigned)fps);
 }
 
 #ifndef _WIN32
@@ -402,6 +429,138 @@ static void* cpu_watch(void*)
 }
 #endif
 
+/* DOD3_AB=<switch>[,<seconds>]: an A/B test inside one run. Two runs of the
+ * same battle differ by 3 fps for no reason at all (the scene is not
+ * deterministic), which hides any change worth less than that; so this flips
+ * one run-time switch every <seconds> (default 4), counts the flips the title
+ * requested in each window, and reports the paired difference between
+ * neighbouring windows, where the scene is the same. Windows before
+ * DOD3_AB_FROM seconds (default 70: boot and menus) are not counted.
+ *   stores   the lifted code's inline store path on / every store a call
+ *   icall    ps3_indirect_call's fast path on / the full path always
+ *   none     nothing: the control, which has to report no difference
+ * On Windows each report also gives the CPU time per frame of the busiest
+ * threads in either state (thread cycle counters, so exact): a switch that
+ * changes the frame rate without changing anyone's work per frame changed
+ * how long somebody waits. */
+extern "C" int  g_ppu_vm_slow_stores;
+extern "C" void ppu_vm_slow_any_update(void);
+static void ab_stores(int on) { g_ppu_vm_slow_stores = on ? 0 : 1; ppu_vm_slow_any_update(); }
+extern "C" int g_ppu_icall_full;
+static void ab_icall(int on) { g_ppu_icall_full = on ? 0 : 1; }
+static void ab_none(int) {}
+static const struct { const char* name; void (*set)(int on); } s_ab_switches[] = {
+    { "stores", ab_stores },
+    { "icall",  ab_icall },
+    { "none",   ab_none },
+};
+#ifdef _WIN32
+#include <tlhelp32.h>
+#include <intrin.h>
+#include <map>
+#include <string>
+#include <vector>
+#include <algorithm>
+struct AbThread { uint64_t last = 0; bool seen = false; double cyc[2] = { 0, 0 }; std::string name; };
+static std::map<DWORD, AbThread> s_ab_threads;
+static double s_ab_frames[2];
+/* Charge each thread's cycles since the last call to `state`. */
+static void ab_cpu_sample(int state, unsigned frames, bool count)
+{
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    const DWORD pid = GetCurrentProcessId();
+    THREADENTRY32 te; te.dwSize = sizeof te;
+    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
+        if (te.th32OwnerProcessID != pid) continue;
+        HANDLE h = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, te.th32ThreadID);
+        if (!h) continue;
+        ULONG64 c = 0;
+        if (QueryThreadCycleTime(h, &c)) {
+            AbThread& t = s_ab_threads[te.th32ThreadID];
+            if (t.seen && count) t.cyc[state] += (double)(c - t.last);
+            t.last = c; t.seen = true;
+            if (t.name.empty()) {
+                PWSTR w = NULL;
+                if (SUCCEEDED(GetThreadDescription(h, &w)) && w) {
+                    for (PWSTR q = w; *q; q++) t.name += (char)(*q < 128 ? *q : '?');
+                    LocalFree(w);
+                }
+                if (t.name.empty()) t.name = "tid " + std::to_string(te.th32ThreadID);
+            }
+        }
+        CloseHandle(h);
+    }
+    CloseHandle(snap);
+    if (count) s_ab_frames[state] += frames;
+}
+static void ab_cpu_report(const char* name)
+{
+    static uint64_t tsc0 = 0; static LARGE_INTEGER q0, qf;
+    if (!tsc0) { tsc0 = __rdtsc(); QueryPerformanceCounter(&q0); QueryPerformanceFrequency(&qf); return; }
+    LARGE_INTEGER q; QueryPerformanceCounter(&q);
+    const double hz = (double)(__rdtsc() - tsc0) * (double)qf.QuadPart / (double)(q.QuadPart - q0.QuadPart);
+    if (s_ab_frames[0] < 1 || s_ab_frames[1] < 1 || hz < 1e8) return;
+    std::vector<const AbThread*> v;
+    for (auto& kv : s_ab_threads) v.push_back(&kv.second);
+    std::sort(v.begin(), v.end(), [](const AbThread* a, const AbThread* b) {
+        return a->cyc[0] + a->cyc[1] > b->cyc[0] + b->cyc[1]; });
+    std::string line;
+    char buf[160];
+    for (size_t i = 0; i < v.size() && i < 7; i++) {
+        snprintf(buf, sizeof buf, "%s%s %.2f / %.2f", i ? "; " : "", v[i]->name.c_str(),
+                 v[i]->cyc[1] / hz * 1e3 / s_ab_frames[1], v[i]->cyc[0] / hz * 1e3 / s_ab_frames[0]);
+        line += buf;
+    }
+    fprintf(stderr, "[ab] %s: CPU ms per frame, on / off: %s\n", name, line.c_str());
+}
+#else
+static void ab_cpu_sample(int, unsigned, bool) {}
+static void ab_cpu_report(const char*) {}
+#endif
+static void ab_step(uint64_t now_us)
+{
+    static int which = -2, state = 0, pairs = 0;
+    static uint64_t win_us = 4000000, from_us = 70000000, t0 = 0, start = 0;
+    static unsigned f0 = 0;
+    static double fps_prev = 0, sum_d = 0, sum_d2 = 0, sum_on = 0, sum_off = 0;
+    if (which == -2) {
+        which = -1;
+        if (const char* e = getenv("DOD3_AB")) {
+            for (size_t i = 0; i < sizeof s_ab_switches / sizeof s_ab_switches[0]; i++) {
+                const size_t n = strlen(s_ab_switches[i].name);
+                if (!strncmp(e, s_ab_switches[i].name, n) && (e[n] == 0 || e[n] == ',')) {
+                    which = (int)i;
+                    if (e[n] == ',' && atof(e + n + 1) > 0) win_us = (uint64_t)(atof(e + n + 1) * 1e6);
+                }
+            }
+            if (which < 0) fprintf(stderr, "[ab] DOD3_AB=%s: no such switch\n", e);
+        }
+        if (const char* e = getenv("DOD3_AB_FROM")) from_us = (uint64_t)atoi(e) * 1000000ull;
+        if (which >= 0) { s_ab_switches[which].set(state); start = t0 = now_us; f0 = cellGcm_flip_request_count();
+                          ab_cpu_report(""); }
+    }
+    if (which < 0 || now_us - t0 < win_us) return;
+    const unsigned f = cellGcm_flip_request_count();
+    const double fps = (double)(f - f0) * 1e6 / (double)(now_us - t0);
+    ab_cpu_sample(state, f - f0, t0 - start >= from_us);
+    /* A pair is an off window and the on window after it. */
+    if (state == 1 && fps_prev > 0 && t0 - start >= from_us + win_us) {
+        const double d = fps - fps_prev;
+        pairs++; sum_d += d; sum_d2 += d * d; sum_on += fps; sum_off += fps_prev;
+        const double mean = sum_d / pairs;
+        const double var = pairs > 1 ? (sum_d2 - pairs * mean * mean) / (pairs - 1) : 0;
+        fprintf(stderr, "[ab] %s: on %.1f fps, off %.1f fps, on-off %+.2f +/- %.2f over %d pairs\n",
+                s_ab_switches[which].name, sum_on / pairs, sum_off / pairs, mean,
+                pairs > 1 ? sqrt(var / pairs) : 0.0, pairs);
+        if (pairs % 4 == 0) ab_cpu_report(s_ab_switches[which].name);
+    }
+    fps_prev = fps;
+    state = !state;
+    s_ab_switches[which].set(state);
+    t0 = now_us; f0 = f;
+}
+
 static DWORD WINAPI frame_clock(LPVOID)
 {
 #ifdef __APPLE__
@@ -419,7 +578,7 @@ static DWORD WINAPI frame_clock(LPVOID)
      * DOD3_FPS=n, or DOD3_VBLANK_HZ=<hz> outright. The title flips on every
      * second vblank. DOD3_FIFO_SLEEP_MS=<n>: the walker's sleep between drains. */
     uint64_t vblank_us = 16000;
-    if (s_fps_target) vblank_us = 1000000ull / (2ull * s_fps_target);
+    if (s_fps_target) vblank_us = 1000000ull / ((uint64_t)s_vblank_mult * s_fps_target);
     if (const char* e = getenv("DOD3_VBLANK_HZ")) if (atoi(e) > 0) vblank_us = 1000000ull / (uint64_t)atoi(e);
     DWORD fifo_sleep_ms = 4;
     if (const char* e = getenv("DOD3_FIFO_SLEEP_MS")) fifo_sleep_ms = (DWORD)atoi(e);
@@ -499,6 +658,8 @@ static DWORD WINAPI frame_clock(LPVOID)
                       (unsigned long long)s_drain_gen.load());
               wp_last = now;
           } }
+
+        ab_step(now);
 
         int fired = 0;
         while ((long long)(now - next_tick) >= 0 && fired < 240) {
@@ -675,8 +836,30 @@ static void* guest_main(void*)
 }
 #endif
 
+#if defined(DOD3_X86_V3) && defined(_WIN32)
+/* The lifted code is built for x86-64-v3 (CMake DOD3_X86_LEVEL): main says so
+ * at start, where the alternative is an illegal-instruction crash somewhere
+ * in the title's start-up. */
+__attribute__((target("xsave"))) static bool x86_v3_cpu(void)
+{
+    int r1[4], r7[4];
+    __cpuidex(r1, 1, 0); __cpuidex(r7, 7, 0);
+    const bool os_avx = (r1[2] & (1 << 27)) && ((_xgetbv(0) & 6) == 6);
+    return os_avx && (r1[2] & (1 << 12)) /* FMA */ && (r1[2] & (1 << 22)) /* MOVBE */ &&
+           (r7[1] & (1 << 5)) /* AVX2 */ && (r7[1] & (1 << 3)) && (r7[1] & (1 << 8)) /* BMI1, BMI2 */;
+}
+#endif
+
 int main(int argc, char** argv)
 {
+#if defined(DOD3_X86_V3) && defined(_WIN32)
+    if (!x86_v3_cpu()) {
+        fprintf(stderr, "This build needs a CPU with AVX2, FMA and BMI2 (x86-64-v3). "
+                        "Rebuild with -DDOD3_X86_LEVEL= for older processors.\n");
+        return 1;
+    }
+#endif
+
     if (argc < 2) {
         printf("usage: %s <PPU ELF>\n", argv[0]);
         return 2;

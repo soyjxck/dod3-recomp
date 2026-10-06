@@ -323,9 +323,30 @@ endif()
 #     default; a PPC fmadd is spelt as one where the lifter means one.
 #   - /bigobj on MSVC. A single lifted file routinely passes the 65,536-section
 #     limit of the default object format.
+#   - on x86-64 with clang-cl, DOD3_X86_LEVEL (default x86-64-v3: AVX2, FMA,
+#     BMI, LZCNT, MOVBE -- any Intel since Haswell, any AMD since Excavator).
+#     At the baseline level every lifted fmadd is a call into the C runtime's
+#     fma(), sqrt() and trunc() are calls as well, cntlzw is a bsr with a
+#     branch around it, and the AltiVec byte shuffles have no pshufb. With the
+#     level raised contraction has to be switched off by name, as it is on
+#     arm64, and -fno-math-errno lets sqrt be the instruction. main.cpp checks
+#     the CPU at start (DOD3_X86_V3). Set DOD3_X86_LEVEL to an empty string
+#     for a build that runs on anything.
 if(MSVC)
+    set(_recomp_opts "/w;/bigobj")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+        set(DOD3_X86_LEVEL "x86-64-v3" CACHE STRING
+            "-march for the lifted PPU code on x86-64 (empty: baseline x86-64)")
+        if(DOD3_X86_LEVEL)
+            list(APPEND _recomp_opts "-march=${DOD3_X86_LEVEL}"
+                 "/clang:-ffp-contract=off" "/clang:-fno-math-errno")
+            if(DOD3_X86_LEVEL MATCHES "v3|v4|haswell|skylake|znver")
+                set_property(SOURCE main.cpp APPEND PROPERTY COMPILE_DEFINITIONS DOD3_X86_V3)
+            endif()
+        endif()
+    endif()
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
-        COMPILE_OPTIONS "/w;/bigobj")
+        COMPILE_OPTIONS "${_recomp_opts}")
 else()
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "-w;-ffp-contract=off")

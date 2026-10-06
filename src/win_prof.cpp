@@ -56,6 +56,7 @@ struct ThreadStat {
     uint64_t waits = 0;              /* samples found in a wait */
     std::unordered_map<uint64_t, uint64_t> wait_site;   /* first non-ntdll frame above a wait */
     std::unordered_map<uint64_t, uint64_t> self;   /* leaf address -> count */
+    std::unordered_map<uint64_t, uint64_t> incl;   /* DOD3_PROF_TREE: function -> samples with it on the stack */
 };
 
 struct Sym { std::string name; uint64_t base; };
@@ -205,8 +206,17 @@ static void refresh_threads()
 }
 
 static std::map<DWORD, ThreadStat> s_stats;
+static const char* s_callers_of;                           /* DOD3_PROF_CALLERS */
+/* DOD3_PROF_TREE=<part of a thread name>: for the threads it matches, walk
+ * the whole stack (64 frames, not 16) and report the functions by inclusive
+ * time -- what the thread is doing, from its main loop down, where the self
+ * list only names the leaves. "tid " matches the threads without a name:
+ * the game's main thread and the RSX walker. */
+static const char* s_tree_of;
+static std::map<std::string, uint64_t> s_caller_chains;    /* "a <- b <- c" -> samples */
 static std::unordered_map<uint64_t, uint64_t> s_self_all, s_incl_all;
 static uint64_t s_total_samples;
+static uint64_t s_passes;            /* sampling passes this report window */
 
 static void report(double secs, long interval_ms)
 {
@@ -214,10 +224,13 @@ static void report(double secs, long interval_ms)
     uint64_t cpu_total = 0;
     for (auto& kv : s_stats) { busy.push_back({ kv.second.samples, kv.first }); }
     std::sort(busy.rbegin(), busy.rend());
-    /* A sample is interval_ms of CPU on that thread. */
-    const double per = interval_ms / 1000.0;
-    fprintf(stderr, "[prof] %.1f s window, %llu on-CPU samples at %ld ms; threads by CPU:", secs,
-            (unsigned long long)s_total_samples, interval_ms);
+    /* A thread seen on-CPU in every pass is using a whole core: shares are
+     * samples over passes. (Scaling by the nominal interval understated them:
+     * a pass takes longer than the sleep between passes.) */
+    const double per = s_passes ? secs / (double)s_passes : interval_ms / 1000.0;
+    fprintf(stderr, "[prof] %.1f s window, %llu passes (%.1f ms apart, asked %ld), %llu on-CPU samples; threads by CPU:", secs,
+            (unsigned long long)s_passes, s_passes ? secs * 1000.0 / (double)s_passes : 0.0, interval_ms,
+            (unsigned long long)s_total_samples);
     int shown = 0;
     for (auto& b : busy) {
         if (!b.first) break;
@@ -237,6 +250,14 @@ static void report(double secs, long interval_ms)
         for (size_t i = 0; i < top.size() && i < 8; i++)
             fprintf(stderr, " %.1f%% %s;", 100.0 * top[i].second / b.first, symbolize(top[i].first).name.c_str());
         fputc('\n', stderr);
+        if (!t.incl.empty()) {
+            std::vector<std::pair<uint64_t, uint64_t>> in(t.incl.begin(), t.incl.end());
+            std::sort(in.begin(), in.end(), [](auto& a, auto& c) { return a.second > c.second; });
+            fprintf(stderr, "[prof]     inclusive:");
+            for (size_t i = 0; i < in.size() && i < 40; i++)
+                fprintf(stderr, " %.0f%% %s;", 100.0 * in[i].second / b.first, symbolize(in[i].first).name.c_str());
+            fputc('\n', stderr);
+        }
         if (t.waits) {
             std::vector<std::pair<uint64_t, uint64_t>> ws(t.wait_site.begin(), t.wait_site.end());
             std::sort(ws.begin(), ws.end(), [](auto& a, auto& c) { return a.second > c.second; });
@@ -254,10 +275,19 @@ static void report(double secs, long interval_ms)
             fprintf(stderr, " %.1f%% %s;", 100.0 * top[i].second / (s_total_samples ? s_total_samples : 1), symbolize(top[i].first).name.c_str());
         fputc('\n', stderr);
     };
+    if (s_callers_of && !s_caller_chains.empty()) {
+        std::vector<std::pair<uint64_t, std::string>> cc;
+        for (auto& kv : s_caller_chains) cc.push_back({ kv.second, kv.first });
+        std::sort(cc.rbegin(), cc.rend());
+        fprintf(stderr, "[prof]   callers of %s:", s_callers_of);
+        for (size_t i = 0; i < cc.size() && i < 6; i++) fprintf(stderr, " %llu x [%s];", (unsigned long long)cc[i].first, cc[i].second.c_str());
+        fputc('\n', stderr);
+        s_caller_chains.clear();
+    }
     dump("hottest functions (self)", s_self_all, 14);
     dump("hottest functions (inclusive)", s_incl_all, 14);
-    for (auto& kv : s_stats) { kv.second.samples = 0; kv.second.waits = 0; kv.second.self.clear(); kv.second.wait_site.clear(); }
-    s_self_all.clear(); s_incl_all.clear(); s_total_samples = 0;
+    for (auto& kv : s_stats) { kv.second.samples = 0; kv.second.waits = 0; kv.second.self.clear(); kv.second.wait_site.clear(); kv.second.incl.clear(); }
+    s_self_all.clear(); s_incl_all.clear(); s_total_samples = 0; s_passes = 0;
 }
 
 static void dump_all_stacks(FILE* out, const char* why)
@@ -288,11 +318,13 @@ static DWORD WINAPI prof_thread(LPVOID arg)
         Sleep((DWORD)interval);
         refresh_threads();
         AcquireSRWLockExclusive(&s_dbg);
+        s_passes++;
         for (auto& t : s_threads) {
             ThreadStat& st = s_stats[t.tid];
             if (st.name.empty() || st.name.compare(0, 4, "tid ") == 0) st.name = thread_name(t.h, t.tid);
-            uint64_t fr[16];
-            const int n = walk(t.h, fr, 16);
+            uint64_t fr[64];
+            const bool deep = s_tree_of && strstr(st.name.c_str(), s_tree_of);
+            const int n = walk(t.h, fr, deep ? 64 : 16);
             if (!n) continue;
             /* Leaf attributed to its function start, so one function is one key. */
             const Sym& ls = symbolize(fr[0]);
@@ -314,6 +346,11 @@ static DWORD WINAPI prof_thread(LPVOID arg)
                 continue;
             }
             const uint64_t leaf = ls.base;
+            if (s_callers_of && ls.name == s_callers_of) {
+                std::string chain;
+                for (int i = 1; i < n && i <= 3; i++) { if (i > 1) chain += " <- "; chain += symbolize(fr[i]).name; }
+                s_caller_chains[chain]++;
+            }
             st.samples++; s_total_samples++;
             st.self[leaf]++; s_self_all[leaf]++;
             std::vector<uint64_t> seen;
@@ -321,6 +358,7 @@ static DWORD WINAPI prof_thread(LPVOID arg)
                 const uint64_t b = symbolize(fr[i]).base;
                 if (std::find(seen.begin(), seen.end(), b) != seen.end()) continue;
                 seen.push_back(b); s_incl_all[b]++;
+                if (deep) st.incl[b]++;
             }
         }
         ReleaseSRWLockExclusive(&s_dbg);
@@ -420,6 +458,8 @@ extern "C" void win_prof_start(void)
         SetUnhandledExceptionFilter(crash_filter);
     }
     if (!prof && !stall_dir && !stall_ms) return;
+    s_callers_of = getenv("DOD3_PROF_CALLERS");
+    s_tree_of = getenv("DOD3_PROF_TREE");
     if (prof) {
         long ms = atol(prof); if (ms < 1) ms = 2; if (ms > 50) ms = 50;
         CreateThread(NULL, 1u << 20, prof_thread, (LPVOID)(intptr_t)ms, 0, NULL);
