@@ -74,6 +74,14 @@ message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 # imported one arrives without SDL2, pthreads, the Metal frameworks or the
 # Winsock/XInput imports -- the link then fails on every platform for a
 # different reason. add_subdirectory hands all of that over with the target.
+# Symbols for the host code on Windows (DOD3_PROF, DOD3_STALL_MS in
+# src/win_prof.cpp, and crash backtraces). The runtime's own option has to be
+# in the cache before its CMakeLists reads it, hence here; the port's sources
+# get /Z7 further down and the link gets /DEBUG.
+option(DOD3_SYMBOLS "Debug info for the host code (Windows: /Z7 + /DEBUG)" ON)
+if(WIN32 AND DOD3_SYMBOLS)
+    set(PS3RECOMP_DEBUG_INFO ON CACHE BOOL "Compile the runtime with debug info" FORCE)
+endif()
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 
@@ -186,9 +194,14 @@ add_custom_command(
     COMMENT "Lifting libsre's SPURS queue paths")
 set_source_files_properties("${LIBSRE_LIFTED_CPP}" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off")
 
+if(WIN32)
+    list(APPEND PORT_WIN_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/win_prof.cpp")
+endif()
+
 add_executable(${PROJECT_NAME}
     main.cpp
     stubs.cpp
+    ${PORT_WIN_SOURCES}
     src/spurs_lfqueue.cpp
     src/spurs_queue.cpp
     src/dod3_edgezlib.cpp
@@ -212,8 +225,28 @@ if(SPU_SOURCES)
         INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/spu"
         COMPILE_DEFINITIONS SPU_USE_DISPATCH_MT)
     if(NOT MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-        set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2")
+        # x86: SSE4.1 for spu_helpers.h's pshufb shuffle (without __SSSE3__ it
+        # is a 16-iteration byte loop, 30% of the audio mixer's time on
+        # Windows) and FMA so the lifted fmaf() is one instruction rather than
+        # a libm call (another 10%). Every x86 this runs on has both.
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+            set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2;-msse4.1;-mfma")
+        else()
+            set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2")
+        endif()
     endif()
+endif()
+
+# /Z7 on everything but the lifted PPU TUs, /DEBUG at link. The lifted code
+# is named through its function table instead (src/win_prof.cpp), so the PDB
+# stays a few tens of MB and the link fast.
+if(WIN32 AND DOD3_SYMBOLS)
+    set_source_files_properties(main.cpp stubs.cpp src/spurs_lfqueue.cpp src/spurs_queue.cpp
+        src/dod3_edgezlib.cpp ${PORT_WIN_SOURCES} ${PS3RECOMP_SCAFFOLD} ${HLE_NID_TABLE}
+        PROPERTIES COMPILE_OPTIONS "/Z7")
+    # These already carry options (set above); append rather than replace.
+    set_property(SOURCE ${SPU_SOURCES} "${LIBSRE_LIFTED_CPP}" APPEND PROPERTY COMPILE_OPTIONS "/Z7")
+    target_link_options(${PROJECT_NAME} PRIVATE /DEBUG /OPT:REF /OPT:ICF)
 endif()
 
 # app.rc carries the icon, the version block and the manifest, and needs a

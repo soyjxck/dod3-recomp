@@ -60,6 +60,8 @@ static int setenv(const char* k, const char* v, int overwrite)
     return _putenv_s(k, v) ? -1 : 0;
 }
 #define mkdir(path, mode) _mkdir(path)
+/* src/win_prof.cpp: DOD3_PROF sampling profiler and DOD3_STALL_MS stack dumps. */
+extern "C" void win_prof_start(void);
 #endif
 
 /* ---------------------------------------------------------------------------
@@ -551,7 +553,21 @@ static DWORD WINAPI frame_clock(LPVOID)
                 if (slow && GetTickCount64() - t3 > 300)
                     fprintf(stderr, "[slow-step] window pump %llu ms\n", (unsigned long long)(GetTickCount64() - t3));
                 if (pumped != 0) {
-                    rsx_ok = 0;          /* window closed */
+                    /* Window closed: end the process. Stopping only the
+                     * rendering left the guest running headless -- a
+                     * dod3.exe nobody could see, holding the GPU and the
+                     * audio device until Task Manager found it. The guest
+                     * threads cannot be joined (they run lifted code with no
+                     * exit path), so this is a hard exit after the logs are
+                     * flushed. */
+                    fprintf(stderr, "[rsx] window closed -- exiting\n");
+                    fflush(stdout); fflush(stderr);
+#ifdef _WIN32
+                    TerminateProcess(GetCurrentProcess(), 0);
+#else
+                    _exit(0);
+#endif
+                    rsx_ok = 0;
                     continue;
                 }
             }
@@ -761,7 +777,10 @@ int main(int argc, char** argv)
         return 1;
     }
     apply_fps_unlock();
-#ifndef _WIN32
+#ifdef _WIN32
+    /* DOD3_PROF / DOD3_STALL_MS / DOD3_STALL_SAMPLE: src/win_prof.cpp. */
+    win_prof_start();
+#else
     if (const char* d = getenv("DOD3_STALL_SAMPLE")) {
         mkdir(d, 0755);
         pthread_t th;

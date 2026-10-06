@@ -22,3 +22,7 @@ __pycache__/
 # PS3 firmware unpacked from the disc PUP (tools/extract_dev_flash.py); not redistributable
 fw/
 cache/
+
+# benchmark and profiler output
+out/bench/
+out/logs/
