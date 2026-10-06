@@ -38,6 +38,7 @@ int  dod3_libsre_call(uint32_t addr, ppu_context* ctx);   /* generated */
 void spu_taskset_signal_task(uint32_t taskset_ea, uint32_t taskId);
 int  spurs_tasksets_on(uint32_t spurs_ea, uint32_t* out, int max);
 extern uint8_t* vm_base;
+extern void (*g_spu_line_commit_hook2)(uint32_t);   /* runtime/spu/spu_channels.c */
 }
 
 enum : uint32_t {
@@ -104,7 +105,6 @@ static void watch_queue(uint32_t q)
     if (n >= 64) return;
     s_lines[n] = q & ~127u;
     s_nlines.store(n + 1, std::memory_order_release);
-    extern void (*g_spu_line_commit_hook2)(uint32_t);
     g_spu_line_commit_hook2 = queue_line_committed;
 }
 

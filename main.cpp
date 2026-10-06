@@ -740,6 +740,8 @@ int main(int argc, char** argv)
     setenv("RSX_FP_SAT_ALPHA", "1a9b74dc1afc2a84", 0);
     /* Translated shaders survive between runs (see rsx_metal_backend.m). */
     setenv("PS3RECOMP_MSL_CACHE", "cache/msl", 0);
+    /* ...and compiled DXBC on Windows (rsx_d3d12_engine.c). */
+    setenv("PS3RECOMP_DXBC_CACHE", "cache/dxbc", 0);
     mkdir("cache", 0755);
     /* The sound driver (CDevSd's MultiStream threads and the MultiStream SPU
      * task, image 1 = spu_0000) at user-interactive QoS: at default QoS a
