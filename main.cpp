@@ -35,6 +35,7 @@
 #include <immintrin.h>
 #endif
 #include <math.h>
+#include "ps3emu/vm_watch.h"
 #include "ppu_recomp.h"
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
@@ -67,6 +68,7 @@ static int setenv(const char* k, const char* v, int overwrite)
 #define mkdir(path, mode) _mkdir(path)
 /* src/win_prof.cpp: DOD3_PROF sampling profiler and DOD3_STALL_MS stack dumps. */
 extern "C" void win_prof_start(void);
+extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double frame_ms);
 #endif
 
 /* ---------------------------------------------------------------------------
@@ -183,9 +185,11 @@ extern "C" unsigned ppu_boot_frames_presented(void)
     return (unsigned)g_frames_presented;
 }
 
+static void frame_cpu_tick(void);
 static void present_guest_frame(void)
 {
     rsx_backend_present();
+    frame_cpu_tick();
     /* This thread increments and guest threads read, so interlocked rather
      * than a volatile ++, which on arm64 is neither atomic nor a fence. */
     InterlockedIncrement(&g_frames_presented);
@@ -472,6 +476,8 @@ static void* cpu_watch(void*)
  *            end of a drain pass only
  *   querysync  the GPU round trip for occlusion counts before their fence
  *            lands / the fence at once (RSX_QUERY_NOSYNC: objects flicker)
+ *   jcpar    SPURS job chains: jobs on 4 pool workers / one after another
+ *            on the calling thread (SPURS_JC_PAR)
  *   none     nothing: the control, which has to report no difference
  * On Windows each report also gives the CPU time per frame of the busiest
  * threads in either state (thread cycle counters, so exact): a switch that
@@ -485,12 +491,22 @@ static void ab_icall(int on) { g_ppu_icall_full = on ? 0 : 1; }
 static void ab_labelwake(int on) { s_label_wake.store(on); }
 extern "C" int g_rsx_query_nosync;
 static void ab_querysync(int on) { g_rsx_query_nosync = on ? 0 : 1; }
+extern "C" int g_spurs_jc_par;
+static void ab_jcpar(int on) { g_spurs_jc_par = on ? 4 : 0; }
+extern "C" int g_eng_buf_pool;
+static void ab_bufpool(int on) { g_eng_buf_pool = on; }
+extern "C" int g_eng_tex_watch;
+static void ab_texwatch(int on) { g_eng_tex_watch = on; }
+extern "C" uint32_t g_rsx_engine_hitches;   /* rsx_draw_engine.c: presents over 25 ms apart */
 static void ab_none(int) {}
 static const struct { const char* name; void (*set)(int on); } s_ab_switches[] = {
     { "stores", ab_stores },
     { "icall",  ab_icall },
     { "labelwake", ab_labelwake },
     { "querysync", ab_querysync },
+    { "jcpar",     ab_jcpar },
+    { "bufpool",   ab_bufpool },
+    { "texwatch",  ab_texwatch },
     { "none",   ab_none },
 };
 #ifdef _WIN32
@@ -561,9 +577,74 @@ static void ab_cpu_report(const char* name)
     }
     fprintf(stderr, "[ab] %s: CPU ms per frame, on / off: %s\n", name, line.c_str());
 }
+/* DOD3_FRAME_CPU=<ms>: at every present, each thread's CPU time since the
+ * present before; a frame longer than <ms> prints the threads that used the
+ * most of it. "Who burned this 40 ms frame" -- or nobody, which is a wait.
+ * Thread cycle counters, read on the thread that presents; the thread list
+ * is refreshed every 120 presents (the snapshot is slow). */
+static void frame_cpu_tick(void)
+{
+    static long thr = -1;
+    if (thr < 0) { const char* e = getenv("DOD3_FRAME_CPU"); thr = e ? atol(e) : 0; }
+    if (thr <= 0) return;
+    static std::map<DWORD, AbThread> th;
+    static uint64_t last_us = 0, tsc0 = 0; static LARGE_INTEGER q0, qf; static unsigned calls = 0;
+    const uint64_t now = frame_clock_us();
+    if (!tsc0) { tsc0 = __rdtsc(); QueryPerformanceCounter(&q0); QueryPerformanceFrequency(&qf); }
+    /* The snapshot is itself a 20-30 ms stall of this (the presenting)
+     * thread, so it is rare, and the frame it lands in says so. */
+    const bool refreshed = (calls++ % 600) == 0;
+    if (refreshed) {
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        if (snap != INVALID_HANDLE_VALUE) {
+            const DWORD pid = GetCurrentProcessId();
+            THREADENTRY32 te; te.dwSize = sizeof te;
+            for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
+                if (te.th32OwnerProcessID != pid) continue;
+                AbThread& t = th[te.th32ThreadID];
+                if (!t.h) t.h = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, te.th32ThreadID);
+            }
+            CloseHandle(snap);
+        }
+    }
+    const double frame_ms = last_us ? (double)(now - last_us) / 1000.0 : 0.0;
+    const bool slow = last_us && frame_ms > (double)thr;
+    std::vector<std::pair<double, std::string>> used;
+    for (auto& kv : th) {
+        AbThread& t = kv.second;
+        ULONG64 c = 0;
+        if (!t.h || !QueryThreadCycleTime(t.h, &c)) continue;
+        const double d = t.seen ? (double)(c - t.last) : 0.0;
+        t.last = c; t.seen = true;
+        if (!slow || d <= 0) continue;
+        if (t.name.empty() || t.name.compare(0, 4, "tid ") == 0) {
+            PWSTR w = NULL; t.name.clear();
+            if (SUCCEEDED(GetThreadDescription(t.h, &w)) && w) { for (PWSTR q = w; *q; q++) t.name += (char)(*q < 128 ? *q : '?'); LocalFree(w); }
+            if (t.name.empty()) t.name = "tid " + std::to_string(kv.first);
+        }
+        used.push_back({ d, t.name });
+    }
+    if (slow) {
+        LARGE_INTEGER q; QueryPerformanceCounter(&q);
+        const double hz = (double)(__rdtsc() - tsc0) * (double)qf.QuadPart / (double)(q.QuadPart - q0.QuadPart);
+        std::sort(used.rbegin(), used.rend());
+        std::string line; char buf[128]; double total = 0;
+        for (size_t i = 0; i < used.size(); i++) total += used[i].first;
+        for (size_t i = 0; i < used.size() && i < 8; i++) {
+            snprintf(buf, sizeof buf, "%s%s %.1f", i ? ", " : "", used[i].second.c_str(), used[i].first / hz * 1e3);
+            line += buf;
+        }
+        fprintf(stderr, "[frame-cpu] frame %lu took %.1f ms%s; CPU ms: %s; all threads %.1f\n",
+                (unsigned long)g_frames_presented, frame_ms, refreshed ? " (thread list refreshed in it)" : "",
+                line.c_str(), total / hz * 1e3);
+        if (!refreshed) win_prof_slow_frame(last_us, now, frame_ms);
+    }
+    last_us = now;
+}
 #else
 static void ab_cpu_sample(int, unsigned, bool) {}
 static void ab_cpu_report(const char*) {}
+static void frame_cpu_tick(void) {}
 #endif
 static void ab_step(uint64_t now_us)
 {
@@ -571,6 +652,7 @@ static void ab_step(uint64_t now_us)
     static uint64_t win_us = 4000000, from_us = 70000000, t0 = 0, start = 0;
     static unsigned f0 = 0;
     static double fps_prev = 0, sum_d = 0, sum_d2 = 0, sum_on = 0, sum_off = 0;
+    static uint32_t h0 = 0, hit[2] = { 0, 0 }, frames_in[2] = { 0, 0 };
     if (which == -2) {
         which = -1;
         if (const char* e = getenv("DOD3_AB")) {
@@ -591,6 +673,9 @@ static void ab_step(uint64_t now_us)
     const unsigned f = cellGcm_flip_request_count();
     const double fps = (double)(f - f0) * 1e6 / (double)(now_us - t0);
     ab_cpu_sample(state, f - f0, t0 - start >= from_us);
+    { const uint32_t h = g_rsx_engine_hitches;
+      if (t0 - start >= from_us) { hit[state] += h - h0; frames_in[state] += f - f0; }
+      h0 = h; }
     /* A pair is an off window and the on window after it. */
     if (state == 1 && fps_prev > 0 && t0 - start >= from_us + win_us) {
         const double d = fps - fps_prev;
@@ -600,6 +685,8 @@ static void ab_step(uint64_t now_us)
         fprintf(stderr, "[ab] %s: on %.1f fps, off %.1f fps, on-off %+.2f +/- %.2f over %d pairs\n",
                 s_ab_switches[which].name, sum_on / pairs, sum_off / pairs, mean,
                 pairs > 1 ? sqrt(var / pairs) : 0.0, pairs);
+        fprintf(stderr, "[ab] %s: frames over 25 ms per 1000, on %.1f / off %.1f\n", s_ab_switches[which].name,
+                frames_in[1] ? 1000.0 * hit[1] / frames_in[1] : 0.0, frames_in[0] ? 1000.0 * hit[0] / frames_in[0] : 0.0);
         if (pairs % 4 == 0) ab_cpu_report(s_ab_switches[which].name);
     }
     fps_prev = fps;
@@ -828,6 +915,10 @@ static LONG WINAPI vm_commit_veh(EXCEPTION_POINTERS* ep)
     if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
         ULONG_PTR fault = ep->ExceptionRecord->ExceptionInformation[1];
         uintptr_t base  = (uintptr_t)vm_base;
+        /* A write to a page the texture write-watch protected: it is noted
+         * and the page opened (ps3emu/vm_watch.h). */
+        if (vm_watch_fault(fault, ep->ExceptionRecord->ExceptionInformation[0] == 1))
+            return EXCEPTION_CONTINUE_EXECUTION;
         if (vm_base && fault >= base && fault < base + VM_SIZE) {
             void* page = (void*)(fault & ~(uintptr_t)0xFFFF);
             if (VirtualAlloc(page, 0x10000, MEM_COMMIT, PAGE_READWRITE))
@@ -844,6 +935,7 @@ static bool alloc_guest_vm(void)
     AddVectoredExceptionHandler(1, vm_commit_veh);
     vm_base = (uint8_t*)VirtualAlloc(NULL, VM_SIZE, MEM_RESERVE, PAGE_READWRITE);
     ppu_vm_size = 0;              /* the whole space is backed; no OOB guard needed */
+    if (vm_base) vm_watch_init(vm_base, VM_SIZE);
 #else
     /* No vectored exception handlers off Windows, so the arena is committed up
      * front and lazily backed by the OS: only pages the title touches cost

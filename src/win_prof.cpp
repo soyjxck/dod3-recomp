@@ -58,7 +58,18 @@ struct ThreadStat {
     std::unordered_map<uint64_t, uint64_t> self;   /* leaf address -> count */
     std::unordered_map<uint64_t, uint64_t> incl;   /* DOD3_PROF_TREE: function -> samples with it on the stack */
     std::map<std::string, uint64_t> wait_chain;    /* DOD3_PROF_TREE: "wait <- caller <- ..." -> samples */
+    /* DOD3_PROF_TREE threads keep their last samples with a time stamp, so a
+     * slow frame can be explained after the fact (win_prof_slow_frame). */
+    struct Sample { uint64_t t_us; int n; uint64_t fr[6]; };
+    std::vector<Sample> ring; size_t ring_pos = 0;
 };
+static uint64_t prof_now_us(void)
+{
+    static LARGE_INTEGER f; LARGE_INTEGER c;
+    if (!f.QuadPart) QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&c);
+    return (uint64_t)(c.QuadPart / f.QuadPart) * 1000000ull + (uint64_t)(c.QuadPart % f.QuadPart) * 1000000ull / (uint64_t)f.QuadPart;
+}
 
 struct Sym { std::string name; uint64_t base; };
 
@@ -232,6 +243,19 @@ static const char* s_callers_of;                           /* DOD3_PROF_CALLERS 
  * list only names the leaves. "tid " matches the threads without a name:
  * the game's main thread and the RSX walker. */
 static const char* s_tree_of;
+/* A comma-separated list of name parts: "tid,Rendering" is the game's main
+ * thread, the RSX walker and the title's render thread. */
+static bool tree_match(const char* name)
+{
+    const char* p = s_tree_of;
+    while (p && *p) {
+        const char* c = strchr(p, ',');
+        const size_t n = c ? (size_t)(c - p) : strlen(p);
+        if (n && strstr(name, std::string(p, n).c_str())) return true;
+        p = c ? c + 1 : NULL;
+    }
+    return false;
+}
 static std::map<std::string, uint64_t> s_caller_chains;    /* "a <- b <- c" -> samples */
 static std::unordered_map<uint64_t, uint64_t> s_self_all, s_incl_all;
 static uint64_t s_total_samples;
@@ -345,13 +369,20 @@ static DWORD WINAPI prof_thread(LPVOID arg)
         refresh_threads();
         AcquireSRWLockExclusive(&s_dbg);
         s_passes++;
+        const uint64_t pass_us = prof_now_us();
         for (auto& t : s_threads) {
             ThreadStat& st = s_stats[t.tid];
             if (st.name.empty() || st.name.compare(0, 4, "tid ") == 0) st.name = thread_name(t.h, t.tid);
             uint64_t fr[64];
-            const bool deep = s_tree_of && strstr(st.name.c_str(), s_tree_of);
+            const bool deep = s_tree_of && tree_match(st.name.c_str());
             const int n = walk(t.h, fr, deep ? 64 : 16);
             if (!n) continue;
+            if (deep) {
+                if (st.ring.empty()) st.ring.resize(4096);
+                ThreadStat::Sample& smp = st.ring[st.ring_pos++ % st.ring.size()];
+                smp.t_us = pass_us; smp.n = n < 6 ? n : 6;
+                for (int i = 0; i < smp.n; i++) smp.fr[i] = fr[i];
+            }
             /* Leaf attributed to its function start, so one function is one key. */
             const Sym& ls = symbolize(fr[0]);
             if (is_wait_leaf(ls)) {
@@ -412,13 +443,18 @@ static DWORD WINAPI stall_thread(LPVOID arg)
     long thr_ms = 300, max_n = 12;
     if (const char* e = getenv("DOD3_STALL_MS")) thr_ms = atol(e) > 0 ? atol(e) : 300;
     if (const char* e = getenv("DOD3_STALL_MAX")) max_n = atol(e);
+    /* DOD3_STALL_FROM=<s>: arm only after that many seconds, so a run's slow
+     * boot does not spend every dump before the part under study. */
+    if (const char* e = getenv("DOD3_STALL_FROM")) { long s = atol(e); if (s > 0) Sleep((DWORD)s * 1000u); }
     uint32_t last = g_rsx_engine_frame;
-    ULONGLONG last_t = GetTickCount64(), last_sample = 0, stall_from = 0;
+    ULONGLONG last_t = 0, last_sample = 0, stall_from = 0;
+    { LARGE_INTEGER qf, qc; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&qc); last_t = (ULONGLONG)(qc.QuadPart * 1000 / qf.QuadPart); }
     long n = 0;
     for (;;) {
-        Sleep(20);
+        Sleep(thr_ms < 100 ? 5 : 20);
         const uint32_t f = g_rsx_engine_frame;
-        const ULONGLONG t = GetTickCount64();
+        LARGE_INTEGER qf, qc; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&qc);
+        const ULONGLONG t = (ULONGLONG)(qc.QuadPart * 1000 / qf.QuadPart);   /* ms, fine-grained */
         if (f != last) {
             if (stall_from) fprintf(stderr, "[stall] frame %u came after %llu ms\n", f, (unsigned long long)(t - last_t));
             last = f; last_t = t; stall_from = 0;
@@ -474,6 +510,50 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS* ep)
     ReleaseSRWLockExclusive(&s_dbg);
     fflush(stderr);
     return EXCEPTION_EXECUTE_HANDLER;   /* and die */
+}
+
+/* The samples each DOD3_PROF_TREE thread took between start_us and end_us
+ * (the clock of frame_clock_us in main.cpp): what it was doing during one
+ * slow frame. On-CPU leaves are named with their callers; a wait is named by
+ * the first frame outside the system DLLs. */
+extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double frame_ms)
+{
+    if (!s_tree_of) return;
+    AcquireSRWLockExclusive(&s_dbg);
+    for (auto& kv : s_stats) {
+        ThreadStat& st = kv.second;
+        if (st.ring.empty()) continue;
+        std::map<std::string, int> hist; int total = 0, waits = 0;
+        for (const auto& smp : st.ring) {
+            if (!smp.n || smp.t_us < start_us || smp.t_us > end_us) continue;
+            total++;
+            const Sym& ls = symbolize(smp.fr[0]);
+            std::string key;
+            if (is_wait_leaf(ls)) {
+                waits++;
+                key = "wait";
+                for (int i = 1; i < smp.n; i++) {
+                    const char* nm = symbolize(smp.fr[i]).name.c_str();
+                    if (!strncmp(nm, "Nt", 2) || !strncmp(nm, "Zw", 2) || !strncmp(nm, "Rtl", 3) || strstr(nm, "ntdll") ||
+                        strstr(nm, "KERNELBASE") || !strncmp(nm, "Sleep", 5) || !strncmp(nm, "WaitFor", 7)) continue;
+                    key += " in "; key += nm; break;
+                }
+            } else {
+                key = ls.name;
+                for (int i = 1; i < smp.n && i < 4; i++) { key += " <- "; key += symbolize(smp.fr[i]).name; }
+            }
+            hist[key]++;
+        }
+        if (!total) continue;
+        std::vector<std::pair<int, std::string>> top;
+        for (auto& h : hist) top.push_back({ h.second, h.first });
+        std::sort(top.rbegin(), top.rend());
+        fprintf(stderr, "[slow-frame] %.1f ms: %s, %d samples (%d waiting):", frame_ms, st.name.c_str(), total, waits);
+        for (size_t i = 0; i < top.size() && i < 5; i++)
+            fprintf(stderr, " %d%% %s;", 100 * top[i].first / total, top[i].second.c_str());
+        fputc('\n', stderr);
+    }
+    ReleaseSRWLockExclusive(&s_dbg);
 }
 
 extern "C" void win_prof_start(void)
