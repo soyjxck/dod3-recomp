@@ -26,6 +26,7 @@ python3 -m venv .venv && .venv/bin/pip install -r ps3recomp/tools/requirements.t
     --functions out/EBOOT.functions.json \
     --hle-stubs out/EBOOT.imports.json \
     --code-end 0x157e770 \
+    --nonvolatile-locals \
     -o recompiled/
 
 tools/lift_spu.sh     # SPU tasks, the ShaderPatching job, MultiStream DSP plugins
