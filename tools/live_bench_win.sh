@@ -19,7 +19,7 @@ rm -f "$pad" "$grab.ppm" "$grab.req"
 export PS3_TITLE="Drakengard 3" PS3_VFS_ROOT=game/disc DOD3_FPS=60
 export PAD_FILE=$pad PS3RECOMP_FRAME_GRAB=$grab
 for kv in "$@"; do export "$kv"; done
-./build/dod3.exe elf/EBOOT.ELF > "$log" 2>&1 &
+./${DOD3_BUILD:-build}/dod3.exe elf/EBOOT.ELF > "$log" 2>&1 &
 game=$!
 bash "$root/tools/autoplay_win.sh" "$log" "$pad" "$grab" > "out/bench/$tag.autoplay.log" 2>&1 &
 auto=$!

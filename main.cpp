@@ -920,9 +920,22 @@ static LONG WINAPI vm_commit_veh(EXCEPTION_POINTERS* ep)
         if (vm_watch_fault(fault, ep->ExceptionRecord->ExceptionInformation[0] == 1))
             return EXCEPTION_CONTINUE_EXECUTION;
         if (vm_base && fault >= base && fault < base + VM_SIZE) {
+            /* Only the reserved part of the 64 KB block: re-committing a
+             * page the texture write-watch protected would re-open it. */
             void* page = (void*)(fault & ~(uintptr_t)0xFFFF);
-            if (VirtualAlloc(page, 0x10000, MEM_COMMIT, PAGE_READWRITE))
-                return EXCEPTION_CONTINUE_EXECUTION;
+            MEMORY_BASIC_INFORMATION mi;
+            if (!VirtualQuery((void*)fault, &mi, sizeof mi)) return EXCEPTION_CONTINUE_SEARCH;
+            if (mi.State == MEM_RESERVE)
+                return vm_commit_reserved(page, 0x10000) ? EXCEPTION_CONTINUE_EXECUTION
+                                                        : EXCEPTION_CONTINUE_SEARCH;
+            /* Committed already: another thread got here first (retry), or
+             * a read-only page the watch does not track, opened as before. */
+            if (mi.State == MEM_COMMIT) {
+                if (mi.Protect & PAGE_READWRITE) return EXCEPTION_CONTINUE_EXECUTION;
+                DWORD old;
+                if (VirtualProtect((void*)(fault & ~(uintptr_t)0xFFF), 0x1000, PAGE_READWRITE, &old))
+                    return EXCEPTION_CONTINUE_EXECUTION;
+            }
         }
     }
     return EXCEPTION_CONTINUE_SEARCH;
