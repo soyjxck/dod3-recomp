@@ -57,7 +57,7 @@ To run the setup again: `dod3.exe --setup`.
 
 In the game: **Settings → Graphics Settings** (on the title menu, next to
 Audio Settings) sets the resolution, display mode, frame rate, v-sync,
-texture filtering and renderer. Confirm with ✕ to save them to dod3.ini;
+anti-aliasing (FXAA), texture filtering and renderer. Confirm with ✕ to save them to dod3.ini;
 everything but the renderer changes at once (a second of black while the
 resolution or display mode switches), the renderer the next time the game
 starts.
@@ -75,6 +75,7 @@ Or edit **dod3.ini** next to dod3.exe (it explains each setting):
 | `RSX_VSYNC` | `1` to sync to the display |
 | `DOD3_FPS` | Frame-rate cap: `60` is tested and recommended; unset keeps the original 30 |
 | `RSX_ANISO` | Texture filtering: `1` (original) to `16` (16× anisotropic, the default) |
+| `RSX_AA` | `fxaa` for FXAA anti-aliasing; unset is off. A resolution above your display's is supersampling |
 | `RSX_BACKEND` | `vulkan` for the Vulkan renderer (experimental); unset is Direct3D 12 |
 
 ## Controls

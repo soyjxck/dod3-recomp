@@ -26,7 +26,7 @@ from ue3.build import Pkg, clone, subst, remove, findnode, inner_call
 from ue3.script import Node
 
 MAGIC = 900000
-ROWS = 6
+ROWS = 7
 CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED = range(6)
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'game', 'disc', 'PS3_GAME', 'USRDIR', 'SQEX03GAME')

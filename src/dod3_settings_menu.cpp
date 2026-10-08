@@ -44,6 +44,7 @@ extern "C" volatile int g_rsx_display_reload;   /* rsx_draw_engine.c: the render
 #if defined(_WIN32) || defined(__APPLE__)
 extern "C" int g_rsx_aniso;         /* the live anisotropy level: rsx_d3d12_engine.c, rsx_metal_backend.m */
 #endif
+extern "C" int g_rsx_aa;            /* rsx_draw_engine.c: 1 = FXAA at present */
 #ifdef _WIN32
 /* The CRT's spelling; an empty value removes the variable. */
 static int setenv(const char* k, const char* v, int) { return _putenv_s(k, v) ? -1 : 0; }
@@ -190,6 +191,10 @@ void init_rows()
         "Wait for the display's refresh.",
         {{"1", "On"}, {"0", "Off"}},
         0, LIVE_DISPLAY});
+    s_rows.push_back({"RSX_AA", "Anti-Aliasing",
+        "Smooths jagged edges. Softens the picture slightly.",
+        {{NULL, "Off"}, {"fxaa", "FXAA"}},
+        0, LIVE_DISPLAY});
     s_rows.push_back({"RSX_ANISO", "Texture Filtering",
         "Sharper ground and walls when seen at an angle.",
         {{"1", "Trilinear"}, {"2", "2x Anisotropic"}, {"4", "4x Anisotropic"}, {"8", "8x Anisotropic"}, {"16", "16x Anisotropic"}},
@@ -299,6 +304,7 @@ void apply()
 #if defined(_WIN32) || defined(__APPLE__)
             if (!strcmp(r.key, "RSX_ANISO")) g_rsx_aniso = v ? atoi(v) : 16;
 #endif
+            if (!strcmp(r.key, "RSX_AA")) g_rsx_aa = (v && !strcmp(v, "fxaa")) ? 1 : 0;
             if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE")) display = true;
             if (!strcmp(r.key, "DOD3_FPS")) fps = true;
         }
