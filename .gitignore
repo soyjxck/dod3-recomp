@@ -1,36 +1,49 @@
-# Game data and copyrighted binaries -- never commit
+# The game's files: everyone supplies their own, none are ever committed
 game/
 elf/
 *.ELF
 *.elf
 *.BIN
+*.bin
+*.iso
+*.ISO
+*.pkg
+*.rap
+*.edat
+*.EDAT
 
-# Generated
-out/
-recompiled/
-recompiled_*/
+# Written by the game and the installer
+gamedata/
+cache/
+fw/
+keys.txt
+dod3.log
+dod3.prev.log
+
+# Build output and generated sources
 build/
 build-*/
 build_*/
-
-.venv/
-.DS_Store
+recompiled/
+recompiled_*/
 spu/
-
-# Runtime-written state (trophy progress, saves)
-gamedata/
-__pycache__/
-
-# PS3 firmware files (dev_flash, from a firmware installed in RPCS3); not redistributable
-fw/
-cache/
-
-# benchmark and profiler output
-out/bench/
-out/logs/
-
-# Release packages (tools/package_win.sh)
+out/
 dist/
-
-# macOS release dependencies (tools/build_mac_deps.sh)
 deps/
+__pycache__/
+.venv/
+
+# Captures and frame grabs
+*.rsxcap
+*.ppm
+
+# Editors, IDEs and toolchains
+.vs/
+.vscode/
+.idea/
+CMakeUserPresets.json
+compile_commands.json
+*.pdb
+*.ilk
+.DS_Store
+Thumbs.db
