@@ -31,17 +31,25 @@
  * for each opcode out of GNatives -- step() below does the same.
  *
  * The values are the dod3.ini keys (RSX_SCALE, RSX_DISPLAY, DOD3_FPS,
- * RSX_VSYNC, RSX_AA, RSX_ANISO, RSX_BACKEND; DOD3_SKIP_INTRO,
+ * RSX_VSYNC, RSX_AA, RSX_ANISO, DOD3_FOV; RSX_BACKEND, DOD3_SKIP_INTRO,
  * DOD3_UNFOCUSED); Apply writes the open page's to dod3.ini and applies what
- * can change while running: the frame rate, texture filtering, the
- * background behaviour and (Direct3D 12 / Vulkan) the resolution, display
- * mode, v-sync and anti-aliasing. The renderer and the intro wait for the
- * next start -- a row whose saved value differs from the running one says
- * so. */
+ * can change while running: the frame rate, texture filtering, the field
+ * of view, the background behaviour and (Direct3D 12 / Vulkan) the
+ * resolution, display mode, v-sync and anti-aliasing. The renderer and the
+ * intro wait for the next start -- a row whose saved value differs from the
+ * running one says so.
+ *
+ * The field of view: Sqex03GameCamera.UpdateViewTarget passes every view's
+ * final FOV here (bridge 9, with whether the gameplay camera made it) and
+ * uses the one returned. DOD3_FOV=+N widens the gameplay camera as a zoom
+ * factor -- the tangent of the half-angle times tan((65+N)/2) / tan(65/2) --
+ * so its default 65 degrees (horizontal) becomes 65+N and the game's own
+ * zooms keep their proportion. Cutscene cameras are left alone. */
 #include "ppu_recomp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <string>
 #include <vector>
 
@@ -153,6 +161,13 @@ std::vector<Row> s_rows;            /* every page's */
 std::vector<int> s_page_rows[2];    /* each page's, in order */
 int s_page;                         /* the page open; -1: every page (Restore Defaults) */
 bool s_init;
+float s_fov_k = 1.0f;               /* DOD3_FOV as a zoom factor on tan(FOV/2) */
+
+void set_fov(const char* v)
+{
+    const double rad = 3.14159265358979 / 180.0, add = v ? atof(v) : 0.0;
+    s_fov_k = (float)(tan((65.0 + add) * rad / 2) / tan(65.0 * rad / 2));
+}
 
 /* The rows a command covers: the open page's, or every page's. */
 template <class F> void each(F f)
@@ -226,6 +241,22 @@ void init_rows()
         "Sharper ground and walls when seen at an angle.",
         {{"1", "Trilinear"}, {"2", "2x Anisotropic"}, {"4", "4x Anisotropic"}, {"8", "8x Anisotropic"}, {"16", "16x Anisotropic"}},
         4, true});
+    s_rows.push_back({"DOD3_FOV", "Field of View",
+        "Widens the gameplay camera. Cutscenes keep their framing.",
+        {{NULL, "Default"}, {"5", "+5"}, {"10", "+10"}, {"15", "+15"}, {"20", "+20"}, {"25", "+25"}, {"30", "+30"}},
+        0, true});
+    set_fov(getenv("DOD3_FOV"));
+    /* System Settings */
+    s_rows.push_back({"DOD3_SKIP_INTRO", "Skip Intro",
+        "Skip the logos and the opening movie.",
+        {{"1", "On"}, {"0", "Off"}},
+        0, false});
+    s_rows.back().page = 1;
+    s_rows.push_back({"DOD3_UNFOCUSED", "When Unfocused",
+        "What the game does while its window is in the background.",
+        {{NULL, "Keep Running"}, {"mute", "Mute"}, {"pause", "Pause"}},
+        0, true});
+    s_rows.back().page = 1;
 #ifdef _WIN32
     s_rows.push_back({"RSX_BACKEND", "Renderer",
         "The graphics API the game is drawn with.",
@@ -237,16 +268,6 @@ void init_rows()
         {{NULL, "Metal"}},
         0, false});
 #endif
-    /* System Settings */
-    s_rows.push_back({"DOD3_SKIP_INTRO", "Skip Intro",
-        "Skip the logos and the opening movie.",
-        {{"1", "On"}, {"0", "Off"}},
-        0, false});
-    s_rows.back().page = 1;
-    s_rows.push_back({"DOD3_UNFOCUSED", "When Unfocused",
-        "What the game does while its window is in the background.",
-        {{NULL, "Keep Running"}, {"mute", "Mute"}, {"pause", "Pause"}},
-        0, true});
     s_rows.back().page = 1;
     for (size_t i = 0; i < s_rows.size(); i++) {
         Row& r = s_rows[i];
@@ -273,7 +294,7 @@ bool menu_text(int i, std::string& out)
     if (k == 0) out = "Graphics Settings";
     else if (k == 1) out = "Adjust settings related to graphics and the display.";
     else if (k == 2) out = "System Settings";
-    else if (k == 3) out = "Adjust the start-up and how the game runs in the background.";
+    else if (k == 3) out = "Adjust the start-up, the background behaviour and the renderer.";
     else if (k >= 100 && k < 200) out = r ? r->label : "";
     else if (k >= 200 && k < 300) out = r ? value_text(*r, r->pending) : "";
     else if (k >= 300 && k < 400) out = r ? r->desc : "";
@@ -353,6 +374,7 @@ void apply()
             if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE")) display = true;
             if (!strcmp(r.key, "DOD3_FPS")) fps = true;
             if (!strcmp(r.key, "DOD3_UNFOCUSED")) unfocused = true;
+            if (!strcmp(r.key, "DOD3_FOV")) set_fov(v);
         }
     });
     if (display) g_rsx_display_reload = 1;
@@ -404,6 +426,15 @@ int bridge(int cmd, int a, int b)
         return 0;
     case 8:   /* the open page's rows */
         return (int)s_page_rows[s_page > 0 ? s_page : 0].size();
+    case 9: { /* the camera's field of view (float bits); b: the gameplay camera's */
+        float fov; memcpy(&fov, &a, 4);
+        if (!b || s_fov_k == 1.0f || !(fov > 0.0f && fov < 170.0f)) return a;
+        const double rad = 3.14159265358979 / 180.0;
+        fov = (float)(2.0 * atan(tan(fov * rad / 2) * s_fov_k) / rad);
+        if (fov > 150.0f) fov = 150.0f;
+        int r; memcpy(&r, &fov, 4);
+        return r;
+    }
     }
     return 0;
 }

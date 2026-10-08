@@ -21,7 +21,11 @@ MAGIC+100+row row label, MAGIC+200+row value, MAGIC+300+row row description.
 Bridge: 0 begin (pending = current), 1 change(row, dir), 2 is-default(row),
 3 reset (pending = defaults), 4 apply, 5 changed?, 6 skip the intro?,
 7 open(root entry: 3 Graphics, 4 System, 5 Restore Defaults = every page),
-8 the open page's row count.
+8 the open page's row count, 9 the camera's field of view.
+
+Also: Sqex03GameCamera.UpdateViewTarget hands every view's final FOV to the
+port (bridge(9, FOV, the gameplay camera made it)) and takes back the one to
+use -- the Field of View setting, applied to the gameplay camera only.
 
 Also: the title's boot chain (Sqex03GameHUDTitle's pages Install,
 VersionCheck, Rogo -- the company, middleware and UE3 logos -- Moive -- the
@@ -36,7 +40,7 @@ from ue3.script import Node
 
 MAGIC = 900000
 MAX_ROWS = 7     # the layout's
-CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO, CMD_OPEN, CMD_ROWS = range(9)
+CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO, CMD_OPEN, CMD_ROWS, CMD_FOV = range(10)
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'game', 'disc', 'PS3_GAME', 'USRDIR', 'SQEX03GAME')
 SRC = ROOT + '/COOKEDPS3/SQEX03GAME.XXX'
@@ -175,6 +179,25 @@ def main():
     i = pk.find(st, 'self.m_eNexStateId = b2')
     st[i].parts[1] = ('e', pk.cond(pk.native('NotEqual_IntInt', bridge(CMD_SKIPINTRO), pk.int_(0)),
                                    pk.byte_(4), pk.byte_(2)))
+    new[f] = st
+
+    # ---- the field of view: the gameplay camera's, through the port ----
+    # UpdateViewTarget ends every view with `OutVT.POV.FOV =
+    # AdjustFOVForViewport(...)`. After it the port gets the FOV (float bits)
+    # and whether the gameplay camera made it -- CurrentCamera ==
+    # ThirdPersonCam; a cutscene's CameraActor gets FixedCam
+    # (FindBestCameraType) -- and returns the FOV to use. The camera is no
+    # HUD: the bridge is reached through the GameInfo as the function itself
+    # reaches it.
+    f = pk.func('Sqex03GameCamera', 'UpdateViewTarget'); st = pk.parse(f)
+    i = pk.find(st, 'out OutVT.POV.FOV = AdjustFOVForViewport(out OutVT.POV.FOV, P)')
+    fov = st[i].parts[0][1]
+    gi = findnode(st[pk.find(st, 'xGamePawn = Sqex03GameInfo(obj(WorldInfo).static.GetWorldInfo().self.Game).GetPlayerPawn()')],
+                  'Sqex03GameInfo(obj(WorldInfo).static.GetWorldInfo().self.Game)')
+    third = st[pk.find(st, 'if !(EqualEqual_ObjectObject(self.CurrentCamera, self.ThirdPersonCam)) goto 0x04aa')].parts[1][1]
+    call = bridge(CMD_FOV, clone(fov), clone(third))
+    subst(call, lambda n: pk.text(n) == 'self.m_xGameInfo', lambda n: clone(gi))
+    st.insert(i + 1, pk.let(clone(fov), call))
     new[f] = st
 
     if show:

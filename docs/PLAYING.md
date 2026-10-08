@@ -57,10 +57,10 @@ To run the setup again: `dod3.exe --setup`.
 
 In the game: **Settings → Graphics Settings** (on the title menu, next to
 Audio Settings) sets the resolution, display mode, frame rate, v-sync,
-anti-aliasing (FXAA, or MSAA 2x/4x/8x), texture filtering and
-renderer. **Settings → System Settings** sets whether the logos and opening
-movie are skipped, and what the game does while its window is in the
-background (keep running, mute, or pause). Confirm with ✕ to save them to
+anti-aliasing (FXAA, or MSAA 2x/4x/8x), texture filtering and field of
+view. **Settings → System Settings** sets whether the logos and opening
+movie are skipped, what the game does while its window is in the
+background (keep running, mute, or pause), and the renderer. Confirm with ✕ to save them to
 dod3.ini; everything but the renderer and Skip Intro changes at once (a
 second of black while the resolution or display mode switches), those two
 the next time the game starts.
@@ -77,6 +77,7 @@ Or edit **dod3.ini** next to dod3.exe (it explains each setting):
 | `RSX_WINDOW` | Window size in windowed mode, e.g. `1920x1080` |
 | `RSX_VSYNC` | `1` to sync to the display |
 | `DOD3_FPS` | Frame-rate cap: `60` is tested and recommended; unset keeps the original 30 |
+| `DOD3_FOV` | Field of view: `5` to `30` degrees added to the gameplay camera (65 by default); cutscenes keep their framing. Unset is the original |
 | `RSX_ANISO` | Texture filtering: `1` (original) to `16` (16× anisotropic, the default) |
 | `RSX_AA` | `fxaa`, or `msaa2` / `msaa4` / `msaa8` (MSAA costs a lot at 4K); unset is off |
 | `DOD3_SKIP_INTRO` | `1` (default) skips the logos and the opening movie at start-up; `0` keeps them |
