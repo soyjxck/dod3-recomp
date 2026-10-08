@@ -15,7 +15,10 @@ cd "$root" || exit 1
 if tasklist 2>/dev/null | grep -qi dod3.exe; then echo "a dod3.exe is already running; not starting another"; exit 1; fi
 mkdir -p out/bench
 log=out/bench/$tag.log; pad=out/bench/$tag.pad; grab=out/bench/$tag.grab
-rm -f "$pad" "$grab.ppm" "$grab.req"
+rm -f "$pad" "$grab.ppm" "$grab.req" "$pad.stick"
+# AUTOPLAY_FORWARD=1 (as a VAR=val argument): hold forward in play instead of
+# attacking -- the game reads the hold from this file (cellPad PAD_STICK_FILE).
+export PAD_STICK_FILE=$pad.stick
 export PS3_TITLE="Drakengard 3" PS3_VFS_ROOT=game/disc DOD3_FPS=60
 export PAD_FILE=$pad PS3RECOMP_FRAME_GRAB=$grab
 for kv in "$@"; do export "$kv"; done

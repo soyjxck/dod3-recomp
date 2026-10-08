@@ -35,9 +35,17 @@ state=""
 while :; do
   if hud; then
     [ "$state" != play ] && { state=play; echo "$(date +%H:%M:%S) [autoplay] gameplay (HUD up)"; }
-    press $CROSS "in play"
-    sleep 3
+    if [ -n "$AUTOPLAY_FORWARD" ] && [ -n "$PAD_STICK_FILE" ]; then
+      # Hold the left stick forward (cellPad's PAD_STICK_FILE) instead of
+      # attacking: running ahead reaches the scene where scenery breaks up.
+      : > "$PAD_STICK_FILE"
+      sleep 3
+    else
+      press $CROSS "in play"
+      sleep 3
+    fi
   else
+    [ -n "$PAD_STICK_FILE" ] && rm -f "$PAD_STICK_FILE"
     [ "$state" != skip ] && { state=skip; echo "$(date +%H:%M:%S) [autoplay] no HUD -- skipping"; }
     press $START "skip"; sleep 1
     press $CROSS "take skip"; sleep 1
