@@ -38,6 +38,11 @@
 #include "ps3emu/vm_watch.h"
 #include "ppu_recomp.h"
 #include "src/setup_iso.h"   /* the release layout (first-run setup) */
+#include "src/dod3_mp3_standin.h"   /* our flashMP3.pic (tools/make_spu_overlays.py standin) */
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
  * VirtualAlloc, the scalar typedefs -- from one place. On Windows this is a
@@ -1210,6 +1215,34 @@ static void load_settings_file(const char* argv0)
 extern "C" int dod3_setup_win(const wchar_t* base_dir, int force);   /* src/setup_win.cpp */
 #endif
 
+/* Our stand-in flashMP3.pic (see the PS3_DEV_FLASH default in main()):
+ * wanted unless Sony's decoder is asked for; written out only when the copy
+ * there differs. */
+static bool dod3_mp3_standin_wanted()
+{
+    const char* e = getenv("DOD3_MP3_NATIVE");
+    if (e && e[0] == '0') return false;
+    return !getenv("DOD3_MP3_CHECK") && !getenv("DOD3_MP3_TRACE") && !getenv("DOD3_MP3_DUMP");
+}
+static bool dod3_mp3_standin_install(const char* dev_flash)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path p = fs::path(dev_flash) / "sys" / "external" / "flashMP3.pic";
+    if (fs::file_size(p, ec) == sizeof k_dod3_mp3_standin && !ec) {
+        std::ifstream in(p, std::ios::binary);
+        std::string have((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (have.size() == sizeof k_dod3_mp3_standin && !memcmp(have.data(), k_dod3_mp3_standin, have.size()))
+            return true;
+    }
+    fs::create_directories(p.parent_path(), ec);
+    std::ofstream out(p, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(k_dod3_mp3_standin), sizeof k_dod3_mp3_standin);
+    out.close();
+    if (!out) fprintf(stderr, "[mp3] cannot write %s\n", p.string().c_str());
+    return static_cast<bool>(out);
+}
+
 int main(int argc, char** argv)
 {
     /* No arguments -- a double-click, a shortcut -- or --setup: the release
@@ -1321,11 +1354,15 @@ int main(int argc, char** argv)
      * thread, and the threads contend for the FILE lock. Quiet unless asked
      * (PS3_VERBOSE=1); the port's own milestone lines are not gated by it. */
     setenv("PS3_VERBOSE", "0", 0);
-    /* Firmware files the title loads at run time. MultiStream fetches its MP3
+    /* The one firmware file the title loads: MultiStream fetches its MP3
      * decoder from /dev_flash/sys/external/flashMP3.pic when the first MP3
-     * stream starts; without it the audio SPU task dies and the game hangs on
-     * the next sound (opening movie, new game). The file comes from a PS3
-     * firmware installed in RPCS3 (its dev_flash folder); see the README. */
+     * stream starts (without it the audio SPU task dies and the game hangs on
+     * the next sound). We decode natively (src/dod3_mp3_native.c), so what it
+     * loads is our stand-in, written to gamedata/dev_flash -- nothing from the
+     * firmware is needed. DOD3_MP3_NATIVE=0 and the MP3 check modes use Sony's
+     * decoder instead, from a firmware dev_flash (fw/dev_flash: RPCS3's). */
+    if (!getenv("PS3_DEV_FLASH") && dod3_mp3_standin_wanted() && dod3_mp3_standin_install("gamedata/dev_flash"))
+        setenv("PS3_DEV_FLASH", "gamedata/dev_flash", 1);
     setenv("PS3_DEV_FLASH", "fw/dev_flash", 0);
     /* The PhysX taskset (memory-manager and physics tasks sharing request
      * blocks). With no limit, as many of its tasks ran at once as there were

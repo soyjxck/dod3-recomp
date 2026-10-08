@@ -27,6 +27,7 @@ differs from run to run.
            extra function seeds build_spu_workloads.py needs (--extra-funcs)
   register write spu/spu_overlays.c with the image ids build_spu_workloads.py
            assigned (run after it)
+  standin  write src/dod3_mp3_standin.h, our stand-in for flashMP3.pic
 
 The DSP block layout comes from a dump of that GET (SPU_DUMP_OVL=<dir>,0x37000).
 A different plugin set or order would arrive with a different signature and
@@ -54,6 +55,16 @@ MP3_NAME = "spu_ovl_mp3_1A900"
 # dev_flash folder, or copy that folder to fw/dev_flash.
 MP3_PIC = Path("sys/external/flashMP3.pic")
 MP3_HEADER = 0x80          # the PPU's descriptor; the ELF leaves va 0..0x7F free for it
+
+# Our stand-in for flashMP3.pic (src/dod3_mp3_native.c decodes; nothing of
+# Sony's is needed). The same shape of SPU ELF: alloc sections from va 0x80,
+# a 16-byte .SpuGUID first -- the signature the overlay is recognised by --
+# and the entry in .text, which the native hook takes over. The body is 1 KB
+# because the runtime matches a signature only in a GET of 512 bytes or more.
+MP3N_NAME = "spu_ovl_mp3native_1A900"
+MP3N_GUID = b"dod3 native mp3\0"
+MP3N_BODY = 0x400
+MP3N_ENTRY = 0x90          # va; LS 0x1A910
 
 
 def elf_segments(elf):
@@ -165,10 +176,47 @@ def build_mp3(root):
     return body, entries, body[:16], len(body)
 
 
-OVERLAYS = [
-    (MSDSP_NAME, MSDSP_LSA, build_msdsp),
-    (MP3_NAME, MP3_LSA, build_mp3),
-]
+def standin_pic():
+    """The stand-in flashMP3.pic, as bytes (also src/dod3_mp3_standin.h)."""
+    text = struct.pack(">4I", 0x35000000, 0x40200000, 0x00200000, 0x40200000)   # bi $r0; nops
+    pad = bytes(MP3N_BODY - len(MP3N_GUID) - len(text))
+    shstr = b"\0.SpuGUID\0.text\0.rodata\0.shstrtab\0"
+    body_off = 0x100                          # file offset of va 0x80, as Sony's
+    shstr_off = body_off + MP3N_BODY
+    sh_off = (shstr_off + len(shstr) + 3) & ~3
+    eh = struct.pack(">16sHHIIIIIHHHHHH", b"\x7fELF\x01\x02\x01" + bytes(9), 2, 0x17, 1, MP3N_ENTRY,
+                     52, sh_off, 0, 52, 32, 1, 40, 5, 4)
+    ph = struct.pack(">8I", 1, body_off, MP3_HEADER, MP3_HEADER, MP3N_BODY, MP3N_BODY, 5, 0x80)
+    sh = [struct.pack(">10I", *([0] * 10)),
+          struct.pack(">10I", 1, 1, 6, 0x80, body_off, 16, 0, 0, 16, 0),
+          struct.pack(">10I", 10, 1, 6, 0x90, body_off + 16, len(text), 0, 0, 16, 0),
+          struct.pack(">10I", 16, 1, 2, 0xA0, body_off + 32, len(pad), 0, 0, 16, 0),
+          struct.pack(">10I", 24, 3, 0, 0, shstr_off, len(shstr), 0, 0, 1, 0)]
+    f = bytearray(eh + ph)
+    f += bytes(body_off - len(f)) + MP3N_GUID + text + pad + shstr
+    f += bytes(sh_off - len(f)) + b"".join(sh)
+    return bytes(f)
+
+
+def build_mp3_native(_root):
+    body = standin_pic()[0x100:0x100 + MP3N_BODY]
+    return body, [MP3_LSA + MP3N_ENTRY - MP3_HEADER], body[:16], len(body)
+
+
+def have_firmware_mp3(root):
+    dev_flash = Path(os.environ.get("FW_DEV_FLASH") or (root / "fw" / "dev_flash"))
+    return (dev_flash / MP3_PIC).exists()
+
+
+def overlays(root):
+    """Sony's MP3 decoder is lifted only if the firmware is here (for
+    DOD3_MP3_NATIVE=0 and the check modes); the stand-in always is."""
+    out = [(MSDSP_NAME, MSDSP_LSA, build_msdsp), (MP3N_NAME, MP3_LSA, build_mp3_native)]
+    if have_firmware_mp3(root):
+        out.append((MP3_NAME, MP3_LSA, build_mp3))
+    else:
+        print("make_spu_overlays: no firmware flashMP3.pic -- only our MP3 decoder", file=sys.stderr)
+    return out
 
 
 def wrap(root):
@@ -176,7 +224,9 @@ def wrap(root):
     from wrap_spu_elf import wrap as wrap_elf
     images = root / "spu/images"
     args = []
-    for name, lsa, build in OVERLAYS:
+    if not have_firmware_mp3(root):   # a lift from an earlier firmware run
+        (images / f"{MP3_NAME}.elf").unlink(missing_ok=True)
+    for name, lsa, build in overlays(root):
         image, entries, _sig, _span = build(root)
         (images / f"{name}.elf").write_bytes(wrap_elf(image, base=lsa, entry=entries[0]))
         args.append(f"--extra-funcs {name}=" + ",".join(f"0x{e:X}" for e in sorted(set(entries[1:]))))
@@ -186,7 +236,9 @@ def wrap(root):
 def register(root):
     workloads = (root / "spu/spu_workloads.c").read_text()
     body, notes = [], []
-    for name, _lsa, build in OVERLAYS:
+    sony = False
+    for name, _lsa, build in overlays(root):
+        sony |= name == MP3_NAME
         m = re.search(r"spu_begin_image\((\d+)\); " + re.escape(name) + r"_spu_recomp_register", workloads)
         if not m:
             sys.exit(f"make_spu_overlays: {name} is not in spu_workloads.c -- run build_spu_workloads.py first")
@@ -200,6 +252,9 @@ def register(root):
 #include <stdint.h>
 
 extern void spu_overlay_register_sig_region(const uint8_t sig[16], uint32_t span, int image_id);
+{"extern void " + MP3_NAME + "_spu_func_00021D20(void*);" if sony else ""}
+/* Sony's lifted decodeFrame, if the firmware was here to lift it (else 0). */
+void (*g_dod3_mp3_sony_entry)(void*) = {MP3_NAME + "_spu_func_00021D20" if sony else "0"};
 
 __attribute__((constructor)) static void dod3_spu_overlays_register(void)
 {{
@@ -209,8 +264,23 @@ __attribute__((constructor)) static void dod3_spu_overlays_register(void)
     print("make_spu_overlays: wrote spu/spu_overlays.c (" + "; ".join(notes) + ")")
 
 
+def standin_header(root):
+    pic = standin_pic()
+    rows = "\n".join("    " + ",".join(f"0x{b:02X}" for b in pic[i:i + 16]) + "," for i in range(0, len(pic), 16))
+    (root / "src/dod3_mp3_standin.h").write_text(f"""\
+/* dod3_mp3_standin.h - GENERATED by tools/make_spu_overlays.py standin.
+ * Our stand-in for the firmware's /dev_flash/sys/external/flashMP3.pic: an
+ * SPU ELF of the same shape whose entry the native MP3 decoder takes over
+ * (src/dod3_mp3_native.c). Nothing of Sony's is in it. */
+static const unsigned char k_dod3_mp3_standin[{len(pic)}] = {{
+{rows}
+}};
+""")
+    print(f"make_spu_overlays: wrote src/dod3_mp3_standin.h ({len(pic)} bytes)")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in ("wrap", "register"):
+    if len(sys.argv) != 2 or sys.argv[1] not in ("wrap", "register", "standin"):
         sys.exit(__doc__)
     root = Path(__file__).resolve().parent.parent
-    {"wrap": wrap, "register": register}[sys.argv[1]](root)
+    {"wrap": wrap, "register": register, "standin": standin_header}[sys.argv[1]](root)

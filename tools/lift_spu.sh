@@ -11,12 +11,13 @@ PY=.venv/bin/python
 T=ps3recomp/tools
 
 # Lifts already in spu/ are kept (build_spu_workloads.py skips them), so an
-# unchanged image is not recompiled. The overlays (the DSP plugin block and
-# the firmware's MP3 decoder, see tools/make_spu_overlays.py) are rebuilt
-# every time; the MP3 one needs the firmware's dev_flash: fw/dev_flash, or
-# FW_DEV_FLASH=<RPCS3's dev_flash folder> after installing the firmware there.
+# unchanged image is not recompiled. The overlays (the DSP plugin block, our
+# stand-in MP3 decoder and, if the firmware's dev_flash is here, Sony's: see
+# tools/make_spu_overlays.py) are rebuilt every time. Sony's is optional: it
+# is only for DOD3_MP3_NATIVE=0 and the MP3 check modes (fw/dev_flash, or
+# FW_DEV_FLASH=<RPCS3's dev_flash folder>).
 mkdir -p spu/images
-rm -rf spu/spu_ovl_msdsp_37000 spu/spu_ovl_mp3_1A900
+rm -rf spu/spu_ovl_msdsp_37000 spu/spu_ovl_mp3_1A900 spu/spu_ovl_mp3native_1A900
 $PY $T/extract_spu_images.py elf/EBOOT.ELF --output spu/images
 
 # Raw SPURS job binaries in the EBOOT (not ELFs, so extract_spu_images.py
@@ -52,7 +53,9 @@ EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x6A0:dod3_spu_patch_loop_hook"
 # loops that were half of the mixer task's time.
 EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39350:dod3_msdsp_biquad_a_hook"
 EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39630:dod3_msdsp_biquad_b_hook"
-# The MP3 decoder's decodeFrame, natively (src/dod3_mp3_native.c).
+# The MP3 decoder, natively (src/dod3_mp3_native.c): the stand-in
+# flashMP3.pic's entry, and the firmware decoder's decodeFrame when it is lifted.
+EXTRA="$EXTRA --native-hook spu_ovl_mp3native_1A900=0x1A910:dod3_mp3_standin_hook"
 EXTRA="$EXTRA --native-hook spu_ovl_mp3_1A900=0x21D20:dod3_mp3_decode_hook"
 $PY $T/build_spu_workloads.py --images spu/images --lifted spu \
     --out spu/spu_workloads.c --register-fn dod3_spu_register_all \

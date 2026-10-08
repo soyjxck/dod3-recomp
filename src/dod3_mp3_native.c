@@ -42,7 +42,13 @@
  * all 56k frames of a check run. 45 us per call against 210 for the lifted
  * firmware decoder.
  *
- * DOD3_MP3_NATIVE=0 decodes with Sony's (lifted) instead of ours.
+ * The game loads the decoder from /dev_flash/sys/external/flashMP3.pic. By
+ * default that is our stand-in (src/dod3_mp3_standin.h, written out by
+ * main.cpp): an SPU ELF of the same shape whose entry is
+ * dod3_mp3_standin_hook, so nothing of the firmware is needed to build or
+ * play. DOD3_MP3_NATIVE=0 loads Sony's file from a firmware dev_flash and
+ * decodes with it (lifted; the build lifts it when it finds the firmware);
+ * the check and recording modes below need it too.
  * DOD3_MP3_CHECK=1 runs Sony's decoder (its result stands) and ours side by
  * side on every frame -- each stream followed through Sony's state -- and
  * reports any difference in what the mixer sees (consumed, produced, return
@@ -60,7 +66,9 @@
 #include <string.h>
 #include <time.h>
 
-void spu_ovl_mp3_1A900_spu_func_00021D20(spu_context* ctx);
+/* Sony's lifted decodeFrame, when the build found the firmware to lift it
+ * (spu/spu_overlays.c, from tools/make_spu_overlays.py); 0 otherwise. */
+extern void (*g_dod3_mp3_sony_entry)(void*);
 
 static _Thread_local int t_inner;   /* 1 while the lifted decodeFrame runs under the hook */
 
@@ -244,7 +252,7 @@ static void run_lifted(spu_context* ctx)
 {
     const uint32_t ret = ctx->gpr[0]._u32[0] & SPU_LS_MASK;
     t_inner = 1;
-    spu_ovl_mp3_1A900_spu_func_00021D20(ctx);
+    ((void (*)(spu_context*))g_dod3_mp3_sony_entry)(ctx);
     while (g_spu_trampoline_fn && ((uint32_t)ctx->pc & SPU_LS_MASK) != ret) {
         void (*f)(spu_context*) = g_spu_trampoline_fn;
         g_spu_trampoline_fn = 0;
@@ -433,23 +441,32 @@ static int time_on(void)
     if (on < 0) on = getenv("DOD3_MP3_TIME") ? 1 : 0;
     return on;
 }
-static int decode_timed(spu_context* ctx, const args_t* a)
+static int decode_timed(spu_context* ctx, const args_t* a, int ours)
 {
     static uint64_t s_ns, s_calls;
     struct timespec t0, t1;
     timespec_get(&t0, TIME_UTC);
-    if (native_on()) decode_native(ctx, a);
+    if (ours) decode_native(ctx, a);
     else run_lifted(ctx);
     timespec_get(&t1, TIME_UTC);
     s_ns += (uint64_t)((t1.tv_sec - t0.tv_sec) * 1000000000LL + (t1.tv_nsec - t0.tv_nsec));
     if (++s_calls % 5000 == 0)
-        fprintf(stderr, "[mp3-time] %s decoder: %llu calls, %.1f us per call\n", native_on() ? "our" : "Sony's",
+        fprintf(stderr, "[mp3-time] %s decoder: %llu calls, %.1f us per call\n", ours ? "our" : "Sony's",
                 (unsigned long long)s_calls, s_ns / 1000.0 / (double)s_calls);
     return 1;
 }
 
+static void say_once(const char* which)
+{
+    static int said;
+    if (!__atomic_exchange_n(&said, 1, __ATOMIC_RELAXED))
+        fprintf(stderr, "[mp3] MultiStream's MP3 decoder: %s\n", which);
+}
+
 /* ---- the hook ----------------------------------------------------------------- */
 
+/* Sony's decodeFrame (0x21D20 of spu_ovl_mp3_1A900): ours by default, Sony's
+ * with DOD3_MP3_NATIVE=0, both under the check and recording modes. */
 int dod3_mp3_decode_hook(spu_context* ctx)
 {
     if (t_inner) return 0;
@@ -460,7 +477,20 @@ int dod3_mp3_decode_hook(spu_context* ctx)
     if (s_dump_left > 0) return dump_call(ctx, &a);
     if (trace_on()) return trace_call(ctx, &a);
     if (check_on()) return decode_check(ctx, &a);
-    if (time_on()) return decode_timed(ctx, &a);
+    say_once(native_on() ? "ours, in place of the firmware's" : "the firmware's (lifted)");
+    if (time_on()) return decode_timed(ctx, &a, native_on());
     if (native_on()) return decode_native(ctx, &a);
     return 0;
+}
+
+/* The entry of our stand-in flashMP3.pic (spu_ovl_mp3native_1A900, 0x1A910):
+ * nothing behind it, so always ours. */
+int dod3_mp3_standin_hook(spu_context* ctx)
+{
+    args_t a;
+    get_args(ctx, &a);
+    if (!args_ok(&a)) return return_to_caller(ctx, 0xFFFFFFFFu);
+    say_once("ours (stand-in flashMP3.pic)");
+    if (time_on()) return decode_timed(ctx, &a, 1);
+    return decode_native(ctx, &a);
 }
