@@ -1,4 +1,4 @@
-"""Generate the Graphics Settings patch for SQEX03GAME.XXX.
+"""Generate the Graphics Settings (and skip-intro) patch for SQEX03GAME.XXX.
 
 menu_patch.py [<overlay dir>] [--header=src/dod3_menu_patch_data.h] [--show]
 
@@ -17,7 +17,12 @@ rewritten as a list of rows whose text and values come from the port:
 Text: MAGIC+0 root label, MAGIC+1 root description, MAGIC+100+row row label,
 MAGIC+200+row value, MAGIC+300+row row description.
 Bridge: 0 begin (pending = current), 1 change(row, dir), 2 is-default(row),
-3 reset (pending = defaults), 4 apply, 5 changed?
+3 reset (pending = defaults), 4 apply, 5 changed?, 6 skip the intro?
+
+Also: the title's boot chain (Sqex03GameHUDTitle's pages Install,
+VersionCheck, Rogo -- the company, middleware and UE3 logos -- Moive -- the
+opening movie -- then Top, "Press START") goes from VersionCheck straight to
+Top when the bridge says to skip (DOD3_SKIP_INTRO, on unless 0).
 """
 import sys, os, hashlib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -27,7 +32,7 @@ from ue3.script import Node
 
 MAGIC = 900000
 ROWS = 7
-CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED = range(6)
+CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO = range(7)
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'game', 'disc', 'PS3_GAME', 'USRDIR', 'SQEX03GAME')
 SRC = ROOT + '/COOKEDPS3/SQEX03GAME.XXX'
@@ -139,7 +144,16 @@ def main():
     subst(st[i], lambda n: pk.text(n) == 'Add_IntInt(Add_IntInt(78, self.m_iSelect), iAdjust)', desc)
     new[f] = st
 
-    graphics_page(pk, new, show)
+    bridge = graphics_page(pk, new, show)
+
+    # ---- the boot logos and the opening movie ----
+    # VersionCheck names its next page Rogo (2); Rogo names Moive (3), and
+    # Moive Top (4). Straight to Top when the port says to skip.
+    f = pk.func('Sqex03GameHUDTitleVersionCheck', 'Initialize'); st = pk.parse(f)
+    i = pk.find(st, 'self.m_eNexStateId = b2')
+    st[i].parts[1] = ('e', pk.cond(pk.native('NotEqual_IntInt', bridge(CMD_SKIPINTRO), pk.int_(0)),
+                                   pk.byte_(4), pk.byte_(2)))
+    new[f] = st
 
     if show:
         for f, st in new.items():
@@ -310,6 +324,7 @@ def graphics_page(pk, new, show):
     subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 82)],
           lambda n: pk.native('Add_IntInt', pk.int_(MAGIC + 300), sel))
     new[f] = st
+    return bridge
 
 
 if __name__ == '__main__':

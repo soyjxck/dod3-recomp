@@ -15,7 +15,9 @@
  *   Sqex03GameOption.UpdateDisplayParam(cmd, a, b) -> int
  *     the settings bridge; its only script caller was the unused page
  *     0 begin   1 change(row, dir)   2 is-default(row)   3 reset
- *     4 apply   5 changed?
+ *     4 apply   5 changed?   6 skip the intro? (the title's version-check
+ *     page then hands straight to "Press START": no company, middleware
+ *     or UE3 logos, no opening movie; DOD3_SKIP_INTRO=0 keeps them)
  *
  * Both natives' exec thunks are replaced in the function registry the
  * script VM calls them through. A thunk evaluates its own arguments from the
@@ -192,8 +194,8 @@ void init_rows()
         {{"1", "On"}, {"0", "Off"}},
         0, LIVE_DISPLAY});
     s_rows.push_back({"RSX_AA", "Anti-Aliasing",
-        "Smooths jagged edges. Softens the picture slightly.",
-        {{NULL, "Off"}, {"fxaa", "FXAA"}},
+        "Smooths jagged edges. FXAA softens the picture slightly.",
+        {{NULL, "Off"}, {"fxaa", "FXAA"}, {"msaa2", "MSAA 2x"}, {"msaa4", "MSAA 4x"}, {"msaa8", "MSAA 8x"}},
         0, LIVE_DISPLAY});
     s_rows.push_back({"RSX_ANISO", "Texture Filtering",
         "Sharper ground and walls when seen at an angle.",
@@ -304,7 +306,10 @@ void apply()
 #if defined(_WIN32) || defined(__APPLE__)
             if (!strcmp(r.key, "RSX_ANISO")) g_rsx_aniso = v ? atoi(v) : 16;
 #endif
-            if (!strcmp(r.key, "RSX_AA")) g_rsx_aa = (v && !strcmp(v, "fxaa")) ? 1 : 0;
+            if (!strcmp(r.key, "RSX_AA")) {
+                g_rsx_aa = !v ? 0 : !strcmp(v, "fxaa") ? 1 : !strcmp(v, "msaa2") ? 2 : !strcmp(v, "msaa4") ? 4 : !strcmp(v, "msaa8") ? 8 : 0;
+                display = true;   /* the renderer makes or drops its MSAA targets at the reload */
+            }
             if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE")) display = true;
             if (!strcmp(r.key, "DOD3_FPS")) fps = true;
         }
@@ -343,6 +348,10 @@ int bridge(int cmd, int a, int b)
     case 5:
         for (const Row& r : s_rows) if (r.pending != r.saved) return 1;
         return 0;
+    case 6: { /* skip the boot logos and the opening movie? DOD3_SKIP_INTRO, on unless 0 */
+        const char* e = getenv("DOD3_SKIP_INTRO");
+        return (e && e[0] == '0') ? 0 : 1;
+    }
     }
     return 0;
 }
