@@ -1,23 +1,27 @@
-"""Generate the Graphics Settings (and skip-intro) patch for SQEX03GAME.XXX.
+"""Generate the Graphics / System Settings (and skip-intro) patch for SQEX03GAME.XXX.
 
 menu_patch.py [<overlay dir>] [--header=src/dod3_menu_patch_data.h] [--show]
 
 The overlay is for testing (PS3_VFS_OVERLAY=<dir> and DOD3_SHA_OVERRIDE from
 <dir>/sha1.txt); the header is what dod3 applies to the player's own copy.
 
-Settings root: a fifth entry, "Graphics Settings", in the empty row between
-Audio Settings and Restore Defaults; it opens the title's unused Display page
-(Sqex03GameHUDOptionDisplay, layout HUD_Pause.menu.select_option_display),
-rewritten as a list of rows whose text and values come from the port:
+Settings root: two more entries, "Graphics Settings" and "System Settings",
+in the empty row between Audio Settings and Restore Defaults and one row
+below it (Restore Defaults moves down a row). Both open the title's unused
+Display page (Sqex03GameHUDOptionDisplay, layout
+HUD_Pause.menu.select_option_display), rewritten as a list of rows whose
+count, text and values come from the port -- the root tells it which page:
 
   GetString(MAGIC + k)            text the port supplies (see below)
   m_xOption.UpdateDisplayParam(cmd, a, b) -> int
                                   the port's settings bridge (the native's
                                   only caller was this page)
-Text: MAGIC+0 root label, MAGIC+1 root description, MAGIC+100+row row label,
-MAGIC+200+row value, MAGIC+300+row row description.
+Text: MAGIC+0/+1 Graphics' root label and description, MAGIC+2/+3 System's,
+MAGIC+100+row row label, MAGIC+200+row value, MAGIC+300+row row description.
 Bridge: 0 begin (pending = current), 1 change(row, dir), 2 is-default(row),
-3 reset (pending = defaults), 4 apply, 5 changed?, 6 skip the intro?
+3 reset (pending = defaults), 4 apply, 5 changed?, 6 skip the intro?,
+7 open(root entry: 3 Graphics, 4 System, 5 Restore Defaults = every page),
+8 the open page's row count.
 
 Also: the title's boot chain (Sqex03GameHUDTitle's pages Install,
 VersionCheck, Rogo -- the company, middleware and UE3 logos -- Moive -- the
@@ -31,8 +35,8 @@ from ue3.build import Pkg, clone, subst, remove, findnode, inner_call
 from ue3.script import Node
 
 MAGIC = 900000
-ROWS = 7
-CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO = range(7)
+MAX_ROWS = 7     # the layout's
+CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO, CMD_OPEN, CMD_ROWS = range(9)
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'game', 'disc', 'PS3_GAME', 'USRDIR', 'SQEX03GAME')
 SRC = ROOT + '/COOKEDPS3/SQEX03GAME.XXX'
@@ -52,6 +56,7 @@ def main():
     new = {}
 
     OPT, ROOTC, DISP = 'Sqex03GameHUDOption', 'Sqex03GameHUDOptionRoot', 'Sqex03GameHUDOptionDisplay'
+    bridge = graphics_page(pk, new, show)
 
     # ---- Sqex03GameHUDOption.Initialize: a fifth child, the Display page ----
     f = pk.func(OPT, 'Initialize'); st = pk.parse(f)
@@ -71,15 +76,16 @@ def main():
     subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(7))
     new[f] = st
 
-    # ---- Sqex03GameHUDOption.Draw: five rows; row 3 is ours ----
+    # ---- Sqex03GameHUDOption.Draw: six rows; rows 3 and 4 are ours ----
     # The layout's empty row is one row high (Audio at y 286, Restore at 358)
     # but its own sprites (11, 12, text 50) are a narrower, indented bar from
-    # some earlier design; row 3 is drawn with Audio's (9, 10, text 49) one row
-    # (36) lower instead -- Sqex03Menu.Draw takes an offset.
+    # some earlier design; rows 3 and 4 are drawn with Audio's (9, 10, text
+    # 49) one and two rows (36, 72) lower instead -- Sqex03Menu.Draw takes an
+    # offset -- and Restore Defaults one row lower.
     f = pk.func(OPT, 'Draw'); st = pk.parse(f)
     I = pk.local(f, 'I')
     i = pk.find(st, 'if !(Less_IntInt(I, 4)) goto 0x03ce')
-    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(5))
+    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(6))
     i_lt3 = pk.find(st, 'if !(Less_IntInt(I, 3)) goto 0x0250')
     d0 = pk.find(st, 'self.m_xMenu.Draw(Add_IntInt(5, Multiply_IntInt(2, I)), self.m_xHUD.self.Canvas, <empty>, <empty>, <empty>, <empty>, <empty>, <empty>)')
     gp = pk.find(st, 'xParam = self.m_xMenu.GetFrameAnimParam(Add_IntInt(47, I), <empty>)')
@@ -88,63 +94,79 @@ def main():
     jd = pk.find(st, 'goto 0x0360')
     ds = pk.find(st, 'DrawString(sText, xParam.m_fPosX, xParam.m_fPosY, <empty>, <empty>, false, fAlpha, b0, 14f, <empty>, <empty>)')
     posy = findnode(st[ds], 'xParam.m_fPosY')
-    def bar(k):
-        n = clone(st[d0])
+    def offset(n, off, k=None):
+        """Draw(k, Canvas, <empty>, off, ...): the sprite `off` lower."""
         c = inner_call(n)
         args = [x for x in c.parts if x[0] == 'e']
-        args[0] = ('e', pk.int_(k))
-        args[3] = ('e', pk.float_(36.0))
+        if k is not None: args[0] = ('e', pk.int_(k))
+        args[3] = ('e', pk.float_(off))
         c.parts = c.parts[:1] + args + [('u8', 0x16)]
         return n
-    g_if = Node(0x07, [('jmp', st[ds - 5].mem), ('e', pk.native('EqualEqual_IntInt', clone(I), pk.int_(3)))])
-    g_if.label = ['row3']
-    g_gp = clone(st[gp]); subst(g_gp, lambda n: pk.text(n) == 'Add_IntInt(47, I)', lambda n: pk.int_(49))
-    g_y = pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy), pk.float_(36.0)))
-    g_tx = clone(st[tx]); subst(g_tx, lambda n: pk.text(n) == 'Add_IntInt(72, I)', lambda n: pk.int_(MAGIC + 0))
-    g_jd = clone(st[jd])
-    # row 3 goes before the Restore Defaults branch (the statement the `I < 3` test jumped to)
+    def row(k, nxt, off, text):
+        g_if = Node(0x07, [('jmp', nxt), ('e', pk.native('EqualEqual_IntInt', clone(I), pk.int_(k)))])
+        g_if.label = ['row%d' % k]
+        g_gp = clone(st[gp]); subst(g_gp, lambda n: pk.text(n) == 'Add_IntInt(47, I)', lambda n: pk.int_(49))
+        g_y = pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy), pk.float_(off)))
+        g_tx = clone(st[tx]); subst(g_tx, lambda n: pk.text(n) == 'Add_IntInt(72, I)', lambda n: pk.int_(text))
+        return [g_if, offset(clone(st[d0]), off, 9), offset(clone(st[d0]), off, 10), g_gp, g_y,
+                clone(st[fa]), g_tx, clone(st[jd])]
+    # Restore Defaults (the statement the `I < 3` test jumped to), one row lower
     else_at = ds - 5
     assert pk.text(st[else_at]).startswith('self.m_xMenu.Draw(13,'), pk.text(st[else_at])
-    st[else_at:else_at] = [g_if, bar(9), bar(10), g_gp, g_y, clone(st[fa]), g_tx, g_jd]
+    offset(st[else_at], 36.0); offset(st[else_at + 1], 36.0)
+    rp = pk.find(st, 'xParam = self.m_xMenu.GetFrameAnimParam(51, <empty>)')
+    st.insert(rp + 1, pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy), pk.float_(36.0))))
+    # rows 3 and 4 go before it
+    st[else_at:else_at] = row(3, 'row4', 36.0, MAGIC + 0) + row(4, st[else_at].mem, 72.0, MAGIC + 2)
     st[i_lt3].parts[0] = ('jmp', 'row3')
     new[f] = st
 
-    # ---- Root.UpdateSelect: five entries; Restore Defaults is now index 4 ----
+    # ---- Root.UpdateSelect: six entries; Restore Defaults is now index 5 ----
+    # An entry opens child 1 + index; System (4) opens the same page as
+    # Graphics (child 4), and the port is told which before it does.
     f = pk.func(ROOTC, 'UpdateSelect'); st = pk.parse(f)
+    sel = pk.inst('Sqex03GameHUDOptionBase', 'm_iSelect')
     for t in ('self.m_iSelect = AddValueLimit(self.m_iSelect, -1, 4, <empty>)',
               'self.m_iSelect = AddValueLimit(self.m_iSelect, 1, 4, <empty>)'):
         i = pk.find(st, t)
-        subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(5))
+        subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(6))
+    i = pk.find(st, 'self.m_xParent.self.m_iNextType = Add_IntInt(1, self.m_iSelect)')
+    subst(st[i], lambda n: pk.text(n) == 'Add_IntInt(1, self.m_iSelect)',
+          lambda n: pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(4)), pk.int_(4), n))
     i = pk.find(st, 'if !(NotEqual_IntInt(self.m_iSelect, 3)) goto 0x0230')
-    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 3)], lambda n: pk.int_(4))
+    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 3)], lambda n: pk.int_(5))
+    st.insert(i, bridge(CMD_OPEN, clone(sel)))
     i = pk.find(st, 'self.m_xParent.self.m_iNextType = 4')
     subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(7))
     new[f] = st
 
-    # ---- Root.Draw: the cursor; row 3 is Audio's position one row lower ----
+    # ---- Root.Draw: the cursor (params 40 + index): rows 3 and 4 at Audio's
+    # position (42) one and two rows lower, Restore Defaults at its own (44)
+    # one row lower ----
     f = pk.func(ROOTC, 'Draw'); st = pk.parse(f)
     sel = pk.inst('Sqex03GameHUDOptionBase', 'm_iSelect')
+    def is_(k): return pk.native('EqualEqual_IntInt', clone(sel), pk.int_(k))
     i = pk.find(st, 'iAdjust = (Less_IntInt(self.m_iSelect, 3) ? 0 : 1)')
-    st[i].parts[1] = ('e', pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(3)), pk.int_(-1), pk.int_(0)))
+    st[i].parts[1] = ('e', pk.cond(is_(4), pk.int_(-2),
+                                   pk.cond(pk.native('GreaterEqual_IntInt', clone(sel), pk.int_(3)), pk.int_(-1), pk.int_(0))))
     dc = pk.find(st, 'self.m_xHUD.self.m_Common.DrawCursor(xParam.m_fPosX, xParam.m_fPosY, <empty>)')
     posy = findnode(st[dc], 'xParam.m_fPosY')
-    st[dc:dc] = [Node(0x07, [('jmp', st[dc].mem), ('e', pk.native('EqualEqual_IntInt', clone(sel), pk.int_(3)))]),
-                 pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy), pk.float_(36.0)))]
+    st[dc:dc] = [Node(0x07, [('jmp', st[dc].mem), ('e', pk.native('GreaterEqual_IntInt', clone(sel), pk.int_(3)))]),
+                 pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy),
+                                               pk.cond(is_(4), pk.float_(72.0), pk.float_(36.0))))]
     new[f] = st
 
-    # ---- Root.DrawDetail: descriptions; ours for index 3 ----
+    # ---- Root.DrawDetail: descriptions (78 + index, Restore's 83); ours for 3 and 4 ----
     f = pk.func(ROOTC, 'DrawDetail'); st = pk.parse(f)
     i = pk.find(st, 'iAdjust = (Less_IntInt(self.m_iSelect, 3) ? 0 : 2)')
-    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 3)], lambda n: pk.int_(4))
-    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 2)], lambda n: pk.int_(1))
+    st[i].parts[1] = ('e', pk.int_(0))
     i = pk.find(st, 'sText = self.m_xParent.self.m_MessageData.GetString(Add_IntInt(Add_IntInt(78, self.m_iSelect), iAdjust))')
     sel = pk.inst('Sqex03GameHUDOptionBase', 'm_iSelect')
     def desc(n):
-        return pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(3)), pk.int_(MAGIC + 1), n)
+        return pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(3)), pk.int_(MAGIC + 1),
+                       pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(4)), pk.int_(MAGIC + 3), n))
     subst(st[i], lambda n: pk.text(n) == 'Add_IntInt(Add_IntInt(78, self.m_iSelect), iAdjust)', desc)
     new[f] = st
-
-    bridge = graphics_page(pk, new, show)
 
     # ---- the boot logos and the opening movie ----
     # VersionCheck names its next page Rogo (2); Rogo names Moive (3), and
@@ -217,7 +239,7 @@ def write_header(path, bodies, size, sha):
 
 
 def graphics_page(pk, new, show):
-    """Sqex03GameHUDOptionDisplay -> the Graphics page."""
+    """Sqex03GameHUDOptionDisplay -> the Graphics and System pages."""
     DISP = 'Sqex03GameHUDOptionDisplay'
 
     # the bridge call, from ReflectValue's `self.m_xGameInfo.self.m_xOption.UpdateDisplayParam()`
@@ -263,23 +285,23 @@ def graphics_page(pk, new, show):
     st[0:0] = [lft, rgt, bridge(CMD_CHANGE, pk.local(f, 'iSelect'), pk.local(f, 'iValue'))]
     new[f] = st
 
-    # UpdateSelect: ROWS rows; left/right on every row
+    # UpdateSelect: the page's rows (the bridge's count); left/right on every row
     f = pk.func(DISP, 'UpdateSelect'); st = pk.parse(f)
     for t in ('self.m_iSelect = AddValueLimit(self.m_iSelect, -1, 2, <empty>)',
               'self.m_iSelect = AddValueLimit(self.m_iSelect, 1, 2, <empty>)'):
         i = pk.find(st, t)
-        subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 2)], lambda n: pk.int_(ROWS))
+        subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 2)], lambda n: bridge(CMD_ROWS))
     for t in ('if !(LessEqual_IntInt(self.m_iSelect, 1)) goto 0x011e',
               'if !(LessEqual_IntInt(self.m_iSelect, 1)) goto 0x0164'):
         i = pk.find(st, t)
-        subst(st[i], lambda n: n.op == 0x26, lambda n: pk.int_(ROWS - 1))
+        subst(st[i], lambda n: n.op == 0x26, lambda n: pk.int_(MAX_ROWS - 1))
     new[f] = st
 
     # Draw: every row in the loop -- bar, icon, label, value, arrows
     f = pk.func(DISP, 'Draw'); st = pk.parse(f)
     I = pk.local(f, 'I')
     loop = pk.find(st, 'if !(LessEqual_IntInt(I, 1)) goto 0x021f')
-    subst(st[loop], lambda n: n.op == 0x26, lambda n: pk.int_(ROWS - 1))
+    st[loop].parts[1] = ('e', pk.native('Less_IntInt', clone(I), bridge(CMD_ROWS)))
     # label: GetString(I == 0 ? 119 : 122) is spelled as an if/else; replace both with MAGIC+100+I
     i0 = pk.find(st, 'if !(EqualEqual_IntInt(I, 0)) goto 0x0171')
     i1 = pk.find(st, 'sText = self.m_xParent.self.m_MessageData.GetString(119)')

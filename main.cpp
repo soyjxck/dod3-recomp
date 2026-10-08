@@ -453,6 +453,83 @@ static void apply_fps_unlock(void)
 /* src/dod3_settings_menu.cpp, after it sets DOD3_FPS. */
 void dod3_fps_reload() { apply_fps_unlock(); }
 
+/* DOD3_UNFOCUSED: what the game does while its window is in the background.
+ * Unset, it keeps running. "mute": the audio plays as silence. "pause": the
+ * frame clock below stops -- no vblanks, flips or FIFO drains, so the title
+ * stops at its next frame -- the mixer stops reading the audio ports, and the
+ * guest clocks stand still (sys_timer.c), so music, movies and timers pick up
+ * where they were. The System Settings page sets it while running. */
+static std::atomic<int> s_unfocused{0};   /* 0 run, 1 mute, 2 pause */
+static void apply_unfocused(void)
+{
+    const char* e = getenv("DOD3_UNFOCUSED");
+    s_unfocused = (!e || !*e) ? 0 : !strcmp(e, "mute") ? 1 : !strcmp(e, "pause") ? 2 : 0;
+}
+void dod3_unfocused_reload() { apply_unfocused(); }
+extern "C" volatile int g_audio_hold;                 /* cellAudio.c: 1 mute, 2 pause */
+extern "C" void ps3_guest_clock_pause(int paused);   /* sys_timer.c */
+extern "C" uint64_t ppu_timebase_now(void);           /* sys_timer.c: mftb */
+
+/* Is the game's window the one in front? DOD3_FOCUS_FILE=<path> (testing):
+ * out of focus while that file exists. */
+static bool window_focused(void)
+{
+    static const char* test = getenv("DOD3_FOCUS_FILE");
+    if (test) {
+        FILE* f = fopen(test, "rb");
+        if (f) fclose(f);
+        return !f;
+    }
+#ifdef _WIN32
+    DWORD pid = 0;
+    if (HWND w = GetForegroundWindow()) GetWindowThreadProcessId(w, &pid);
+    return pid == GetCurrentProcessId();
+#else
+    return true;   /* macOS: not asked yet (NSApp.isActive, in the Metal backend) */
+#endif
+}
+
+/* The frame clock asks every pass; the window is looked at 20 times a
+ * second. 0 running, 1 muted, 2 paused. */
+static int unfocused_hold(uint64_t now_us)
+{
+    static uint64_t last;
+    static int hold;
+    if (now_us - last < 50000) return hold;
+    last = now_us;
+    const int want = window_focused() ? 0 : s_unfocused.load();
+    if (want != hold) {
+        static uint64_t paused_at, guest_at;
+        if (want == 2) { ps3_guest_clock_pause(1); paused_at = now_us; guest_at = ppu_timebase_now(); }
+        g_audio_hold = want;
+        if (hold == 2) {
+            ps3_guest_clock_pause(0);
+            /* what the title saw of the pause: the guest clock's step across it */
+            fprintf(stderr, "[focus] resumed after %.1f s paused; the guest clock moved %.1f ms\n",
+                    (now_us - paused_at) / 1e6, (ppu_timebase_now() - guest_at) * 1000.0 / 79800000.0);
+        }
+        fprintf(stderr, "[focus] %s\n", want == 2 ? "out of focus: paused" : want == 1 ? "out of focus: muted" : "running");
+        hold = want;
+    }
+    return hold;
+}
+
+/* The window was closed: end the process. Stopping only the rendering left
+ * the guest running headless -- a dod3.exe nobody could see, holding the GPU
+ * and the audio device until Task Manager found it. The guest threads cannot
+ * be joined (they run lifted code with no exit path), so this is a hard exit
+ * after the logs are flushed. */
+static void window_closed_exit(void)
+{
+    fprintf(stderr, "[rsx] window closed -- exiting\n");
+    fflush(stdout); fflush(stderr);
+#ifdef _WIN32
+    TerminateProcess(GetCurrentProcess(), 0);
+#else
+    _exit(0);
+#endif
+}
+
 /* The engine checks the script packages (and the startup packages and INIs)
  * against a SHA-1 table compiled into the EBOOT -- "name\0" + 20 bytes, at
  * 0x019AD200 -- once they are loaded, and a mismatch is an "IO Failure" and
@@ -948,6 +1025,13 @@ static DWORD WINAPI frame_clock(LPVOID)
     uint64_t last_pump = 0, last_boot_present = 0;
 
     for (;;) {
+        /* DOD3_UNFOCUSED=pause, out of focus: only the window is served. */
+        if (unfocused_hold(frame_clock_us()) == 2) {
+            if (rsx_ok && rsx_backend_pump() != 0) window_closed_exit();
+            Sleep(10);
+            next_tick = frame_clock_us();   /* no burst of vblanks on the way back */
+            continue;
+        }
         if (kick_on) {
             /* Until a guest poll kicks it, the next vblank, or the usual sleep
              * -- whichever comes first. */
@@ -1075,20 +1159,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                 if (slow && GetTickCount64() - t3 > 300)
                     fprintf(stderr, "[slow-step] window pump %llu ms\n", (unsigned long long)(GetTickCount64() - t3));
                 if (pumped != 0) {
-                    /* Window closed: end the process. Stopping only the
-                     * rendering left the guest running headless -- a
-                     * dod3.exe nobody could see, holding the GPU and the
-                     * audio device until Task Manager found it. The guest
-                     * threads cannot be joined (they run lifted code with no
-                     * exit path), so this is a hard exit after the logs are
-                     * flushed. */
-                    fprintf(stderr, "[rsx] window closed -- exiting\n");
-                    fflush(stdout); fflush(stderr);
-#ifdef _WIN32
-                    TerminateProcess(GetCurrentProcess(), 0);
-#else
-                    _exit(0);
-#endif
+                    window_closed_exit();
                     rsx_ok = 0;
                     continue;
                 }
@@ -1592,6 +1663,7 @@ int main(int argc, char** argv)
         return 1;
     }
     apply_fps_unlock();
+    apply_unfocused();
     apply_sha_overrides();
     dod3_menu_patch_prepare();
 #ifdef _WIN32

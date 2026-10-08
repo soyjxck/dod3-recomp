@@ -57,12 +57,14 @@ To run the setup again: `dod3.exe --setup`.
 
 In the game: **Settings → Graphics Settings** (on the title menu, next to
 Audio Settings) sets the resolution, display mode, frame rate, v-sync,
-anti-aliasing (FXAA, or MSAA 2x/4x/8x on Windows), texture filtering and
-renderer. Confirm with ✕ to save them to dod3.ini;
-everything but the renderer changes at once (a second of black while the
-resolution or display mode switches), the renderer the next time the game
-starts.
-The first start adds the page to the game's menu, which takes a second or
+anti-aliasing (FXAA, or MSAA 2x/4x/8x), texture filtering and
+renderer. **Settings → System Settings** sets whether the logos and opening
+movie are skipped, and what the game does while its window is in the
+background (keep running, mute, or pause). Confirm with ✕ to save them to
+dod3.ini; everything but the renderer and Skip Intro changes at once (a
+second of black while the resolution or display mode switches), those two
+the next time the game starts.
+The first start adds the pages to the game's menu, which takes a second or
 two (the patched menu goes to `game/patch`, the game's own files are not
 changed).
 
@@ -70,14 +72,15 @@ Or edit **dod3.ini** next to dod3.exe (it explains each setting):
 
 | Setting | What it does |
 |---|---|
-| `RSX_SCALE` | Internal resolution as a multiple of 1280×720: 1.5 = 1080p, 2 = 1440p, 3 = 4K |
+| `RSX_SCALE` | Internal resolution as a multiple of 1280×720: 1.5 = 1080p, 2 = 1440p, 3 = 4K. Above the window's size it is averaged down: supersampling |
 | `RSX_DISPLAY` | `windowed`, `borderless` (recommended for full screen) or `fullscreen` |
 | `RSX_WINDOW` | Window size in windowed mode, e.g. `1920x1080` |
 | `RSX_VSYNC` | `1` to sync to the display |
 | `DOD3_FPS` | Frame-rate cap: `60` is tested and recommended; unset keeps the original 30 |
 | `RSX_ANISO` | Texture filtering: `1` (original) to `16` (16× anisotropic, the default) |
-| `RSX_AA` | `fxaa`, or `msaa2` / `msaa4` / `msaa8` (Windows; MSAA costs a lot at 4K); unset is off. A resolution above your display's is supersampling |
+| `RSX_AA` | `fxaa`, or `msaa2` / `msaa4` / `msaa8` (MSAA costs a lot at 4K); unset is off |
 | `DOD3_SKIP_INTRO` | `1` (default) skips the logos and the opening movie at start-up; `0` keeps them |
+| `DOD3_UNFOCUSED` | While the window is in the background: unset keeps running, `mute` silences the audio, `pause` stops the game until you come back (Windows) |
 | `RSX_BACKEND` | `vulkan` for the Vulkan renderer (experimental); unset is Direct3D 12 |
 
 ## Controls

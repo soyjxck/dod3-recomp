@@ -1,15 +1,19 @@
-/* The Graphics Settings page in the title's own Settings menu.
+/* The Graphics Settings and System Settings pages in the title's own
+ * Settings menu.
  *
  * tools/menu_patch.py rewrites a few script functions in SQEX03GAME.XXX (the
- * copy served through PS3_VFS_OVERLAY): the Settings root gets a fifth entry,
- * "Graphics Settings", in the empty row above Restore Defaults, and it opens
- * the page the title shipped unused (Sqex03GameHUDOptionDisplay, with its
- * layout HUD_Pause.menu.select_option_display), rewritten as a list of rows.
+ * copy served through PS3_VFS_OVERLAY): the Settings root gets two more
+ * entries, "Graphics Settings" and "System Settings", above Restore
+ * Defaults. Both open the page the title shipped unused
+ * (Sqex03GameHUDOptionDisplay, with its layout
+ * HUD_Pause.menu.select_option_display), rewritten as a list of rows whose
+ * count, text and values come from here; the root says which page it opens.
  * The script reaches this file through two natives:
  *
  *   Sqex03DataMessage.GetString(i)   i in [MAGIC, MAGIC + 1000): text from here
- *     MAGIC+0 / +1         the root entry's label / description
- *     MAGIC+100+row        a row's label
+ *     MAGIC+0 / +1         Graphics Settings: the root entry's label / description
+ *     MAGIC+2 / +3         System Settings: the same
+ *     MAGIC+100+row        a row's label (of the open page)
  *     MAGIC+200+row        its value (the one being edited)
  *     MAGIC+300+row        its description
  *   Sqex03GameOption.UpdateDisplayParam(cmd, a, b) -> int
@@ -18,6 +22,8 @@
  *     4 apply   5 changed?   6 skip the intro? (the title's version-check
  *     page then hands straight to "Press START": no company, middleware
  *     or UE3 logos, no opening movie; DOD3_SKIP_INTRO=0 keeps them)
+ *     7 open(root entry): 3 Graphics, 4 System, 5 Restore Defaults (the
+ *     reset and apply that follow cover every page)   8 the page's rows
  *
  * Both natives' exec thunks are replaced in the function registry the
  * script VM calls them through. A thunk evaluates its own arguments from the
@@ -25,11 +31,13 @@
  * for each opcode out of GNatives -- step() below does the same.
  *
  * The values are the dod3.ini keys (RSX_SCALE, RSX_DISPLAY, DOD3_FPS,
- * RSX_VSYNC, RSX_ANISO, RSX_BACKEND); Apply writes them to dod3.ini and
- * applies what can change while running: the frame rate, texture filtering
- * and (Direct3D 12 / Vulkan) the resolution, display mode and v-sync. The
- * renderer waits for the next start -- a row whose saved value differs
- * from the running one says so. */
+ * RSX_VSYNC, RSX_AA, RSX_ANISO, RSX_BACKEND; DOD3_SKIP_INTRO,
+ * DOD3_UNFOCUSED); Apply writes the open page's to dod3.ini and applies what
+ * can change while running: the frame rate, texture filtering, the
+ * background behaviour and (Direct3D 12 / Vulkan) the resolution, display
+ * mode, v-sync and anti-aliasing. The renderer and the intro wait for the
+ * next start -- a row whose saved value differs from the running one says
+ * so. */
 #include "ppu_recomp.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +50,7 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
 const char* dod3_settings_path();   /* main.cpp: the dod3.ini read at boot, or the one to create */
 void dod3_fps_reload();             /* main.cpp: DOD3_FPS again */
+void dod3_unfocused_reload();       /* main.cpp: DOD3_UNFOCUSED again */
 extern "C" volatile int g_rsx_display_reload;   /* rsx_draw_engine.c: the renderer re-reads its display settings */
 #if defined(_WIN32) || defined(__APPLE__)
 extern "C" int g_rsx_aniso;         /* the live anisotropy level: rsx_d3d12_engine.c, rsx_metal_backend.m */
@@ -137,10 +146,26 @@ struct Row {
     bool live;                /* applied at once (else on the next start) */
     int running, saved, pending;   /* choice indices; -1 = a value not in the list */
     std::string other;        /* that value */
+    int page;                 /* 0 Graphics, 1 System */
 };
 
-std::vector<Row> s_rows;
+std::vector<Row> s_rows;            /* every page's */
+std::vector<int> s_page_rows[2];    /* each page's, in order */
+int s_page;                         /* the page open; -1: every page (Restore Defaults) */
 bool s_init;
+
+/* The rows a command covers: the open page's, or every page's. */
+template <class F> void each(F f)
+{
+    for (Row& r : s_rows)
+        if (s_page < 0 || r.page == s_page) f(r);
+}
+
+Row* row_at(int k)
+{
+    const std::vector<int>& v = s_page_rows[s_page > 0 ? s_page : 0];
+    return k >= 0 && k < (int)v.size() ? &s_rows[v[k]] : nullptr;
+}
 
 int find_choice(const Row& r, const char* v)
 {
@@ -212,10 +237,23 @@ void init_rows()
         {{NULL, "Metal"}},
         0, false});
 #endif
-    for (Row& r : s_rows) {
+    /* System Settings */
+    s_rows.push_back({"DOD3_SKIP_INTRO", "Skip Intro",
+        "Skip the logos and the opening movie.",
+        {{"1", "On"}, {"0", "Off"}},
+        0, false});
+    s_rows.back().page = 1;
+    s_rows.push_back({"DOD3_UNFOCUSED", "When Unfocused",
+        "What the game does while its window is in the background.",
+        {{NULL, "Keep Running"}, {"mute", "Mute"}, {"pause", "Pause"}},
+        0, true});
+    s_rows.back().page = 1;
+    for (size_t i = 0; i < s_rows.size(); i++) {
+        Row& r = s_rows[i];
         if (!r.live) r.desc = strdup((std::string(r.desc) + restart).c_str());
         read_current(r, r.running);
         r.saved = r.pending = r.running;
+        s_page_rows[r.page].push_back((int)i);
     }
 }
 
@@ -230,13 +268,15 @@ bool menu_text(int i, std::string& out)
 {
     if (i < MAGIC || i >= MAGIC + 1000) return false;
     init_rows();
-    const int k = i - MAGIC, row = k % 100;
-    const bool have = row < (int)s_rows.size();
+    const int k = i - MAGIC;
+    const Row* r = row_at(k % 100);
     if (k == 0) out = "Graphics Settings";
     else if (k == 1) out = "Adjust settings related to graphics and the display.";
-    else if (k >= 100 && k < 200) out = have ? s_rows[row].label : "";
-    else if (k >= 200 && k < 300) out = have ? value_text(s_rows[row], s_rows[row].pending) : "";
-    else if (k >= 300 && k < 400) out = have ? s_rows[row].desc : "";
+    else if (k == 2) out = "System Settings";
+    else if (k == 3) out = "Adjust the start-up and how the game runs in the background.";
+    else if (k >= 100 && k < 200) out = r ? r->label : "";
+    else if (k >= 200 && k < 300) out = r ? value_text(*r, r->pending) : "";
+    else if (k >= 300 && k < 400) out = r ? r->desc : "";
     else out = "";
     return true;
 }
@@ -294,9 +334,9 @@ void write_ini(const std::vector<std::pair<std::string, const char*>>& kv)
 void apply()
 {
     std::vector<std::pair<std::string, const char*>> kv;
-    bool display = false, fps = false;
-    for (Row& r : s_rows) {
-        if (r.pending == r.saved) continue;
+    bool display = false, fps = false, unfocused = false;
+    each([&](Row& r) {
+        if (r.pending == r.saved) return;
         const char* v = r.pending >= 0 ? r.choices[r.pending].value : r.other.c_str();
         kv.push_back({r.key, v});
         r.saved = r.pending;
@@ -312,46 +352,58 @@ void apply()
             }
             if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE")) display = true;
             if (!strcmp(r.key, "DOD3_FPS")) fps = true;
+            if (!strcmp(r.key, "DOD3_UNFOCUSED")) unfocused = true;
         }
-    }
+    });
     if (display) g_rsx_display_reload = 1;
     if (fps) dod3_fps_reload();
+    if (unfocused) dod3_unfocused_reload();
     if (!kv.empty()) write_ini(kv);
 }
 
 int bridge(int cmd, int a, int b)
 {
     init_rows();
-    const int n = (int)s_rows.size();
     switch (cmd) {
     case 0:   /* begin: edit the saved values */
-        for (Row& r : s_rows) r.pending = r.saved;
+        each([](Row& r) { r.pending = r.saved; });
         return 0;
     case 1: { /* change row a by b */
-        if (a < 0 || a >= n) return 0;
-        Row& r = s_rows[a];
-        const int m = (int)r.choices.size();
-        int i = r.pending < 0 ? (b > 0 ? 0 : m - 1) : r.pending + (b > 0 ? 1 : -1);
+        Row* r = row_at(a);
+        if (!r) return 0;
+        const int m = (int)r->choices.size();
+        int i = r->pending < 0 ? (b > 0 ? 0 : m - 1) : r->pending + (b > 0 ? 1 : -1);
         if (i < 0) i = m - 1;
         if (i >= m) i = 0;
-        r.pending = i;
+        r->pending = i;
         return 1;
     }
-    case 2:   /* is row a at its default? */
-        return (a >= 0 && a < n && s_rows[a].pending == s_rows[a].def) ? 1 : 0;
+    case 2: { /* is row a at its default? */
+        const Row* r = row_at(a);
+        return (r && r->pending == r->def) ? 1 : 0;
+    }
     case 3:   /* reset */
-        for (Row& r : s_rows) r.pending = r.def;
+        each([](Row& r) { r.pending = r.def; });
         return 0;
     case 4:
         apply();
         return 0;
-    case 5:
-        for (const Row& r : s_rows) if (r.pending != r.saved) return 1;
-        return 0;
+    case 5: {
+        int changed = 0;
+        each([&](Row& r) { if (r.pending != r.saved) changed = 1; });
+        return changed;
+    }
     case 6: { /* skip the boot logos and the opening movie? DOD3_SKIP_INTRO, on unless 0 */
         const char* e = getenv("DOD3_SKIP_INTRO");
         return (e && e[0] == '0') ? 0 : 1;
     }
+    case 7:   /* the root opens entry a */
+        if (a == 3) s_page = 0;
+        else if (a == 4) s_page = 1;
+        else if (a == 5) s_page = -1;
+        return 0;
+    case 8:   /* the open page's rows */
+        return (int)s_page_rows[s_page > 0 ? s_page : 0].size();
     }
     return 0;
 }
