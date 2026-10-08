@@ -1,73 +1,79 @@
-# dod3-recomp
+# Drakengard 3 Recompiled
 
-A static recompilation of **Drakengard 3** (Drag-On Dragoon 3, PS3, BLUS31197),
-built on [ps3recomp](https://github.com/sp00nznet/ps3recomp), which is included
-as a submodule.
+A native PC port of **Drakengard 3** (Drag-On Dragoon 3, PlayStation 3,
+BLUS31197) for Windows and macOS, made by static recompilation of the game's
+code on the [ps3recomp](https://github.com/sp00nznet/ps3recomp) toolkit.
 
-## Layout
+The game's PowerPC and SPU code is translated to C++ ahead of time and built
+into a normal executable, with the PS3's system libraries replaced by native
+implementations and the RSX graphics by Direct3D 12, Metal or Vulkan. There
+is no emulation at run time.
 
-| Path | What it is |
-|------|------------|
-| `ps3recomp/` | Toolkit submodule (lifter, runtime, HLE libraries) |
-| `elf/EBOOT.ELF` | Decrypted EBOOT (not committed, you supply it) |
-| `game/disc/` | Extracted disc contents (not committed, you supply it) |
-| `out/` | `ppu_loader.py` output: functions, imports, image manifest |
-| `recompiled/` | `ppu_lifter.py` output: the lifted C++ |
-| `main.cpp`, `stubs.cpp` | Port entry point and per-game HLE overrides |
+**Nothing of the game is in this repository.** You need your own copy of
+Drakengard 3: the US disc and the game's 1.01 update, plus whatever DLC you
+own. The installer takes them from there.
 
-## Pipeline
+- **Players:** [docs/PLAYING.md](docs/PLAYING.md) -- what you need, installing,
+  settings, troubleshooting.
+- **Developers:** [docs/BUILDING.md](docs/BUILDING.md) (toolchain, lifting
+  and building), [docs/TECHNICAL.md](docs/TECHNICAL.md) (how the port works),
+  [docs/DEBUGGING.md](docs/DEBUGGING.md) (switches, profiling, the regression
+  tests), [CONTRIBUTING.md](CONTRIBUTING.md).
 
-```bash
-git submodule update --init
-python3 -m venv .venv && .venv/bin/pip install -r ps3recomp/tools/requirements.txt
+## Status
 
-.venv/bin/python ps3recomp/tools/ppu_loader.py elf/EBOOT.ELF -o out/
-.venv/bin/python ps3recomp/tools/ppu_lifter.py elf/EBOOT.ELF \
-    --functions out/EBOOT.functions.json \
-    --hle-stubs out/EBOOT.imports.json \
-    --code-end 0x157e770 \
-    --nonvolatile-locals \
-    --hook 0x000C1E50 --hook 0x00EE6538 --hook 0x00272F58 \
-    -o recompiled/
+| | |
+|---|---|
+| Windows 10/11, Direct3D 12 | Playable. 60 fps at 4K on an RTX 4090 / i9-13900K (chapter 1 through the heavy destruction scene, open areas, the village); 120 fps holds at lower resolutions |
+| Windows, Vulkan | Experimental (`RSX_BACKEND = vulkan`) |
+| macOS 13+, Apple silicon, Metal | Playable. 60 fps at 1080p in battle on an M1 Pro |
+| Game version | The 1.01 update (required) |
+| DLC | All 20 packs, including the Japanese voice pack |
 
-tools/lift_spu.sh     # SPU tasks, the ShaderPatching job, MultiStream DSP plugins
+What the port adds over the original: any internal resolution (supersampling
+included), windowed, borderless or full-screen display, a frame-rate cap of
+your choice (60 and 120 tested), FXAA or MSAA, anisotropic filtering, a wider
+field of view, skipping the intro logos and movie, and pausing or muting when
+the window is in the background -- all from a Graphics Settings and a System
+Settings page added to the game's own Settings menu.
 
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-PS3_VFS_ROOT=game/disc ./build/dod3 elf/EBOOT.ELF
-# or, for a bounded run with a log:  tools/run_timed.sh 120 out/run.log
+Known issues: pre-rendered movies play with uneven frame pacing, and the game
+has been tested on few machines.
+
+## How it is built
+
+```
+elf/EBOOT.ELF  --ppu_loader/ppu_lifter-->  recompiled/*.cpp   (the game's PPU code as C++)
+SPU programs   --tools/lift_spu.sh------>  spu/               (SPURS tasks, jobs, the audio DSP)
+main.cpp, src/ ------------------------->  the port: frame clock, settings, installer, native fast paths
+ps3recomp/     ------------------------->  runtime, HLE libraries, the RSX draw engine and its backends
 ```
 
-`--code-end 0x157e770` is the end of the last executable section, so
-`.rodata` in the R-X segment is never promoted to functions.
+The executable `dod3` installs the game from your files (a Dear ImGui
+installer, `src/setup_*.cpp`) and runs it. See [docs/BUILDING.md](docs/BUILDING.md).
 
-The 1.01 update's EBOOT (decrypted to `elf/EBOOT_101.ELF`) is lifted the same
-way into `recompiled_101/`, with `--code-end 0x157fc00` and the hooks at
-`0x000C1E50 0x00EE7728 0x00272E58`, and built with `-DDOD3_EBOOT=101`
-(`src/dod3_eboot.h`; docs/WINDOWS_HANDOFF.md, section 16).
+## Legal
 
-The three `--hook`s are required: those functions are supplied natively and
-the lifted bodies are emitted as `func_<addr>_lifted` --
-`src/dod3_gc.cpp` (the garbage collector, `func_000C1E50` and its
-reachability pass `func_00EE6538`, which runs natively from
-`src/dod3_gc_native.cpp`) and `src/dod3_hot.cpp` (a timing wrapper around
-the collision test `func_00272F58`, `DOD3_HOT_LOG=1`). A lift without them
-fails to link with duplicate symbols.
+This project is not affiliated with or endorsed by Square Enix, Access Games
+or Sony Interactive Entertainment. Drakengard 3 and all of its assets belong
+to their owners; none are included, and the port only runs from a copy of the
+game you own.
 
-The build also lifts libsre's SPURS LFQueue push and SPURS queue paths out of
-`ps3recomp/fw_spu/libsre.prx` (`tools/gen_libsre.py`, into
-`build/gen/`). That output is firmware-derived and never committed; point
-`-DLIBSRE_PRX=` at your own decrypted copy to use a different one.
+The code in this repository is under the [MIT License](LICENSE). It builds on
+ps3recomp (MIT) and includes Dear ImGui (MIT); see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Title facts
+## Credits
 
-- 30,134 unique functions from 38,848 OPD descriptors
-- 252 firmware imports across 17 libraries (cellSpurs, sysPrxForUser,
-  cellSysutil and cellGcmSys make up most of them)
-- MultiStream audio (`cellMS*`) is linked statically and runs on the SPUs. Its
-  mixer task loads three position-independent DSP plugins into its local store
-  at 0x37000; `tools/make_spu_overlays.py` lifts them at that address
-- One SPURS job (ShaderPatching) is a raw job binary inside the EBOOT at
-  0x01785E00, not an ELF; `tools/lift_spu.sh` wraps and lifts it
-- Package decompression runs on an SPU zlib task fed through an ANY2ANY SPURS
-  LFQueue; `src/spurs_lfqueue.cpp` drives Sony's own push path for it
+- [ps3recomp](https://github.com/sp00nznet/ps3recomp) by sp00nznet: the
+  recompiler, the runtime and the PS3 library implementations. This port's
+  changes to it are in the [soyjxck/ps3recomp](https://github.com/soyjxck/ps3recomp)
+  fork, the `ps3recomp/` submodule.
+- [RPCS3](https://rpcs3.net): the reference for much of the PS3's behaviour,
+  and the source of two techniques used here (write-watched texture memory,
+  a guest clock that stops while the game is paused).
+- [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) and
+  [Unleashed Recompiled](https://github.com/hedge-dev/UnleashedRecomp): the
+  model for a recompiled port, and for its installer.
+- [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut: the
+  installer's user interface.
