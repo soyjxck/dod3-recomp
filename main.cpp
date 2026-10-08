@@ -623,6 +623,8 @@ static void ab_vcwatch(int on) { g_eng_vc_watch = on; }
 #ifdef _WIN32
 extern "C" int g_rsx_snap_incr;   /* rsx_d3d12_engine.c: own-target snapshots by copy draws */
 static void ab_snapincr(int on) { g_rsx_snap_incr = on; }
+extern "C" int g_eng_aniso_on;    /* rsx_d3d12_engine.c: RSX_ANISO on game textures */
+static void ab_aniso(int on) { g_eng_aniso_on = on; }
 #endif
 extern "C" uint32_t g_rsx_engine_hitches;   /* rsx_draw_engine.c: presents over 25 ms apart */
 static void ab_none(int) {}
@@ -643,6 +645,7 @@ static const struct { const char* name; void (*set)(int on); } s_ab_switches[] =
     { "vcwatch",   ab_vcwatch },
 #ifdef _WIN32
     { "snapincr",  ab_snapincr },
+    { "aniso",     ab_aniso },
 #endif
     { "none",   ab_none },
 };
