@@ -535,8 +535,10 @@ extern "C" int g_rsx_query_nosync;
 static void ab_querysync(int on) { g_rsx_query_nosync = on ? 0 : 1; }
 extern "C" int g_spurs_jc_par;
 static void ab_jcpar(int on) { g_spurs_jc_par = on ? 4 : 0; }
+#ifdef _WIN32   /* the D3D12 engine's buffer pool (rsx_d3d12_engine.c is Windows-only) */
 extern "C" int g_eng_buf_pool;
 static void ab_bufpool(int on) { g_eng_buf_pool = on; }
+#endif
 extern "C" int g_eng_tex_watch;
 static void ab_texwatch(int on) { g_eng_tex_watch = on; }
 extern "C" int g_dod3_spu_patch_hook;   /* src/dod3_spu_hooks.c */
@@ -557,7 +559,9 @@ static const struct { const char* name; void (*set)(int on); } s_ab_switches[] =
     { "labelwake", ab_labelwake },
     { "querysync", ab_querysync },
     { "jcpar",     ab_jcpar },
+#ifdef _WIN32
     { "bufpool",   ab_bufpool },
+#endif
     { "texwatch",  ab_texwatch },
     { "patchhook", ab_patchhook },
     { "lzfmemo",   ab_lzfmemo },
