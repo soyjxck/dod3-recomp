@@ -600,6 +600,8 @@ extern "C" int g_eng_tex_watch;
 static void ab_texwatch(int on) { g_eng_tex_watch = on; }
 extern "C" int g_dod3_spu_patch_hook;   /* src/dod3_spu_hooks.c */
 static void ab_patchhook(int on) { g_dod3_spu_patch_hook = on; }
+extern "C" int g_dod3_msdsp_hook;       /* src/dod3_msdsp_hooks.c: MultiStream DSP biquads */
+static void ab_msdsp(int on) { g_dod3_msdsp_hook = on; }
 extern "C" int g_dod3_lzf_memo;
 static void ab_lzfmemo(int on) { g_dod3_lzf_memo = on; }
 extern "C" int g_eng_vc_watch;   /* rsx_draw_engine.c */
@@ -620,6 +622,7 @@ static const struct { const char* name; void (*set)(int on); } s_ab_switches[] =
     { "bufpool",   ab_bufpool },
 #endif
     { "kickbusy",  ab_kickbusy },
+    { "msdsp",     ab_msdsp },
     { "texwatch",  ab_texwatch },
     { "patchhook", ab_patchhook },
     { "lzfmemo",   ab_lzfmemo },
