@@ -233,6 +233,7 @@ add_executable(${PROJECT_NAME}
     src/dod3_hot.cpp
     src/dod3_settings_menu.cpp
     src/dod3_menu_patch.cpp
+    src/dod3_dlc.cpp
     src/dod3_sysset.cpp
     src/setup_iso.cpp
     ${LIBSRE_LIFTED_CPP}

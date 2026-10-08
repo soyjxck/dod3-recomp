@@ -50,6 +50,7 @@ int dod3_mac_option_held(void);
 }
 #endif
 void dod3_settings_menu_install();  /* src/dod3_settings_menu.cpp: the Graphics Settings page */
+void dod3_dlc_prepare();            /* src/dod3_dlc.cpp: DLC that needs no license */
 bool dod3_menu_patch_prepare();     /* src/dod3_menu_patch.cpp: the script patch that adds it */
 #include <filesystem>
 #include <fstream>
@@ -1689,6 +1690,7 @@ int main(int argc, char** argv)
     apply_unfocused();
     apply_sha_overrides();
     dod3_menu_patch_prepare();
+    dod3_dlc_prepare();
 #ifdef _WIN32
     /* DOD3_PROF / DOD3_STALL_MS / DOD3_STALL_SAMPLE: src/win_prof.cpp. */
     win_prof_start();
