@@ -39,11 +39,13 @@ if(NOT DEFINED PS3RECOMP_DIR)
 endif()
 get_filename_component(PS3RECOMP_DIR "${PS3RECOMP_DIR}" ABSOLUTE)
 
-# The EBOOT the lift is from: 100 (BLUS31197 1.00, the disc; the default) or
-# 101 (the 1.01 update, lifted into recompiled_101/). src/dod3_eboot.h holds
-# every address the port's own code knows, per version. A 1.01 build sits
-# beside the 1.00 one:  cmake -B build_101 -G Ninja -DDOD3_EBOOT=101
-set(DOD3_EBOOT 100 CACHE STRING "EBOOT version the lift is from: 100 or 101")
+# The EBOOT the lift is from: 101 (the 1.01 update, lifted into
+# recompiled_101/; the default, and the version the port is built and tested
+# for) or 100 (BLUS31197 1.00, the disc, recompiled/; kept for comparison,
+# not maintained). src/dod3_eboot.h holds every address the port's own code
+# knows, per version. A 1.00 build sits beside the 1.01 one:
+#   cmake -B build_100 -G Ninja -DDOD3_EBOOT=100
+set(DOD3_EBOOT 101 CACHE STRING "EBOOT version the lift is from: 101 or 100")
 set_property(CACHE DOD3_EBOOT PROPERTY STRINGS 100 101)
 if(DOD3_EBOOT STREQUAL "101")
     set(_dod3_recomp_default "${CMAKE_CURRENT_SOURCE_DIR}/recompiled_101")

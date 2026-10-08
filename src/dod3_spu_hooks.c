@@ -5,7 +5,7 @@
  * --native-hook) and returns 1 when it has done that function's work, 0 to
  * fall through into the lifted body.
  *
- * ShaderPatching (spurs_job_01785E00) runs ~200 times a frame, inline on the
+ * ShaderPatching (spurs_job_01787480) runs ~200 times a frame, inline on the
  * render thread (SPURS_JC_SYNC), and most of each run is an LZF decompressor
  * moving one byte per iteration through two 16-byte local-store accesses, a
  * rotate and a shuffle. Its two copy loops are hooked here: the hook copies
@@ -26,9 +26,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-void spurs_job_01785E00_spu_func_00000528(spu_context* ctx);
-void spurs_job_01785E00_spu_func_00000560(spu_context* ctx);
-void spurs_job_01785E00_spu_func_00000638(spu_context* ctx);
+void spurs_job_01787480_spu_func_00000528(spu_context* ctx);
+void spurs_job_01787480_spu_func_00000560(spu_context* ctx);
+void spurs_job_01787480_spu_func_00000638(spu_context* ctx);
 
 static _Thread_local int t_in_check;      /* 1: fast-forward run, 2: plain run */
 static unsigned long long s_checked, s_bad;
@@ -111,7 +111,7 @@ int dod3_spu_lzf_literal_hook(spu_context* ctx)
     const uint32_t n = ctx->gpr[7]._u32[0] - src;       /* iterations the loop makes */
     if (n < 2 || n > SPU_LS_SIZE) return 0;
     if (!t_in_check && checking()) {
-        check_run(ctx, spurs_job_01785E00_spu_func_00000528, dst & ~0xFu, n + 32);
+        check_run(ctx, spurs_job_01787480_spu_func_00000528, dst & ~0xFu, n + 32);
         return 1;
     }
     ls_copy_forward(ctx->ls, dst, src, n - 1);
@@ -128,7 +128,7 @@ int dod3_spu_lzf_match_hook(spu_context* ctx)
     const uint32_t n = ctx->gpr[18]._u32[0];
     if (n < 2 || n > SPU_LS_SIZE) return 0;
     if (!t_in_check && checking()) {
-        check_run(ctx, spurs_job_01785E00_spu_func_00000638, dst & ~0xFu, n + 32);
+        check_run(ctx, spurs_job_01787480_spu_func_00000638, dst & ~0xFu, n + 32);
         return 1;
     }
     ls_copy_forward(ctx->ls, dst, src, n - 1);
@@ -366,7 +366,7 @@ int dod3_spu_lzf_token_hook(spu_context* ctx)
     if (t_in_check == 0 && checking()) {
         /* Compare the whole decode, 0x560 to its exit at 0x678, both ways
          * (3: the hooks active), then keep the lifted one. */
-        const int bad = dod3_spu_check_both(ctx, spurs_job_01785E00_spu_func_00000560, 0x678u, &t_in_check, 3, 2);
+        const int bad = dod3_spu_check_both(ctx, spurs_job_01787480_spu_func_00000560, 0x678u, &t_in_check, 3, 2);
         s_tok_checked++;
         if ((s_tok_checked % 2000) == 0 || (bad && s_tok_bad < 8))
             fprintf(stderr, "[spu-native-check] lzf decodes: %llu compared, %llu mismatched%s\n", s_tok_checked,
@@ -396,7 +396,7 @@ int dod3_spu_lzf_token_hook(spu_context* ctx)
  * Quadword semantics are kept: a word is read from its address with a rotate
  * inside its 16-byte line (rotqby) and written into the word slot its address
  * names in that line (cwd/cwx + shufb). */
-void spurs_job_01785E00_spu_func_000006A0(spu_context* ctx);
+void spurs_job_01787480_spu_func_000006A0(spu_context* ctx);
 
 static uint32_t ls_word_rot(const uint8_t* ls, uint32_t a)
 {
@@ -433,7 +433,7 @@ int dod3_spu_patch_loop_hook(spu_context* ctx)
     if (t_in_check == 2 || !hooks_on() || !g_dod3_spu_patch_hook) return 0;
     if (t_in_check == 0 && checking()) {
         /* 0x6A0 to the loop's exit at 0x808, both ways (4: this hook active) */
-        const int bad = dod3_spu_check_both(ctx, spurs_job_01785E00_spu_func_000006A0, 0x808u, &t_in_check, 4, 2);
+        const int bad = dod3_spu_check_both(ctx, spurs_job_01787480_spu_func_000006A0, 0x808u, &t_in_check, 4, 2);
         s_patch_checked++;
         if ((s_patch_checked % 2000) == 0 || (bad && s_patch_bad < 8))
             fprintf(stderr, "[spu-native-check] patch loops: %llu compared, %llu mismatched%s\n", s_patch_checked,

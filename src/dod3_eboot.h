@@ -1,9 +1,11 @@
 /* The EBOOT this build is lifted from, and every address in it that the
  * port's own code knows.
  *
- *   DOD3_EBOOT=100  BLUS31197 1.00, the disc (the default; recompiled/)
- *   DOD3_EBOOT=101  the 1.01 update (recompiled_101/), beside it:
- *                   cmake -B build_101 -G Ninja -DDOD3_EBOOT=101
+ *   DOD3_EBOOT=101  the 1.01 update (recompiled_101/): the default, and
+ *                   the version the port is built and tested for
+ *   DOD3_EBOOT=100  BLUS31197 1.00, the disc (recompiled/), beside it:
+ *                   cmake -B build_100 -G Ninja -DDOD3_EBOOT=100
+ *                   (kept for comparison; not maintained)
  *
  * 1.01 is the same compiler's build of the same code with ~450 functions
  * changed (the Japanese voice DLC, French text, a few fixes), so most code
@@ -20,7 +22,7 @@
 #define DOD3_EBOOT_H
 
 #ifndef DOD3_EBOOT
-#define DOD3_EBOOT 100
+#define DOD3_EBOOT 101
 #endif
 
 #if DOD3_EBOOT == 101
