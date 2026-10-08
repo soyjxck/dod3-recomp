@@ -42,7 +42,9 @@ To run the setup again: `dod3.exe --setup`.
 In the game: **Settings → Graphics Settings** (on the title menu, next to
 Audio Settings) sets the resolution, display mode, frame rate, v-sync,
 texture filtering and renderer. Confirm with ✕ to save them to dod3.ini;
-texture filtering changes at once, the rest the next time the game starts.
+everything but the renderer changes at once (a second of black while the
+resolution or display mode switches), the renderer the next time the game
+starts.
 The first start adds the page to the game's menu, which takes a second or
 two (the patched menu goes to `game/patch`, the game's own files are not
 changed).

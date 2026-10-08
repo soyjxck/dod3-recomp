@@ -23,9 +23,11 @@
  * for each opcode out of GNatives -- step() below does the same.
  *
  * The values are the dod3.ini keys (RSX_SCALE, RSX_DISPLAY, DOD3_FPS,
- * RSX_VSYNC, RSX_ANISO, RSX_BACKEND); Apply writes them to dod3.ini. Only
- * anisotropic filtering takes effect at once, the rest on the next start --
- * a row whose saved value differs from the running one says so. */
+ * RSX_VSYNC, RSX_ANISO, RSX_BACKEND); Apply writes them to dod3.ini and
+ * applies what can change while running: the frame rate, texture filtering
+ * and (Direct3D 12 / Vulkan) the resolution, display mode and v-sync. The
+ * renderer waits for the next start -- a row whose saved value differs
+ * from the running one says so. */
 #include "ppu_recomp.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +39,8 @@ extern "C" void ps3_indirect_call(ppu_context* ctx);
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
 const char* dod3_settings_path();   /* main.cpp: the dod3.ini read at boot, or the one to create */
+void dod3_fps_reload();             /* main.cpp: DOD3_FPS again */
+extern "C" volatile int g_rsx_display_reload;   /* rsx_draw_engine.c: the renderer re-reads its display settings */
 #ifdef _WIN32
 extern "C" int g_rsx_aniso;         /* rsx_d3d12_engine.c: the live anisotropy level */
 /* The CRT's spelling; an empty value removes the variable. */
@@ -154,6 +158,15 @@ void read_current(Row& r, int& idx)
     }
 }
 
+/* The renderer applies RSX_DISPLAY / RSX_VSYNC / RSX_SCALE changes at its
+ * next window pump (g_rsx_display_reload); the Direct3D 12 and Vulkan
+ * engines do. */
+#ifdef _WIN32
+#define LIVE_DISPLAY true
+#else
+#define LIVE_DISPLAY false
+#endif
+
 void init_rows()
 {
     if (s_init) return;
@@ -162,19 +175,19 @@ void init_rows()
     s_rows.push_back({"RSX_SCALE", "Resolution",
         "The resolution the game is drawn at.",
         {{"1", "1280x720"}, {"1.5", "1920x1080"}, {"2", "2560x1440"}, {"3", "3840x2160"}, {"4", "5120x2880"}},
-        0, false});
+        0, LIVE_DISPLAY});
     s_rows.push_back({"RSX_DISPLAY", "Display Mode",
         "Window, borderless window or fullscreen.",
         {{"windowed", "Windowed"}, {"borderless", "Borderless"}, {"fullscreen", "Fullscreen"}},
-        0, false});
+        0, LIVE_DISPLAY});
     s_rows.push_back({"DOD3_FPS", "Frame Rate",
         "The frame rate limit. 60 is recommended.",
         {{NULL, "30 (Original)"}, {"60", "60"}, {"120", "120"}, {"uncapped", "Unlimited"}},
-        0, false});
+        0, true});
     s_rows.push_back({"RSX_VSYNC", "V-Sync",
         "Wait for the display's refresh.",
         {{"1", "On"}, {"0", "Off"}},
-        0, false});
+        0, LIVE_DISPLAY});
     s_rows.push_back({"RSX_ANISO", "Texture Filtering",
         "Sharper ground and walls when seen at an angle.",
         {{"1", "Trilinear"}, {"2", "2x Anisotropic"}, {"4", "4x Anisotropic"}, {"8", "8x Anisotropic"}, {"16", "16x Anisotropic"}},
@@ -272,6 +285,7 @@ void write_ini(const std::vector<std::pair<std::string, const char*>>& kv)
 void apply()
 {
     std::vector<std::pair<std::string, const char*>> kv;
+    bool display = false, fps = false;
     for (Row& r : s_rows) {
         if (r.pending == r.saved) continue;
         const char* v = r.pending >= 0 ? r.choices[r.pending].value : r.other.c_str();
@@ -283,8 +297,12 @@ void apply()
 #ifdef _WIN32
             if (!strcmp(r.key, "RSX_ANISO")) g_rsx_aniso = v ? atoi(v) : 16;
 #endif
+            if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE")) display = true;
+            if (!strcmp(r.key, "DOD3_FPS")) fps = true;
         }
     }
+    if (display) g_rsx_display_reload = 1;
+    if (fps) dod3_fps_reload();
     if (!kv.empty()) write_ini(kv);
 }
 

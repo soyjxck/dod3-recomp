@@ -417,10 +417,18 @@ static void hitch_to_profiler(double ms)
 static unsigned s_fps_target;        /* for the vblank rate; 0 = the title's own */
 static unsigned s_vblank_mult = 2;
 static int      s_fps_lock = -1;     /* -1 the title's own cap, 0 none, n locked */
+/* Bumped by every change of the above, so the frame clock re-derives its
+ * vblank period: the Graphics Settings page changes DOD3_FPS while running. */
+static std::atomic<unsigned> s_fps_gen{0};
 static void apply_fps_unlock(void)
 {
     const char* e = getenv("DOD3_FPS");
-    if (!e || !*e) return;
+    if (!e || !*e) {
+        if (s_fps_lock >= 0) fprintf(stderr, "[fps] the title's own frame rate\n");
+        s_fps_lock = -1; s_fps_target = 0; s_vblank_mult = 2;
+        s_fps_gen++;
+        return;
+    }
     const int fps = (!strcmp(e, "uncapped") || !strcmp(e, "0")) ? 0 : atoi(e);
     if (fps < 0 || (fps > 0 && fps < 10)) {
         fprintf(stderr, "[fps] DOD3_FPS=%s ignored\n", e);
@@ -437,9 +445,13 @@ static void apply_fps_unlock(void)
     s_fps_target = fps ? (unsigned)fps : 250u;
     s_vblank_mult = 8;
     if (const char* m = getenv("DOD3_VBLANK_MULT")) if (atoi(m) >= 2) s_vblank_mult = (unsigned)atoi(m);
+    s_fps_gen++;
     if (fps) fprintf(stderr, "[fps] frame rate locked at %d (smoothing off, vblank %u Hz)\n", fps, s_vblank_mult * s_fps_target);
     else     fprintf(stderr, "[fps] frame rate uncapped (smoothing off, vblank %u Hz)\n", s_vblank_mult * s_fps_target);
 }
+
+/* src/dod3_settings_menu.cpp, after it sets DOD3_FPS. */
+void dod3_fps_reload() { apply_fps_unlock(); }
 
 /* The engine checks the script packages (and the startup packages and INIs)
  * against a SHA-1 table compiled into the EBOOT -- "name\0" + 20 bytes, at
@@ -487,9 +499,11 @@ static void apply_sha_overrides(void)
     }
 }
 
-/* The replacement GetMaxTickRate: f1 = the lock, 0 for none. */
+/* The replacement GetMaxTickRate: f1 = the lock, 0 for none; the title's
+ * own (0x00424460, a leaf) when there is no lock. */
 static void fps_get_max_tick_rate(ppu_context* ctx)
 {
+    if (s_fps_lock < 0) { func_00424460(ctx); return; }
     ctx->fpr[1] = (double)(float)(s_fps_lock > 0 ? s_fps_lock : 0);
 }
 extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
@@ -500,7 +514,7 @@ extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
 static void fps_install_override(void)
 {
     static int done = 0;
-    if (done || s_fps_lock < 0) return;
+    if (done) return;
     const uint32_t engine = vm_read32(0x01999164u);
     if (!engine) return;
     const uint32_t vtable = vm_read32(engine);
@@ -511,7 +525,7 @@ static void fps_install_override(void)
     done = 1;
     ppu_register_function(code, fps_get_max_tick_rate);
     fprintf(stderr, "[fps] GetMaxTickRate (0x%08X, engine 0x%08X) replaced: %s\n", code, engine,
-            s_fps_lock ? "fixed cap" : "no cap");
+            s_fps_lock < 0 ? "the title's own" : s_fps_lock ? "fixed cap" : "no cap");
 }
 
 #ifndef _WIN32
@@ -905,9 +919,14 @@ static DWORD WINAPI frame_clock(LPVOID)
     /* The vblank period: 16 ms (62.5 Hz) as it has always been, 1/(2n) s for
      * DOD3_FPS=n, or DOD3_VBLANK_HZ=<hz> outright. The title flips on every
      * second vblank. DOD3_FIFO_SLEEP_MS=<n>: the walker's sleep between drains. */
-    uint64_t vblank_us = 16000;
-    if (s_fps_target) vblank_us = 1000000ull / ((uint64_t)s_vblank_mult * s_fps_target);
-    if (const char* e = getenv("DOD3_VBLANK_HZ")) if (atoi(e) > 0) vblank_us = 1000000ull / (uint64_t)atoi(e);
+    auto vblank_period = []() -> uint64_t {
+        uint64_t us = 16000;
+        if (s_fps_target) us = 1000000ull / ((uint64_t)s_vblank_mult * s_fps_target);
+        if (const char* e = getenv("DOD3_VBLANK_HZ")) if (atoi(e) > 0) us = 1000000ull / (uint64_t)atoi(e);
+        return us;
+    };
+    uint64_t vblank_us = vblank_period();
+    unsigned vblank_gen = s_fps_gen.load();
     DWORD fifo_sleep_ms = 4;
     if (const char* e = getenv("DOD3_FIFO_SLEEP_MS")) fifo_sleep_ms = (DWORD)atoi(e);
     const bool kick_on = !(getenv("DOD3_FIFO_KICK") && getenv("DOD3_FIFO_KICK")[0] == '0');
@@ -984,6 +1003,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                               vm_read32(a), vm_read32(a + 4), vm_read32(a + 8), vm_read32(a + 12)); } } }
         uint64_t now = frame_clock_us();
         fps_install_override();
+        if (s_fps_gen.load() != vblank_gen) { vblank_gen = s_fps_gen.load(); vblank_us = vblank_period(); }
         /* PPU_WAITPROF=1: where the guest threads waited, every 5 s. */
         { static uint64_t wp_last = 0;
           if (!wp_last) wp_last = now;
