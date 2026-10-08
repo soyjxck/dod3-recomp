@@ -19,6 +19,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <vector>
+#include <algorithm>
 #ifdef _WIN32
 #include <windows.h>
 extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double frame_ms);
@@ -69,6 +70,7 @@ static double s_reach_ms;       /* reachability time inside the current collecti
 static unsigned s_reach_calls;
 
 extern "C" void dod3_gc_reach_native(ppu_context* ctx);   /* src/dod3_gc_native.cpp */
+extern "C" int  dod3_gc_par_threads(void);                /* src/dod3_gc_native.cpp: DOD3_GC_PAR */
 
 /* DOD3_GC_NATIVE: 1 (default) the native pass, 0 the lifted one, "check"
  * both on the same heap (lifted first, then native over the same input)
@@ -118,6 +120,12 @@ static void reach_check(ppu_context* ctx)
     *ctx = saved;
     dod3_gc_reach_native(ctx);
     ReachResult b; reach_snapshot(list, &b);
+    /* DOD3_GC_PAR: the parallel phase 2 queues the same objects in another
+     * order; compare them as sets. */
+    if (dod3_gc_par_threads() > 0) {
+        std::sort(a.queued.begin(), a.queued.end());
+        std::sort(b.queued.begin(), b.queued.end());
+    }
     size_t qdiff = 0, udiff = 0, first_q = (size_t)-1, first_u = (size_t)-1;
     const size_t nq = a.queued.size() < b.queued.size() ? a.queued.size() : b.queued.size();
     for (size_t i = 0; i < nq; i++) if (a.queued[i] != b.queued[i]) { if (!qdiff) first_q = i; qdiff++; }

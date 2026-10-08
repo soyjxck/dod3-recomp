@@ -49,6 +49,12 @@ static inline void gc_prefetch_obj(uint32_t array_data, uint32_t index, uint32_t
     if (o) __builtin_prefetch((const void*)(vm_base + o), 0, 3);
 }
 #include <map>
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#include <vector>
+extern "C" uint8_t* vm_base;
 
 /* DOD3_GC_STATS=1: per collection, the cycles in the two per-object virtual
  * calls and the commonest targets of each. */
@@ -199,6 +205,311 @@ struct Pass {
 
 }  // namespace
 
+/* ---- phase 2 on several threads (DOD3_GC_PAR=<threads>) -------------------
+ *
+ * Phase 2 is a mark: from the objects phase 1 queued, follow every object
+ * reference the class token streams describe, clear the unreachable bit of
+ * each object reached for the first time and queue it. It is bound by memory
+ * latency (an object's references are cache misses), so it spreads well over
+ * threads. Everything in it is plain memory work except two things, which
+ * stay on the game thread:
+ *   - AddReferencedObjects (vtable +0xFC) is guest code for ~2% of objects
+ *     (the rest resolve to the empty UObject one). Those objects' calls are
+ *     deferred; when the workers run dry, the game thread makes them, one by
+ *     one, as the serial pass does, and whatever they queue (the guest list
+ *     grows) goes back to the workers. Workers are idle meanwhile, so guest
+ *     code never runs alongside them.
+ *   - ObjectsToSerialize itself (a guest TArray, grown through GMalloc): the
+ *     workers keep the objects they reach in host lists, and the game thread
+ *     appends them all at the end.
+ * The bit is cleared with an atomic AND on its byte, so an object reached by
+ * two threads at once is queued once. The result -- which objects are
+ * reachable, which references to pending-kill objects are nulled -- is the
+ * serial pass's; the order of the guest list is not (DOD3_GC_NATIVE=check
+ * compares sets when this is on). */
+namespace {
+
+inline uint32_t g32(uint32_t a) { return __builtin_bswap32(*(const uint32_t*)(vm_base + a)); }
+inline uint64_t g64(uint32_t a) { return __builtin_bswap64(*(const uint64_t*)(vm_base + a)); }
+inline void p32(uint32_t a, uint32_t v) { *(uint32_t*)(vm_base + a) = __builtin_bswap32(v); }
+
+const uint32_t AROBJ_EMPTY = 0x00018EF0u;   /* UObject::AddReferencedObjects: blr */
+
+struct ParShared {
+    std::mutex mu;
+    std::condition_variable cv_work, cv_idle;
+    std::vector<uint32_t> queue;        /* objects to traverse */
+    std::vector<uint32_t> deferred;     /* objects whose AddReferencedObjects is guest code */
+    std::vector<uint32_t> reached;      /* every object a worker queued (for the guest list) */
+    uint32_t perm_start = 0, perm_end = 0;
+    int busy = 0;                       /* workers holding work */
+    int generation = 0;                 /* a round */
+    int nthreads = 0;
+    bool quit = false;
+    std::atomic<int> bad_token{0};
+};
+ParShared* s_par;
+
+struct Worker {
+    std::vector<uint32_t> local, reached, deferred;
+    uint32_t st[256][4];                /* the traversal stack: data, stride, count, return index */
+
+    /* *ref: null it if it names a pending-kill object (when allowed), else
+     * mark and queue a newly reached object. 0 if *ref was null. */
+    int handle(uint32_t ref, int null_pending)
+    {
+        const uint32_t obj = g32(ref);
+        if (obj == 0) return 0;
+        if (!(obj < s_par->perm_start) && obj < s_par->perm_end) return 1;
+        const uint64_t flags = g64(obj + 8);
+        if (null_pending && (flags & BIT_PENDING_KILL)) { p32(ref, 0); return 1; }
+        if (!(flags & BIT_UNREACHABLE)) return 1;
+        /* Bit 33 of the big-endian flags: byte +11, mask 0x02. */
+        const uint8_t old = __atomic_fetch_and(vm_base + obj + 11, (uint8_t)~0x02u, __ATOMIC_ACQ_REL);
+        if (old & 0x02u) { local.push_back(obj); reached.push_back(obj); }
+        return 1;
+    }
+
+    void traverse(uint32_t cur)
+    {
+        /* AddReferencedObjects: the empty one needs nothing; any other is
+         * guest code, made later on the game thread. */
+        {
+            const uint32_t vt = g32(cur);
+            const uint32_t code = g32(g32(vt + 0xFC));
+            if (code != AROBJ_EMPTY) deferred.push_back(cur);
+        }
+        uint32_t data = cur;
+        const uint32_t cls = g32(data + 0x34);
+        uint32_t ti = 0;
+        int32_t ret = 0;
+        int sp = 0;
+        st[0][0] = data; st[0][1] = 0; st[0][2] = 0xFFFFFFFFu; st[0][3] = 0xFFFFFFFFu;
+        for (;;) {
+            if (ret > 0) {
+                for (int32_t k = 0; ; ) {
+                    const int e = sp;
+                    const int32_t cnt = (int32_t)st[e][2] - 1;
+                    st[e][2] = (uint32_t)cnt;
+                    if (cnt > 0) {
+                        data = st[sp][0] + st[sp][1];
+                        ti = st[sp][3];
+                        st[sp][0] = data;
+                        break;
+                    }
+                    k++;
+                    sp--;
+                    if (sp < 0) { s_par->bad_token = 2; return; }
+                    data = st[sp][0];
+                    if (!(k < ret)) break;
+                }
+            }
+            const uint32_t tokens = g32(cls + 0x150);
+            const uint32_t cur_i = ti;
+            const uint32_t tok = g32(tokens + cur_i * 4u);
+            ti = cur_i + 1;
+            const uint32_t type = (tok >> 20) & 0xFu;
+            const uint32_t off = tok & 0xFFFFFu;
+            const int32_t rc = (int32_t)(tok >> 24);
+            const int entry = sp;
+            if ((type == 4 || type == 5 || type == 8) && sp >= 255) { s_par->bad_token = 3; return; }
+            switch (type) {
+            case 1: ret = rc; handle(data + off, 1); break;
+            case 2: ret = rc; handle(data + off, 0); break;
+            case 3: {
+                const uint32_t arr = data + off;
+                ret = rc;
+                for (int32_t j = 0; j < (int32_t)g32(arr + 4); j++)
+                    handle(g32(arr + 0) + (uint32_t)j * 4u, 1);
+                break;
+            }
+            case 4: {
+                const uint32_t arr = data + off;
+                const uint32_t i1 = cur_i + 1, i2 = cur_i + 2;
+                ti = cur_i + 3;
+                sp++;
+                data = g32(arr + 0);
+                st[entry + 1][0] = data;
+                st[entry + 1][1] = g32(g32(cls + 0x150) + i1 * 4u);
+                const uint32_t count = g32(arr + 4);
+                st[entry + 1][2] = count;
+                const uint32_t skip = g32(g32(cls + 0x150) + i2 * 4u);
+                st[entry + 1][3] = ti;
+                const uint32_t si = (skip & 0xFF000000u) | (((skip & 0xFFFFFFu) + i2) & 0xFFFFFFu);
+                if (count != 0) { ret = 0; break; }
+                ti = si & 0xFFFFFFu;
+                const uint32_t prev = g32(g32(cls + 0x150) + (ti - 1u) * 4u);
+                ret = (int32_t)(prev >> 24) - (int32_t)(si >> 24);
+                break;
+            }
+            case 5: {
+                const uint32_t i1 = cur_i + 1, i2 = cur_i + 2;
+                ti = cur_i + 3;
+                st[entry + 1][0] = data;
+                sp++;
+                ret = 0;
+                st[entry + 1][1] = g32(g32(cls + 0x150) + i1 * 4u);
+                st[entry + 1][3] = ti;
+                st[entry + 1][2] = g32(g32(cls + 0x150) + i2 * 4u);
+                break;
+            }
+            case 6:
+                return;
+            case 7: {
+                const uint32_t ref = data + off;
+                ret = rc;
+                if (!handle(ref, 1)) break;
+                if (g32(ref) == 0) { p32(ref + 4, 0); p32(ref + 8, 0); }
+                break;
+            }
+            case 8: {
+                const uint32_t skip = g32(tokens + ti * 4u);
+                uint32_t g4 = g32(cur + 0x14);           /* the current object's, as list+0xC holds it */
+                const uint32_t si = (skip & 0xFF000000u) | (((skip & 0xFFFFFFu) + ti) & 0xFFFFFFu);
+                ti = cur_i + 2;
+                if (g4 != 0) g4 = g32(g4 + 0x1C);
+                if (g4 == 0) { ti = si & 0xFFFFFFu; ret = 0; break; }
+                data = g4;
+                sp++;
+                ret = 0;
+                st[entry + 1][0] = data; st[entry + 1][1] = 0; st[entry + 1][2] = 0; st[entry + 1][3] = 0xFFFFFFFFu;
+                break;
+            }
+            default:
+                s_par->bad_token = 1;               /* the serial pass calls appErrorf here */
+                return;
+            }
+        }
+    }
+
+    void run(void)
+    {
+        ParShared& S = *s_par;
+        int seen_gen = 0;
+        std::unique_lock<std::mutex> lk(S.mu);
+        for (;;) {
+            S.cv_work.wait(lk, [&] { return S.quit || (S.generation != seen_gen) || (!S.queue.empty() && seen_gen); });
+            if (S.quit) return;
+            seen_gen = S.generation;
+            while (!S.queue.empty()) {
+                /* A batch: enough to amortise the lock, few enough to share. */
+                const size_t take = S.queue.size() > 64 ? 32 : 1;
+                for (size_t i = 0; i < take; i++) { local.push_back(S.queue.back()); S.queue.pop_back(); }
+                S.busy++;
+                lk.unlock();
+                while (!local.empty()) {
+                    const uint32_t o = local.back(); local.pop_back();
+                    traverse(o);
+                    /* Share when there is plenty and someone may be idle. */
+                    if (local.size() > 256) {
+                        std::lock_guard<std::mutex> g(S.mu);
+                        S.queue.insert(S.queue.end(), local.end() - 128, local.end());
+                        local.resize(local.size() - 128);
+                        S.cv_work.notify_all();
+                    }
+                }
+                lk.lock();
+                S.busy--;
+                S.reached.insert(S.reached.end(), reached.begin(), reached.end()); reached.clear();
+                S.deferred.insert(S.deferred.end(), deferred.begin(), deferred.end()); deferred.clear();
+                if (S.queue.empty() && S.busy == 0) S.cv_idle.notify_all();
+            }
+        }
+    }
+};
+
+void par_start(int n)
+{
+    if (s_par) return;
+    s_par = new ParShared;
+    s_par->nthreads = n;
+    for (int i = 0; i < n; i++)
+        std::thread([] { Worker* w = new Worker; w->run(); }).detach();
+}
+
+/* Traverse `seed` and everything it reaches; returns when the workers are
+ * idle and the queue is empty. */
+void par_round(const std::vector<uint32_t>& seed)
+{
+    ParShared& S = *s_par;
+    std::unique_lock<std::mutex> lk(S.mu);
+    S.queue.insert(S.queue.end(), seed.begin(), seed.end());
+    S.generation++;
+    S.cv_work.notify_all();
+    S.cv_idle.wait(lk, [&] { return S.queue.empty() && S.busy == 0; });
+}
+
+/* DOD3_GC_PAR=<n>: phase 2 on n worker threads (default 8; 0 = the serial
+ * pass). Drakengard 3, ~138k objects: the collection 11.3 -> 5.9 ms with 6,
+ * 5.3 with 12 (phase 2 22 -> 6 Mcycles); phase 1, still serial, is ~2 ms. */
+int gc_par_threads(void)
+{
+    static int n = -1;
+    if (n < 0) { const char* e = getenv("DOD3_GC_PAR"); n = e ? atoi(e) : 8; if (n < 0) n = 0; if (n > 32) n = 32; }
+    return n;
+}
+
+/* Phase 2 on the workers; the guest calls and the guest list on this thread.
+ * Returns the list's final length (the serial pass's r3). */
+uint32_t phase2_parallel(ppu_context* ctx, Pass& p, uint32_t list)
+{
+    par_start(gc_par_threads());
+    ParShared& S = *s_par;
+    S.reached.clear(); S.deferred.clear();
+    std::vector<uint32_t> seed;
+    uint32_t done = 0;                                  /* guest-list entries already handed out */
+    uint32_t last = 0;
+    for (;;) {
+        S.perm_start = vm_read32(PERM_START);
+        S.perm_end = vm_read32(PERM_END);
+        const uint32_t num = vm_read32(list + 4), data = vm_read32(list + 0);
+        seed.clear();
+        for (uint32_t i = done; i < num; i++) seed.push_back(vm_read32(data + i * 4u));
+        done = num;
+        if (seed.empty() && S.deferred.empty()) break;
+        if (!seed.empty()) { last = seed.back(); par_round(seed); }
+        /* The guest AddReferencedObjects calls, in the order the workers
+         * met their objects; what they queue lands in the guest list. */
+        std::vector<uint32_t> calls; calls.swap(S.deferred);
+        for (uint32_t cur : calls) {
+            vm_write32(list + 0xC, cur);
+            ctx->gpr[3] = cur; ctx->gpr[4] = list;
+            vcall(ctx, cur, 0xFC, 0x00EE6940);
+        }
+    }
+    /* The workers' objects into the guest list (they are queued in it in
+     * the serial pass), one growth for all of them. */
+    if (!S.reached.empty()) {
+        const uint32_t k = (uint32_t)S.reached.size();
+        const int32_t old = (int32_t)vm_read32(list + 4);
+        int32_t max = (int32_t)vm_read32(list + 8);
+        const int32_t n = old + (int32_t)k;
+        vm_write32(list + 4, (uint32_t)n);
+        uint32_t data = vm_read32(list + 0);
+        if (n > max) {
+            max = grow_max(n, max);
+            vm_write32(list + 8, (uint32_t)max);
+            const uint32_t m = gmalloc(ctx, 0x00EE6B78);
+            ctx->gpr[3] = m; ctx->gpr[4] = data; ctx->gpr[5] = (uint32_t)max * 4u; ctx->gpr[6] = 8;
+            data = vcall(ctx, m, 0xC, 0x00EE6B98);
+            vm_write32(list + 0, data);
+        }
+        if (data) for (uint32_t i = 0; i < k; i++) vm_write32(data + ((uint32_t)old + i) * 4u, S.reached[i]);
+        last = S.reached.back();
+    }
+    (void)p;
+    if (S.bad_token.load()) {
+        fprintf(stderr, "[gc-par] a token stream did not parse (%d): the collection's marks may be short\n", S.bad_token.load());
+        S.bad_token = 0;
+    }
+    if (last) vm_write32(list + 0xC, last);
+    return vm_read32(list + 4);
+}
+
+}  // namespace
+
+extern "C" int dod3_gc_par_threads(void) { return gc_par_threads(); }
+
 /* The native func_00EE6538 (r3 = ObjectsToSerialize, r4 = KeepFlags). */
 extern "C" void dod3_gc_reach_native(ppu_context* ctx)
 {
@@ -277,6 +588,10 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
     p.perm_start = vm_read32(PERM_START);
     p.perm_end = vm_read32(PERM_END);
     uint32_t last_num = 0;
+    if (gc_par_threads() > 0) {
+        last_num = phase2_parallel(ctx, p, list);
+        goto phase2_done;
+    }
     for (int32_t idx = 0; ; ) {
         last_num = vm_read32(list + 4);
         if (!(idx < (int32_t)last_num)) break;
@@ -410,7 +725,7 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
         }
     next_object:;
     }
-
+phase2_done:
     ctx->gpr[3] = last_num;
     if (stack_buf != 0) {
         const uint32_t m = gmalloc(ctx, 0x00EE731C);
