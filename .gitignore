@@ -28,3 +28,6 @@ cache/
 # benchmark and profiler output
 out/bench/
 out/logs/
+
+# Release packages (tools/package_win.sh)
+dist/

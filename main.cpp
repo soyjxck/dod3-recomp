@@ -1304,6 +1304,16 @@ int main(int argc, char** argv)
 #ifdef _WIN32
     win_stdio_init();
 #endif
+#if defined(DOD3_X86_V3) && defined(_WIN32)
+    /* Before anything else, setup included: the lifted code uses these. */
+    if (!x86_v3_cpu()) {
+        static const char msg[] = "This build needs a CPU with AVX2, FMA and BMI2 (x86-64-v3: Intel Haswell "
+                                  "or AMD Excavator/Zen and newer). Rebuild with -DDOD3_X86_LEVEL= for older processors.";
+        fprintf(stderr, "%s\n", msg);
+        MessageBoxA(NULL, msg, "Drakengard 3 Recompiled", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+#endif
     /* No arguments -- a double-click, a shortcut -- or --setup: the release
      * layout. Everything is relative to the executable's directory (the
      * player's files, dod3.ini, saves, shader cache), the title and disc root
@@ -1364,13 +1374,6 @@ int main(int argc, char** argv)
         argv = s_release_argv; argc = 2;
     }
     if (argc >= 1 && argv[0]) load_settings_file(argv[0]);
-#if defined(DOD3_X86_V3) && defined(_WIN32)
-    if (!x86_v3_cpu()) {
-        fprintf(stderr, "This build needs a CPU with AVX2, FMA and BMI2 (x86-64-v3). "
-                        "Rebuild with -DDOD3_X86_LEVEL= for older processors.\n");
-        return 1;
-    }
-#endif
 
     if (argc < 2) {
         printf("usage: %s <PPU ELF>\n", argv[0]);
@@ -1479,6 +1482,10 @@ int main(int argc, char** argv)
     uint32_t entry = ppu_load_elf(argv[1]);
     if (!entry) {
         fprintf(stderr, "ERROR: could not load %s\n", argv[1]);
+#ifdef _WIN32
+        MessageBoxA(NULL, "The game's executable (elf\\EBOOT.ELF) could not be loaded. Run dod3.exe --setup to "
+                          "set the game up again.", "Drakengard 3 Recompiled", MB_OK | MB_ICONERROR);
+#endif
         return 1;
     }
     apply_fps_unlock();
