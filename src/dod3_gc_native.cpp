@@ -7,7 +7,8 @@
  * where the lifted code makes them. src/dod3_gc.cpp chooses it
  * (DOD3_GC_NATIVE) and can run both and compare (DOD3_GC_NATIVE=check).
  *
- * Guest layout, from the code:
+ * Guest layout, from the code (the 1.00 addresses; src/dod3_eboot.h has
+ * both versions'):
  *   0x01A0C2B4  GObjObjects (data, num); 0x01A0C33C its first GC index
  *   0x019C816C  a counter of objects visited
  *   0x019907CC / 0x019907D0  the permanent-object range, never collected
@@ -24,12 +25,18 @@
  *   ObjectsToSerialize (arg r3): +0 data, +4 num, +8 max, +0xC current
  */
 #define PPU_INLINE_VM 1
-#include "ppu_recomp.h"
+#include "dod3_ppu.h"
 #include "dod3_eboot.h"   /* the EBOOT version's addresses */
+#include "dod3_cycles.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "dod3_cycles.h"
+#include <atomic>
+#include <condition_variable>
+#include <map>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 /* The pass is bound by memory latency: 136k object headers spread over the
  * heap, each read (and its flags written) once. The guest's own code issued
@@ -45,18 +52,9 @@ static int gc_prefetch_on(void)
 static inline void gc_prefetch_obj(uint32_t array_data, uint32_t index, uint32_t limit)
 {
     if (index >= limit) return;
-    extern uint8_t* vm_base;
     const uint32_t o = vm_read32(array_data + index * 4u);
     if (o) __builtin_prefetch((const void*)(vm_base + o), 0, 3);
 }
-#include <map>
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
-#include <thread>
-#include <vector>
-extern "C" uint8_t* vm_base;
-
 /* DOD3_GC_STATS=1: per collection, the cycles in the two per-object virtual
  * calls and the commonest targets of each. */
 static int s_stats = -1;
@@ -77,7 +75,6 @@ static void stats_report(uint64_t total)
     }
 }
 
-extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void ps3_indirect_call(ppu_context* ctx);
 
 namespace {
@@ -92,14 +89,6 @@ const uint32_t MASKS         = DOD3_GC_PC(0x00EE6528u);
 const uint64_t BIT_PENDING_KILL = 1ull << 61;
 const uint64_t BIT_UNREACHABLE  = 1ull << 33;
 
-inline void drain(ppu_context* ctx)
-{
-    while (g_trampoline_fn) {
-        void (*f)(void*) = g_trampoline_fn;
-        g_trampoline_fn = 0;
-        f((void*)ctx);
-    }
-}
 
 /* A guest virtual: the OPD at vtable+slot, its first word the code. */
 inline uint32_t vcall(ppu_context* ctx, uint32_t obj_vtable_holder, uint32_t slot, uint32_t ret_lr)
@@ -125,7 +114,7 @@ inline uint32_t vcall(ppu_context* ctx, uint32_t obj_vtable_holder, uint32_t slo
     const int k = slot == 0x30 ? 0 : slot == 0xFC ? 1 : -1;
     const uint64_t c0 = (s_stats > 0 && k >= 0) ? dod3_cycles() : 0;
     ps3_indirect_call(ctx);
-    drain(ctx);
+    dod3_drain(ctx);
     if (c0) { s_cyc[k] += dod3_cycles() - c0; s_calls[k]++; s_targets[k][code]++; }
     return (uint32_t)ctx->gpr[3];
 }
@@ -135,7 +124,7 @@ inline uint32_t gmalloc(ppu_context* ctx, uint32_t ret_lr_init)
     uint32_t m = vm_read32(GMALLOC);
     if (m == 0) {
         ctx->lr = ret_lr_init;
-        DOD3_FN_GMALLOC_CREATE(ctx); drain(ctx);
+        DOD3_FN_GMALLOC_CREATE(ctx); dod3_drain(ctx);
         m = vm_read32(GMALLOC);
     }
     return m;
@@ -602,7 +591,7 @@ inline void phase1_class(ppu_context* ctx, uint32_t o, uint32_t outer_match)
     uint32_t arg = 0;
     if (o != 0 && (vm_read32(outer + 0xC0) & 0x20u)) arg = o;
     ctx->gpr[3] = arg;
-    ctx->lr = DOD3_GC_PC(0x00EE6878); DOD3_FN_GC_PREPARE(ctx); drain(ctx);
+    ctx->lr = DOD3_GC_PC(0x00EE6878); DOD3_FN_GC_PREPARE(ctx); dod3_drain(ctx);
 }
 
 /* Phase 1 for the object at index i, as the lifted loop body; the visit
@@ -616,7 +605,7 @@ void phase1_one(ppu_context* ctx, Pass& p, uint32_t list, uint32_t i, uint64_t o
     if (visit) vm_write32(VISIT_COUNTER, vm_read32(VISIT_COUNTER) + 1);
     if (vm_read64(obj + 8) & 0x4000u) {
         ctx->gpr[3] = list; ctx->gpr[4] = p.slot70;
-        ctx->lr = DOD3_GC_PC(0x00EE6674); DOD3_FN_TARRAY_ADDITEM(ctx); drain(ctx);
+        ctx->lr = DOD3_GC_PC(0x00EE6674); DOD3_FN_TARRAY_ADDITEM(ctx); dod3_drain(ctx);
     } else {
         ctx->gpr[3] = obj;
         const uint32_t keep_it = vcall(ctx, obj, 0x30, DOD3_GC_PC(0x00EE6690));
@@ -661,8 +650,8 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
         vm_write32(VISIT_COUNTER, 0);
         ctx->gpr[3] = list;
         ctx->gpr[4] = (uint64_t)(int64_t)(int32_t)(num - first + 2);
-        ctx->lr = DOD3_GC_PC(0x00EE65D4); DOD3_FN_GC_REACH_A(ctx); drain(ctx);
-        ctx->lr = DOD3_GC_PC(0x00EE65D8); DOD3_FN_GC_REACH_B(ctx); drain(ctx);
+        ctx->lr = DOD3_GC_PC(0x00EE65D4); DOD3_FN_GC_REACH_A(ctx); dod3_drain(ctx);
+        ctx->lr = DOD3_GC_PC(0x00EE65D8); DOD3_FN_GC_REACH_B(ctx); dod3_drain(ctx);
     }
     const uint32_t outer_match = (uint32_t)ctx->gpr[3];  /* r31: what func_00EE6408 returned */
 
@@ -843,7 +832,7 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
             default:                                     /* appErrorf: unknown token */
                 ctx->gpr[3] = vm_read32(DOD3_A_GERROR);
                 ctx->gpr[4] = DOD3_A_GC_ERROR_FMT;      /* 1.00: 0x01640000 - 31028 */
-                ctx->lr = DOD3_GC_PC(0x00EE72FC); DOD3_FN_APP_ERRORF(ctx); drain(ctx);
+                ctx->lr = DOD3_GC_PC(0x00EE72FC); DOD3_FN_APP_ERRORF(ctx); dod3_drain(ctx);
                 break;
             }
         }

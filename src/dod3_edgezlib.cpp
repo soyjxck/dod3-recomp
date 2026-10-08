@@ -38,6 +38,7 @@
 #include <vector>
 #include <zlib.h>
 #include "dod3_eboot.h"   /* the EBOOT version's addresses */
+#include "dod3_util.h"
 
 extern "C" uint8_t* vm_base;
 
@@ -63,8 +64,6 @@ void report()
             (double)s_bytes_out.load() / 1048576.0, ms, s_to_task.load(), s_bad.load());
 }
 
-inline uint32_t be32(const uint8_t* p) { return (uint32_t)p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]; }
-
 /* Inflate the raw deflate stream at `in` into `out` (exactly `total` bytes);
  * true when it ends there and any Adler-32 trailer after it agrees. */
 bool inflate_exact(const uint8_t* in, uint32_t in_size, uint8_t* out, uint32_t total)
@@ -80,7 +79,7 @@ bool inflate_exact(const uint8_t* in, uint32_t in_size, uint8_t* out, uint32_t t
     const uint8_t* tail = z.next_in;
     inflateEnd(&z);
     if (!ended) return false;
-    if (left >= 4 && be32(tail) != (uint32_t)adler32(adler32(0, nullptr, 0), out, total)) return false;
+    if (left >= 4 && dod3_be32(tail) != (uint32_t)adler32(adler32(0, nullptr, 0), out, total)) return false;
     return true;
 }
 

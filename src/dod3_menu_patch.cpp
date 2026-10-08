@@ -8,15 +8,17 @@
  * copy from each original body and the bytes that are new. At boot this file
  * checks the player's package against the hash the EBOOT itself carries for
  * it, rebuilds the patched package (the new bodies appended, their export
- * table entries pointed at them), and writes it with its TOC line to
- * game/patch -- a tree PS3_VFS_OVERLAY lays over the disc. That is done once;
- * a stamp file names the patch version it was made with.
+ * table entries pointed at them), and writes it (with its TOC line, on 1.00)
+ * to game/patch or game/patch101 -- a tree PS3_VFS_OVERLAY lays over the
+ * disc. That is done once; a stamp file names the patch version it was made
+ * with.
  *
- * Two copies of the package go into the overlay: the title reads its packages
- * from the game-data install (/dev_hdd0/game/BLES00000DATA/USRDIR/
- * FIOS-UNREALENGINE3/...), the TOC from the disc. The engine checks the
- * loaded script package against a SHA-1 table in the EBOOT, so the patched
- * one's hash is written into that table (dod3_sha_override in main.cpp).
+ * On 1.00 two copies of the package go into the overlay: the title reads its
+ * packages from the game-data install (/dev_hdd0/game/BLES00000DATA/USRDIR/
+ * FIOS-UNREALENGINE3/...), the TOC from the disc. On 1.01 the package is the
+ * update's. The engine checks the loaded script package against a SHA-1
+ * table in the EBOOT, so the patched one's hash is written into that table
+ * (dod3_sha_override in main.cpp).
  *
  * DOD3_MENU_PATCH=0 leaves the menu as the title shipped it. */
 #include <zlib.h>
@@ -28,6 +30,8 @@
 #include <string>
 #include <vector>
 #include "dod3_eboot.h"
+#include "dod3_util.h"
+#include "setup_crypto.h"
 #if DOD3_EBOOT == 101
 /* 1.01: the update's package (its PATCH folder), which its EBOOT's table
  * names; patch files have no TOC line. The overlay is game/patch101, so a
@@ -45,69 +49,20 @@ namespace fs = std::filesystem;
 
 namespace {
 
-/* ---- SHA-1 (FIPS 180-1) -------------------------------------------------- */
-struct Sha1 {
-    uint32_t h[5] = {0x67452301u, 0xEFCDAB89u, 0x98BADCFEu, 0x10325476u, 0xC3D2E1F0u};
-    uint64_t len = 0;
-    uint8_t buf[64];
-    size_t n = 0;
-    static uint32_t rol(uint32_t x, int k) { return (x << k) | (x >> (32 - k)); }
-    void block(const uint8_t* p)
-    {
-        uint32_t w[80];
-        for (int i = 0; i < 16; i++) w[i] = (uint32_t)p[4 * i] << 24 | (uint32_t)p[4 * i + 1] << 16 | (uint32_t)p[4 * i + 2] << 8 | p[4 * i + 3];
-        for (int i = 16; i < 80; i++) w[i] = rol(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
-        uint32_t a = h[0], b = h[1], c = h[2], d = h[3], e = h[4];
-        for (int i = 0; i < 80; i++) {
-            uint32_t f, k;
-            if (i < 20)      { f = (b & c) | (~b & d);           k = 0x5A827999u; }
-            else if (i < 40) { f = b ^ c ^ d;                    k = 0x6ED9EBA1u; }
-            else if (i < 60) { f = (b & c) | (b & d) | (c & d);  k = 0x8F1BBCDCu; }
-            else             { f = b ^ c ^ d;                    k = 0xCA62C1D6u; }
-            const uint32_t t = rol(a, 5) + f + e + k + w[i];
-            e = d; d = c; c = rol(b, 30); b = a; a = t;
-        }
-        h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e;
-    }
-    void update(const uint8_t* p, size_t sz)
-    {
-        len += sz;
-        while (sz) {
-            if (n == 0 && sz >= 64) { block(p); p += 64; sz -= 64; continue; }
-            const size_t k = sz < 64 - n ? sz : 64 - n;
-            memcpy(buf + n, p, k); n += k; p += k; sz -= k;
-            if (n == 64) { block(buf); n = 0; }
-        }
-    }
-    std::string hex()
-    {
-        const uint64_t bits = len * 8;
-        const uint8_t one = 0x80, zero = 0;
-        update(&one, 1);
-        while (n != 56) update(&zero, 1);
-        uint8_t l[8];
-        for (int i = 0; i < 8; i++) l[i] = (uint8_t)(bits >> (56 - 8 * i));
-        update(l, 8);
-        char s[41];
-        for (int i = 0; i < 5; i++) snprintf(s + 8 * i, 9, "%08x", h[i]);
-        return s;
-    }
-};
+using dod3::utf8;
 
 std::string sha1_hex(const std::vector<uint8_t>& d)
 {
-    Sha1 s;
+    dod3setup::Sha1 s;
     s.update(d.data(), d.size());
     return s.hex();
 }
 
-uint32_t be32(const uint8_t* p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
-void put_be32(uint8_t* p, uint32_t v) { p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v; }
 uint32_t le32(const uint8_t* p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 
 bool read_file(const fs::path& p, std::vector<uint8_t>& out)
 {
-    FILE* f = fopen(p.string().c_str(), "rb");
+    FILE* f = dod3::open_file(p, "rb");
     if (!f) return false;
     fseek(f, 0, SEEK_END);
     const long n = ftell(f);
@@ -122,8 +77,9 @@ bool write_file(const fs::path& p, const void* d, size_t n)
 {
     std::error_code ec;
     fs::create_directories(p.parent_path(), ec);
-    const fs::path tmp = p.string() + ".partial";
-    FILE* f = fopen(tmp.string().c_str(), "wb");
+    fs::path tmp = p;
+    tmp += ".partial";
+    FILE* f = dod3::open_file(tmp, "wb");
     if (!f) return false;
     const bool ok = fwrite(d, 1, n, f) == n;
     if (fclose(f) != 0 || !ok) return false;
@@ -137,16 +93,16 @@ const uint32_t PACKAGE_TAG = 0x9E2A83C1u;
  * uncompressed sizes, a (compressed, uncompressed) pair a block, the blocks. */
 bool inflate_full(const std::vector<uint8_t>& f, std::vector<uint8_t>& u, uint32_t& bs)
 {
-    if (f.size() < 16 || be32(&f[0]) != PACKAGE_TAG) return false;
-    bs = be32(&f[4]);
-    const uint32_t usz = be32(&f[12]);
+    if (f.size() < 16 || dod3_be32(&f[0]) != PACKAGE_TAG) return false;
+    bs = dod3_be32(&f[4]);
+    const uint32_t usz = dod3_be32(&f[12]);
     if (!bs) return false;
     const size_t nb = (usz + bs - 1) / bs;
     if (f.size() < 16 + 8 * nb) return false;
     u.resize(usz);
     size_t src = 16 + 8 * nb, dst = 0;
     for (size_t i = 0; i < nb; i++) {
-        const uint32_t c = be32(&f[16 + 8 * i]), b = be32(&f[20 + 8 * i]);
+        const uint32_t c = dod3_be32(&f[16 + 8 * i]), b = dod3_be32(&f[20 + 8 * i]);
         if (src + c > f.size() || dst + b > u.size()) return false;
         uLongf out = b;
         if (uncompress(&u[dst], &out, &f[src], c) != Z_OK || out != b) return false;
@@ -159,21 +115,21 @@ std::vector<uint8_t> deflate_full(const std::vector<uint8_t>& u, uint32_t bs)
 {
     const size_t nb = (u.size() + bs - 1) / bs;
     std::vector<uint8_t> out(16 + 8 * nb);
-    put_be32(&out[0], PACKAGE_TAG);
-    put_be32(&out[4], bs);
-    put_be32(&out[12], (uint32_t)u.size());
+    dod3_put_be32(&out[0], PACKAGE_TAG);
+    dod3_put_be32(&out[4], bs);
+    dod3_put_be32(&out[12], (uint32_t)u.size());
     uint32_t total = 0;
     std::vector<uint8_t> tmp(compressBound(bs));
     for (size_t i = 0; i < nb; i++) {
         const size_t off = i * bs, b = u.size() - off < bs ? u.size() - off : bs;
         uLongf c = (uLongf)tmp.size();
         compress2(tmp.data(), &c, &u[off], (uLong)b, Z_BEST_SPEED);
-        put_be32(&out[16 + 8 * i], (uint32_t)c);
-        put_be32(&out[20 + 8 * i], (uint32_t)b);
+        dod3_put_be32(&out[16 + 8 * i], (uint32_t)c);
+        dod3_put_be32(&out[20 + 8 * i], (uint32_t)b);
         out.insert(out.end(), tmp.begin(), tmp.begin() + c);
         total += (uint32_t)c;
     }
-    put_be32(&out[8], total);
+    dod3_put_be32(&out[8], total);
     return out;
 }
 
@@ -183,16 +139,16 @@ std::vector<uint8_t> deflate_full(const std::vector<uint8_t>& u, uint32_t bs)
 size_t export_entry(const std::vector<uint8_t>& u, uint32_t idx)
 {
     size_t p = 12;
-    const int32_t fl = (int32_t)be32(&u[p]); p += 4;
+    const int32_t fl = (int32_t)dod3_be32(&u[p]); p += 4;
     p += fl >= 0 ? (size_t)fl : (size_t)(-fl) * 2;
     p += 4 + 8;                             /* package flags, names */
-    const uint32_t n = be32(&u[p]), off = be32(&u[p + 4]);
+    const uint32_t n = dod3_be32(&u[p]), off = dod3_be32(&u[p + 4]);
     if (idx == 0 || idx > n) return 0;
     p = off;
     for (uint32_t i = 1; i < idx; i++) {
         /* class, super, outer, name (2), archetype, object flags (8), size,
          * offset, export flags, net-object counts (n + array), guid, package flags */
-        const uint32_t nn = be32(&u[p + 44]);
+        const uint32_t nn = dod3_be32(&u[p + 44]);
         p += 48 + 4 * (size_t)nn + 16 + 4;
         if (p + 48 > u.size()) return 0;
     }
@@ -209,7 +165,7 @@ bool apply_patch(std::vector<uint8_t>& u)
         s += 16;
         const size_t e = export_entry(u, idx);
         if (!e) return false;
-        const uint32_t size = be32(&u[e + 32]), off = be32(&u[e + 36]);
+        const uint32_t size = dod3_be32(&u[e + 32]), off = dod3_be32(&u[e + 36]);
         if (size != oldsz || (size_t)off + size > u.size()) return false;
         std::vector<uint8_t> body;
         body.reserve(newsz);
@@ -230,8 +186,8 @@ bool apply_patch(std::vector<uint8_t>& u)
         if (body.size() != newsz) return false;
         const uint32_t at = (uint32_t)u.size();
         u.insert(u.end(), body.begin(), body.end());
-        put_be32(&u[e + 32], newsz);
-        put_be32(&u[e + 36], at);
+        dod3_put_be32(&u[e + 32], newsz);
+        dod3_put_be32(&u[e + 36], at);
     }
     return true;
 }
@@ -269,15 +225,14 @@ bool toc_rewrite(const std::vector<uint8_t>& in, std::string& out, uint32_t csiz
     return hits == 2;
 }
 
-#if DOD3_EBOOT == 101
-const fs::path k_cooked101 = fs::path("game") / "BLES00000" / "USRDIR" / "PATCH" / "SQEX03GAME" / "COOKEDPS3";
-
-bool generate(const fs::path& root, const fs::path& ov)
+/* The player's script package at `pkg`, checked to be the one the patch was
+ * made from, patched, and compressed again (`z`; `usize` uncompressed). */
+bool patched_package(const fs::path& pkg, std::vector<uint8_t>* z, uint32_t* usize)
 {
     std::vector<uint8_t> f, u;
     uint32_t bs = 0;
-    if (!read_file(root / k_cooked101 / "SQEX03GAME.XXX", f)) {
-        fprintf(stderr, "[menu] the 1.01 update's script package is missing under %s\n", (root / k_cooked101).string().c_str());
+    if (!read_file(pkg, f)) {
+        fprintf(stderr, "[menu] the script package is missing: %s\n", utf8(pkg).c_str());
         return false;
     }
     if (!inflate_full(f, u, bs)) { fprintf(stderr, "[menu] SQEX03GAME.XXX: not a compressed package\n"); return false; }
@@ -290,8 +245,20 @@ bool generate(const fs::path& root, const fs::path& ov)
         fprintf(stderr, "[menu] the patch did not apply\n");
         return false;
     }
-    const std::vector<uint8_t> z = deflate_full(u, bs);
-    const std::string side = std::to_string(u.size()) + "\r\n";
+    *z = deflate_full(u, bs);
+    *usize = (uint32_t)u.size();
+    return true;
+}
+
+#if DOD3_EBOOT == 101
+const fs::path k_cooked101 = fs::path("game") / "BLES00000" / "USRDIR" / "PATCH" / "SQEX03GAME" / "COOKEDPS3";
+
+bool generate(const fs::path& root, const fs::path& ov)
+{
+    std::vector<uint8_t> z;
+    uint32_t usize = 0;
+    if (!patched_package(root / k_cooked101 / "SQEX03GAME.XXX", &z, &usize)) return false;
+    const std::string side = std::to_string(usize) + "\r\n";
     return write_file(ov / k_cooked101 / "SQEX03GAME.XXX", z.data(), z.size()) &&
            write_file(ov / k_cooked101 / "SQEX03GAME.XXX.UNCOMPRESSED_SIZE", side.data(), side.size());
 }
@@ -305,29 +272,19 @@ bool generated(const fs::path& ov)
 bool generate(const fs::path& root, const fs::path& ov)
 {
     const fs::path game = root / "PS3_GAME" / "USRDIR" / "SQEX03GAME";
-    std::vector<uint8_t> f, toc, u;
-    uint32_t bs = 0;
-    if (!read_file(game / "COOKEDPS3" / "SQEX03GAME.XXX", f) || !read_file(game / "PS3TOC.TXT", toc)) {
-        fprintf(stderr, "[menu] the script package or its TOC is missing under %s\n", game.string().c_str());
+    std::vector<uint8_t> toc, z;
+    uint32_t usize = 0;
+    if (!read_file(game / "PS3TOC.TXT", toc)) {
+        fprintf(stderr, "[menu] PS3TOC.TXT is missing under %s\n", utf8(game).c_str());
         return false;
     }
-    if (!inflate_full(f, u, bs)) { fprintf(stderr, "[menu] SQEX03GAME.XXX: not a compressed package\n"); return false; }
-    f.clear();
-    if (sha1_hex(u) != k_menu_patch_orig_sha1) {
-        fprintf(stderr, "[menu] SQEX03GAME.XXX is not the BLUS31197 %s one; the settings menu stays as shipped\n", k_menu_patch_eboot);
-        return false;
-    }
-    if (!apply_patch(u) || u.size() != k_menu_patch_size || sha1_hex(u) != k_menu_patch_sha1) {
-        fprintf(stderr, "[menu] the patch did not apply\n");
-        return false;
-    }
-    const std::vector<uint8_t> z = deflate_full(u, bs);
+    if (!patched_package(game / "COOKEDPS3" / "SQEX03GAME.XXX", &z, &usize)) return false;
     std::string toc2;
-    if (!toc_rewrite(toc, toc2, (uint32_t)z.size(), (uint32_t)u.size())) {
+    if (!toc_rewrite(toc, toc2, (uint32_t)z.size(), usize)) {
         fprintf(stderr, "[menu] PS3TOC.TXT has no SQEX03GAME.XXX line\n");
         return false;
     }
-    const std::string side = std::to_string(u.size()) + "\r\n";
+    const std::string side = std::to_string(usize) + "\r\n";
     const fs::path cooked[2] = {
         ov / "PS3_GAME" / "USRDIR" / "SQEX03GAME" / "COOKEDPS3",
         ov / "game" / "BLES00000DATA" / "USRDIR" / "FIOS-UNREALENGINE3" / "SQEX03GAME" / "COOKEDPS3",
@@ -366,23 +323,15 @@ bool dod3_menu_patch_prepare()
     std::error_code ec;
     const bool fresh = read_file(stamp, have) && std::string(have.begin(), have.end()) == want && generated(ov);
     if (!fresh) {
-        fprintf(stderr, "[menu] adding Graphics Settings to the title's Settings menu (%s)...\n", ov.string().c_str());
+        fprintf(stderr, "[menu] adding Graphics Settings to the title's Settings menu (%s)...\n", utf8(ov).c_str());
         fs::remove(stamp, ec);
         if (!generate(root, ov) || !write_file(stamp, want.data(), want.size())) return false;
     }
-    uint8_t sha[20];
-    for (int i = 0; i < 20; i++) {
-        unsigned v = 0;
-        sscanf(k_menu_patch_sha1 + 2 * i, "%2x", &v);
-        sha[i] = (uint8_t)v;
-    }
-    if (!dod3_sha_override("sqex03game.xxx", sha)) return false;
-    const std::string ovs = ov.string();
-#ifdef _WIN32
-    _putenv_s("PS3_VFS_OVERLAY", ovs.c_str());
-#else
-    setenv("PS3_VFS_OVERLAY", ovs.c_str(), 1);
-#endif
+    std::vector<uint8_t> sha;
+    if (!dod3setup::from_hex(k_menu_patch_sha1, &sha) || sha.size() != 20 || !dod3_sha_override("sqex03game.xxx", sha.data()))
+        return false;
+    const std::string ovs = utf8(ov);
+    dod3_setenv("PS3_VFS_OVERLAY", ovs.c_str(), 1);
     fprintf(stderr, "[menu] Graphics Settings in the Settings menu (overlay %s)\n", ovs.c_str());
     return true;
 }

@@ -3,9 +3,9 @@
  *
  * The MultiStream mixer (SPU task image 1) loads a block of DSP plugins at LS
  * 0x37000 (tools/make_spu_overlays.py lifts it as spu_ovl_msdsp_37000). Two
- * loops in it were 48% of that task's time on the Mac -- and the task a whole
- * P-core, at user-interactive QoS, in scenes that already had every core busy.
- * Both are the same biquad over a 512-sample block,
+ * loops in it are half of that task's time, and the task runs at
+ * user-interactive QoS in scenes that have every core busy. Both are the
+ * same biquad over a 512-sample block,
  *
  *     y = c0*x + c1*x1 + c2*x2 + c3*y1 + c4*y2
  *
@@ -33,6 +33,7 @@
  */
 #include "spu_context.h"
 #include "spu_helpers.h"
+#include "dod3_spu_check.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -141,32 +142,11 @@ static void biquad_b_forward(spu_context* ctx)
     wr32(ls, sp + 0x90, in);
 }
 
-/* Run a hooked loop from its body to `stop` through the lifted functions
- * alone (the loop only branches among them). */
-static void run_to(spu_context* ctx, void (*body)(spu_context*), uint32_t stop)
-{
-    body(ctx);
-    while (g_spu_trampoline_fn && ((uint32_t)ctx->pc & SPU_LS_MASK) != stop) {
-        void (*f)(spu_context*) = g_spu_trampoline_fn;
-        g_spu_trampoline_fn = 0;
-        f(ctx);
-    }
-}
-
 static unsigned long long s_checked, s_bad;
+/* Run a hooked loop from its body to `stop` both ways and compare. */
 static int check(spu_context* ctx, void (*body)(spu_context*), uint32_t stop)
 {
-    static _Thread_local u128 g0[128], ga[128];
-    static _Thread_local uint8_t l0[SPU_LS_SIZE], la[SPU_LS_SIZE];
-    memcpy(g0, ctx->gpr, sizeof g0); memcpy(l0, ctx->ls, SPU_LS_SIZE);
-    const uint32_t pc0 = (uint32_t)ctx->pc;
-    t_mode = 1; run_to(ctx, body, stop); t_mode = 0;
-    memcpy(ga, ctx->gpr, sizeof ga); memcpy(la, ctx->ls, SPU_LS_SIZE);
-    const uint32_t pca = (uint32_t)ctx->pc; void (*tfa)(spu_context*) = g_spu_trampoline_fn;
-    memcpy(ctx->gpr, g0, sizeof g0); memcpy(ctx->ls, l0, SPU_LS_SIZE); ctx->pc = pc0;
-    t_mode = 2; run_to(ctx, body, stop); t_mode = 0;
-    const int bad = memcmp(ga, ctx->gpr, sizeof ga) || memcmp(la, ctx->ls, SPU_LS_SIZE) ||
-                    pca != (uint32_t)ctx->pc || tfa != g_spu_trampoline_fn;
+    const int bad = dod3_spu_check_both(ctx, body, stop, &t_mode, 1, 2);
     s_checked++;
     if ((s_checked % 4000) == 0 || (bad && s_bad < 8))
         fprintf(stderr, "[spu-native-check] msdsp biquads: %llu compared, %llu mismatched%s\n",

@@ -1,0 +1,43 @@
+# The port's C/C++ style (main.cpp, src/). Not for third_party/ or the
+# generated tables.
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 120
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterEnum: false
+  AfterNamespace: false
+  AfterExternBlock: false
+  AfterControlStatement: Never
+  BeforeElse: false
+  BeforeLambdaBody: false
+  SplitEmptyFunction: false
+PointerAlignment: Left
+IndentCaseLabels: false
+NamespaceIndentation: None
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortBlocksOnASingleLine: Always
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortLambdasOnASingleLine: All
+AlignTrailingComments:
+  Kind: Leave
+SpacesBeforeTrailingComments: 2
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignConsecutiveMacros: Consecutive
+BinPackArguments: true
+BinPackParameters: true
+Cpp11BracedListStyle: false
+FixNamespaceComments: true
+IndentPPDirectives: None
+ReflowComments: false
+SortIncludes: Never

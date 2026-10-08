@@ -1,9 +1,9 @@
-/* DLC support that needs no license.
+/* Installed DLC.
  *
  * Drakengard 3's DLC (UP0082-NPUB31251, installed under
- * /dev_hdd0/game/NPUB31251/USRDIR as RPCS3 or a PS3 would install it) is
- * plain UE3 content. Its license-bound EDATs are what a PS3 decrypts with the
- * buyer's license, and the title barely needs them:
+ * /dev_hdd0/game/NPUB31251/USRDIR as the console installs it) is plain UE3
+ * content the title reads as it is. Of the EDATs that come with it the title
+ * reads little:
  *   - each pack's engine INI is empty (libs/filesystem/edat.c serves an
  *     empty EDAT as an empty file);
  *   - the 18-byte marker is never read;
@@ -15,9 +15,9 @@
  * So the plain lists are written here, from the files the pack installed:
  * one line per file, "/DLC_JPV/" + its path under DLC_JPV + CRLF, sorted --
  * the .XXX packages in JPV_PKG_FILES.TXT, the rest (two TFCs) in
- * JPV_NON_PKG_FILES.TXT; movies are found by name. That is the format of the
- * encrypted originals: their EDAT headers give the plaintext sizes, 453593
- * and 126 bytes, and these lists come to exactly that. */
+ * JPV_NON_PKG_FILES.TXT; movies are found by name. That is the lists' own
+ * format: the EDATs' headers give their sizes, 453593 and 126 bytes, and
+ * these come to exactly that. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "dod3_util.h"
 #include "setup_install.h"
 
 namespace fs = std::filesystem;
@@ -33,7 +34,7 @@ namespace {
 
 std::string upper_ext(const fs::path& p)
 {
-    std::string e = p.extension().string();
+    std::string e = dod3::utf8(p.extension());
     for (char& c : e) c = (char)toupper((unsigned char)c);
     return e;
 }
@@ -42,7 +43,7 @@ bool write_list(const fs::path& out, const std::vector<std::string>& lines)
 {
     std::string text;
     for (const std::string& l : lines) text += l + "\r\n";
-    FILE* f = fopen(out.string().c_str(), "wb");
+    FILE* f = dod3::open_file(out, "wb");
     if (!f) return false;
     const bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
     fclose(f);
@@ -66,8 +67,8 @@ bool dod3setup::dlc_write_jpv_lists(const fs::path& game_root, bool force)
         if (!it->is_regular_file(ec)) continue;
         const std::string ext = upper_ext(it->path());
         if (ext == ".BIK" || ext == ".EDAT" || ext == ".TXT") continue;
-        const std::string rel = "/DLC_JPV/" + fs::relative(it->path(), jpv, ec).generic_string();
-        (ext == ".XXX" ? pkgs : others).push_back(rel);
+        const auto rel = fs::relative(it->path(), jpv, ec).generic_u8string();
+        (ext == ".XXX" ? pkgs : others).push_back("/DLC_JPV/" + std::string(rel.begin(), rel.end()));
     }
     std::sort(pkgs.begin(), pkgs.end());
     std::sort(others.begin(), others.end());
@@ -77,12 +78,12 @@ bool dod3setup::dlc_write_jpv_lists(const fs::path& game_root, bool force)
                 pkgs.size(), others.size());
         return true;
     }
-    fprintf(stderr, "[dlc] Japanese voice pack: could not write its file lists in %s\n", jpv.string().c_str());
+    fprintf(stderr, "[dlc] Japanese voice pack: could not write its file lists in %s\n", dod3::utf8(jpv).c_str());
     return false;
 }
 
 /* At boot: the lists, if the pack is installed and they are missing (a pack
- * copied in by hand, or from RPCS3). */
+ * copied in by hand). */
 void dod3_dlc_prepare()
 {
     const char* r = getenv("PS3_VFS_ROOT");

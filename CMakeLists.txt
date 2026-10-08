@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(dod3
     VERSION 0.1.0
     LANGUAGES C CXX
-    DESCRIPTION "Recompiled PS3 game project (ps3recomp)"
+    DESCRIPTION "Drakengard 3 (PS3) recompiled for Windows and macOS"
 )
 if(APPLE)
     enable_language(OBJCXX)   # src/setup_mac.mm
@@ -212,11 +212,12 @@ add_custom_command(
 set_source_files_properties("${LIBSRE_LIFTED_CPP}" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off")
 
 if(WIN32)
-    list(APPEND PORT_WIN_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/win_prof.cpp"
+    list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/win_prof.cpp"
                                  "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_win.cpp")
 elseif(APPLE)
-    # The first-run setup's panels (AppKit), the counterpart of setup_win.cpp.
-    list(APPEND PORT_WIN_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_mac.mm")
+    # What main.cpp needs from AppKit (the data folder, the log file, Option
+    # held at launch) and the setup's alert: the counterpart of setup_win.cpp.
+    list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_mac.mm")
     set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/setup_mac.mm"
         PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
@@ -279,11 +280,11 @@ set_property(SOURCE ${SETUP_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${IMGU
 # third-party code: its warnings are not ours to act on
 set_property(SOURCE ${IMGUI_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "-w")
 
-add_executable(${PROJECT_NAME}
+# The port's own sources, on every platform (the SPU-side ones are in
+# SPU_SOURCES, with the lifted SPU code's options).
+set(PORT_SOURCES
     main.cpp
-    stubs.cpp
-    ${PORT_WIN_SOURCES}
-    ${SETUP_SOURCES}
+    src/dod3_hle.cpp
     src/spurs_lfqueue.cpp
     src/spurs_queue.cpp
     src/dod3_edgezlib.cpp
@@ -294,7 +295,14 @@ add_executable(${PROJECT_NAME}
     src/dod3_menu_patch.cpp
     src/dod3_dlc.cpp
     src/dod3_sysset.cpp
+    src/dod3_util.cpp
     src/setup_iso.cpp
+)
+
+add_executable(${PROJECT_NAME}
+    ${PORT_SOURCES}
+    ${PORT_PLATFORM_SOURCES}
+    ${SETUP_SOURCES}
     ${LIBSRE_LIFTED_CPP}
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
@@ -331,8 +339,7 @@ endif()
 # is named through its function table instead (src/win_prof.cpp), so the PDB
 # stays a few tens of MB and the link fast.
 if(WIN32 AND DOD3_SYMBOLS)
-    set_source_files_properties(main.cpp stubs.cpp src/spurs_lfqueue.cpp src/spurs_queue.cpp
-        src/dod3_edgezlib.cpp ${PORT_WIN_SOURCES} ${PS3RECOMP_SCAFFOLD} ${HLE_NID_TABLE}
+    set_source_files_properties(${PORT_SOURCES} ${PORT_PLATFORM_SOURCES} ${PS3RECOMP_SCAFFOLD} ${HLE_NID_TABLE}
         PROPERTIES COMPILE_OPTIONS "/Z7")
     # These already carry options (set above); append rather than replace.
     set_property(SOURCE ${SPU_SOURCES} "${LIBSRE_LIFTED_CPP}" ${SETUP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "/Z7")
@@ -340,15 +347,26 @@ if(WIN32 AND DOD3_SYMBOLS)
 endif()
 
 # The player's settings file goes beside the executable once; a copy the
-# player has edited is never overwritten.
+# player has edited is never overwritten (so a change to the repository's
+# dod3.ini reaches an existing build folder only by hand).
 if(NOT EXISTS "${CMAKE_BINARY_DIR}/dod3.ini")
     file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/dod3.ini" DESTINATION "${CMAKE_BINARY_DIR}")
 endif()
 
-# app.rc carries the icon, the version block and the manifest, and needs a
-# resource compiler. Listing it as a source on a host that has none is not a
-# link error, it is a "no rule to make" for a file nothing can consume.
+# app.rc carries the icon and the version block (from the project version,
+# through a generated header), and needs a resource compiler. Listing it as
+# a source on a host that has none is not a link error, it is a "no rule to
+# make" for a file nothing can consume.
 if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
+    file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/gen/app_version.h" CONTENT
+"/* Generated from CMakeLists.txt's project version. */
+#define DOD3_VER_MAJOR ${PROJECT_VERSION_MAJOR}
+#define DOD3_VER_MINOR ${PROJECT_VERSION_MINOR}
+#define DOD3_VER_PATCH ${PROJECT_VERSION_PATCH}
+#define DOD3_VERSION_STRING \"${PROJECT_VERSION}\"
+")
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/app.rc"
+        PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/gen")
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
 endif()
 

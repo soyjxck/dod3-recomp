@@ -1,5 +1,6 @@
 /* The setup's cryptography: see setup_crypto.h. */
 #include "setup_crypto.h"
+#include "dod3_util.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -9,8 +10,6 @@ namespace dod3setup {
 
 namespace {
 
-uint32_t be32(const uint8_t* p) { return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3]; }
-void put_be32(uint8_t* p, uint32_t v) { p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v; }
 uint32_t ror32(uint32_t v, int c) { return c ? (v >> c) | (v << (32 - c)) : v; }
 uint32_t rol32(uint32_t v, int c) { return (v << c) | (v >> (32 - c)); }
 
@@ -69,7 +68,7 @@ bool Aes::set_key(const uint8_t* key, int bits)
         return (uint32_t)T.sbox[w >> 24] << 24 | (uint32_t)T.sbox[(w >> 16) & 0xFF] << 16 |
                (uint32_t)T.sbox[(w >> 8) & 0xFF] << 8 | T.sbox[w & 0xFF];
     };
-    for (int i = 0; i < nk; i++) ek_[i] = be32(key + 4 * i);
+    for (int i = 0; i < nk; i++) ek_[i] = dod3_be32(key + 4 * i);
     uint8_t rcon = 1;
     for (int i = nk; i < words; i++) {
         uint32_t t = ek_[i - 1];
@@ -98,7 +97,7 @@ void Aes::encrypt(const uint8_t in[16], uint8_t out[16]) const
 {
     const Tables& T = tab();
     uint32_t s[4], t[4];
-    for (int i = 0; i < 4; i++) s[i] = be32(in + 4 * i) ^ ek_[i];
+    for (int i = 0; i < 4; i++) s[i] = dod3_be32(in + 4 * i) ^ ek_[i];
     const uint32_t* k = ek_ + 4;
     for (int r = 1; r < nr_; r++, k += 4) {
         for (int i = 0; i < 4; i++)
@@ -109,7 +108,7 @@ void Aes::encrypt(const uint8_t in[16], uint8_t out[16]) const
     for (int i = 0; i < 4; i++) {
         const uint32_t w = (uint32_t)T.sbox[s[i] >> 24] << 24 | (uint32_t)T.sbox[(s[(i + 1) & 3] >> 16) & 0xFF] << 16 |
                            (uint32_t)T.sbox[(s[(i + 2) & 3] >> 8) & 0xFF] << 8 | T.sbox[s[(i + 3) & 3] & 0xFF];
-        put_be32(out + 4 * i, w ^ k[i]);
+        dod3_put_be32(out + 4 * i, w ^ k[i]);
     }
 }
 
@@ -117,7 +116,7 @@ void Aes::decrypt(const uint8_t in[16], uint8_t out[16]) const
 {
     const Tables& T = tab();
     uint32_t s[4], t[4];
-    for (int i = 0; i < 4; i++) s[i] = be32(in + 4 * i) ^ dk_[i];
+    for (int i = 0; i < 4; i++) s[i] = dod3_be32(in + 4 * i) ^ dk_[i];
     const uint32_t* k = dk_ + 4;
     for (int r = 1; r < nr_; r++, k += 4) {
         for (int i = 0; i < 4; i++)
@@ -128,7 +127,7 @@ void Aes::decrypt(const uint8_t in[16], uint8_t out[16]) const
     for (int i = 0; i < 4; i++) {
         const uint32_t w = (uint32_t)T.isbox[s[i] >> 24] << 24 | (uint32_t)T.isbox[(s[(i + 3) & 3] >> 16) & 0xFF] << 16 |
                            (uint32_t)T.isbox[(s[(i + 2) & 3] >> 8) & 0xFF] << 8 | T.isbox[s[(i + 1) & 3] & 0xFF];
-        put_be32(out + 4 * i, w ^ k[i]);
+        dod3_put_be32(out + 4 * i, w ^ k[i]);
     }
 }
 
@@ -171,7 +170,7 @@ void aes_cbc_decrypt(const Aes& aes, uint8_t iv[16], uint8_t* buf, size_t n)
 void Sha1::block(const uint8_t* p)
 {
     uint32_t w[80];
-    for (int i = 0; i < 16; i++) w[i] = be32(p + 4 * i);
+    for (int i = 0; i < 16; i++) w[i] = dod3_be32(p + 4 * i);
     for (int i = 16; i < 80; i++) w[i] = rol32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
     uint32_t a = h_[0], b = h_[1], c = h_[2], d = h_[3], e = h_[4];
     for (int i = 0; i < 80; i++) {
@@ -207,7 +206,7 @@ void Sha1::digest(uint8_t out[20])
     uint8_t l[8];
     for (int i = 0; i < 8; i++) l[i] = (uint8_t)(bits >> (56 - 8 * i));
     update(l, 8);
-    for (int i = 0; i < 5; i++) put_be32(out + 4 * i, h_[i]);
+    for (int i = 0; i < 5; i++) dod3_put_be32(out + 4 * i, h_[i]);
 }
 
 std::string Sha1::hex() { uint8_t d[20]; digest(d); return to_hex(d, 20); }
@@ -226,7 +225,7 @@ void Sha256::block(const uint8_t* p)
         0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
         0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2 };
     uint32_t w[64];
-    for (int i = 0; i < 16; i++) w[i] = be32(p + 4 * i);
+    for (int i = 0; i < 16; i++) w[i] = dod3_be32(p + 4 * i);
     for (int i = 16; i < 64; i++) {
         const uint32_t s0 = ror32(w[i - 15], 7) ^ ror32(w[i - 15], 18) ^ (w[i - 15] >> 3);
         const uint32_t s1 = ror32(w[i - 2], 17) ^ ror32(w[i - 2], 19) ^ (w[i - 2] >> 10);
@@ -262,7 +261,7 @@ void Sha256::digest(uint8_t out[32])
     uint8_t l[8];
     for (int i = 0; i < 8; i++) l[i] = (uint8_t)(bits >> (56 - 8 * i));
     update(l, 8);
-    for (int i = 0; i < 8; i++) put_be32(out + 4 * i, h_[i]);
+    for (int i = 0; i < 8; i++) dod3_put_be32(out + 4 * i, h_[i]);
 }
 
 std::string Sha256::hex() { uint8_t d[32]; digest(d); return to_hex(d, 32); }

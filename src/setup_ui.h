@@ -11,7 +11,7 @@
  * The wizard owns the ImGui context's contents (style, fonts, pages); the
  * platform owns the window, the device and the backends:
  *
- *   if (!ui_init("Drakengard 3 Recompiled", 1280, 720)) -> fall back
+ *   if (!ui_init("Drakengard 3 Recompiled", 1280, 720)) -> an alert
  *   while (ui_frame_begin()) { ...ImGui calls...; ui_frame_end(); }
  *   ui_shutdown();
  *
@@ -28,7 +28,7 @@ namespace dod3setup {
 /* Create the window, the device and ImGui's context and backends; load the
  * font from `font_path` (a .ttf; empty = ImGui's default) at `font_px`
  * scaled by the display's DPI. False if any of it fails -- the caller then
- * falls back to the plain dialogs. */
+ * shows an alert with the command-line way to install. */
 bool ui_init(const char* title, int width, int height, const std::string& font_path, float font_px);
 
 /* Pump the platform's events and start an ImGui frame (the backends'
@@ -56,7 +56,7 @@ std::string ui_default_font();
 /* The whole installer (src/setup_wizard.cpp). `base` is where the game is
  * installed (beside the executable on Windows, Application Support on the
  * Mac). Returns 0 when the game is installed and ready to start, 1 if the
- * player quit, -1 if the UI could not start (use the plain dialogs). */
+ * player quit, -1 if the UI could not start (show an alert instead). */
 int run_installer(const std::filesystem::path& base);
 
 }  // namespace dod3setup

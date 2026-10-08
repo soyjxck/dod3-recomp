@@ -1,4 +1,33 @@
 // Windows resources for dod3.exe: the application icon (assets/app.ico, an
-// original design drawn by tools/make_icon.py). Resource id 101
-// is what the D3D12 window class loads for its title bar and taskbar entry.
+// original design drawn by tools/make_icon.py; resource 101, which the
+// game's and the installer's windows load) and the version block, from the
+// project version in CMakeLists.txt (gen/app_version.h).
+#include <winver.h>
+#include "app_version.h"
+
 101 ICON "assets/app.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION DOD3_VER_MAJOR, DOD3_VER_MINOR, DOD3_VER_PATCH, 0
+PRODUCTVERSION DOD3_VER_MAJOR, DOD3_VER_MINOR, DOD3_VER_PATCH, 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "Drakengard 3 Recompiled"
+            VALUE "FileVersion", DOD3_VERSION_STRING
+            VALUE "InternalName", "dod3"
+            VALUE "OriginalFilename", "dod3.exe"
+            VALUE "ProductName", "Drakengard 3 Recompiled"
+            VALUE "ProductVersion", DOD3_VERSION_STRING
+            VALUE "LegalCopyright", "MIT License. No game files are included; Drakengard 3 belongs to its owners."
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

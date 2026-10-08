@@ -1,7 +1,7 @@
 /*
- * SELF -> ELF for the setup: the game's EBOOT.BIN, decrypted with keys the
- * player supplies (src/setup_keys.h), so the player gives only the disc and
- * the update package.
+ * SELF -> ELF for the setup: the game's EBOOT.BIN decrypted (the keys:
+ * src/setup_keys.h), so the player gives only the disc and the update
+ * package.
  *
  * A retail SELF is the ELF's headers in the clear, then a metadata block and
  * the program segments encrypted:
@@ -33,9 +33,6 @@ struct SelfKeys {
     uint8_t erk[32] = {}, riv[16] = {};          /* for the SELF's type and key revision */
     uint8_t klic_free[16] = {}, klic_key[16] = {};   /* NPDRM only */
 };
-
-/* The clear part of the header. False (with `err`) if it is not a SELF. */
-bool self_info(const std::vector<uint8_t>& self, SelfInfo* info, std::string* err);
 
 /* Decrypt and rebuild the ELF. False with `err`; *wrong_keys is set when
  * the keys do not open the metadata (as opposed to a damaged file). */

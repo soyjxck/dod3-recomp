@@ -11,6 +11,7 @@
  *     <prefix>.ppm, the game's PS3RECOMP_FRAME_GRAB protocol, so the pages
  *     can be checked without anyone looking. */
 #include "setup_ui.h"
+#include "dod3_util.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -547,7 +548,7 @@ std::string ui_default_font()
     if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Fonts, 0, nullptr, &dir))) {
         const std::filesystem::path p = std::filesystem::path(dir) / L"segoeui.ttf";
         std::error_code ec;
-        if (std::filesystem::exists(p, ec)) { const auto s = p.u8string(); out.assign(s.begin(), s.end()); }
+        if (std::filesystem::exists(p, ec)) out = dod3::utf8(p);
     }
     CoTaskMemFree(dir);
     return out;

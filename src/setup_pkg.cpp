@@ -7,6 +7,7 @@
 #include "setup_pkg.h"
 #include "setup_crypto.h"
 #include "ps3recomp_pkg_key.h"
+#include "dod3_util.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -18,23 +19,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-/* a path for a message (UTF-8; path::string() throws on Windows for names
- * outside the ANSI code page) */
-std::string u8s(const fs::path& p) { const auto s = p.u8string(); return std::string(s.begin(), s.end()); }
+using dod3::utf8;
 
-uint32_t be32(const uint8_t* p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
-uint64_t be64(const uint8_t* p) { return ((uint64_t)be32(p) << 32) | be32(p + 4); }
-
+/* a FILE* closed when it goes, with 64-bit seeks */
 struct File {
     FILE* f = nullptr;
-    explicit File(const fs::path& p, const char* mode)
-    {
-#ifdef _WIN32
-        f = _wfopen(p.wstring().c_str(), mode[0] == 'r' ? L"rb" : L"wb");
-#else
-        f = fopen(p.string().c_str(), mode);
-#endif
-    }
+    File(const fs::path& p, const char* mode) : f(dod3::open_file(p, mode)) {}
     ~File() { if (f) fclose(f); }
     bool seek(uint64_t o) {
 #ifdef _WIN32
@@ -58,7 +48,7 @@ std::string pkg_content_id(const fs::path& p)
 {
     File f(p, "rb");
     uint8_t h[0x60];
-    if (!f.f || fread(h, 1, sizeof h, f.f) != sizeof h || be32(h) != 0x7F504B47u) return "";
+    if (!f.f || fread(h, 1, sizeof h, f.f) != sizeof h || dod3_be32(h) != 0x7F504B47u) return "";
     return std::string((const char*)h + 0x30, strnlen((const char*)h + 0x30, 0x24));
 }
 
@@ -82,15 +72,15 @@ bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
     pkg->file_size = fs::file_size(p, ec);
     File f(p, "rb");
     uint8_t h[0x80];
-    if (ec || !f.f || fread(h, 1, sizeof h, f.f) != sizeof h || be32(h) != 0x7F504B47u) {
+    if (ec || !f.f || fread(h, 1, sizeof h, f.f) != sizeof h || dod3_be32(h) != 0x7F504B47u) {
         *err = "not a PS3 package"; return false;
     }
     if (!(h[4] & 0x80) || (h[6] << 8 | h[7]) != 1) {
         *err = "not a retail PS3 package"; return false;
     }
-    const uint32_t items = be32(h + 0x14);
-    pkg->data_offset = be64(h + 0x20);
-    pkg->data_size = be64(h + 0x28);
+    const uint32_t items = dod3_be32(h + 0x14);
+    pkg->data_offset = dod3_be64(h + 0x20);
+    pkg->data_size = dod3_be64(h + 0x28);
     pkg->content_id.assign((const char*)h + 0x30, strnlen((const char*)h + 0x30, 0x24));
     memcpy(pkg->riv, h + 0x70, 16);
     if (pkg->data_offset + pkg->data_size > pkg->file_size || items > 1000000) { *err = "the package is cut short"; return false; }
@@ -102,10 +92,10 @@ bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
     pkg->entries.clear();
     for (uint32_t i = 0; i < items; i++) {
         const uint8_t* e = tab.data() + (size_t)i * 32;
-        const uint32_t name_off = be32(e), name_size = be32(e + 4);
+        const uint32_t name_off = dod3_be32(e), name_size = dod3_be32(e + 4);
         PkgEntry ent;
-        ent.offset = be64(e + 8);
-        ent.size = be64(e + 16);
+        ent.offset = dod3_be64(e + 8);
+        ent.size = dod3_be64(e + 16);
         const uint8_t type = e[27];
         ent.dir = type == 4 || type == 0x12;
         if (name_size > 1024 || name_off + (uint64_t)name_size > pkg->data_size || ent.offset + ent.size > pkg->data_size) {
@@ -123,33 +113,22 @@ bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
     return true;
 }
 
-bool pkg_extract(const Pkg& pkg, const fs::path& dest,
-                 const std::function<bool(const PkgEntry&)>& want,
-                 const std::function<fs::path(const PkgEntry&)>& map,
-                 const std::function<bool(uint64_t, uint64_t)>& progress,
-                 std::vector<fs::path>* created, std::string* err)
+bool pkg_extract(const Pkg& pkg, const fs::path& dest, const std::function<bool(uint64_t, uint64_t)>& progress,
+                 std::string* err)
 {
     Aes aes;
     aes.set_key(k_ps3recomp_pkg_key, 128);
     std::error_code ec;
-    auto target = [&](const PkgEntry& e) { return map ? map(e) : dest / fs::path(e.name); };
-    auto make_dirs = [&](const fs::path& d) {
-        std::vector<fs::path> chain;
-        for (fs::path p = d; !p.empty() && !fs::exists(p, ec); p = p.parent_path()) chain.push_back(p);
-        for (auto it = chain.rbegin(); it != chain.rend(); ++it)
-            if (fs::create_directory(*it, ec) && created) created->push_back(*it);
-    };
-    /* the files to write, in data order */
+    /* the folders, then the files to write, in data order */
     std::vector<const PkgEntry*> files;
     for (const PkgEntry& e : pkg.entries) {
-        if (want && !want(e)) continue;
-        if (e.dir) make_dirs(target(e));
+        if (e.dir) fs::create_directories(dest / fs::path(e.name), ec);
         else files.push_back(&e);
     }
     std::sort(files.begin(), files.end(), [](const PkgEntry* a, const PkgEntry* b) { return a->offset < b->offset; });
 
     File in(pkg.path, "rb");
-    if (!in.f) { *err = "cannot open " + u8s(pkg.path); return false; }
+    if (!in.f) { *err = "cannot open " + utf8(pkg.path); return false; }
     Sha1 sha;
     const uint64_t hashed_end = pkg.file_size - 32;
     const size_t kChunk = 8u << 20;
@@ -159,7 +138,7 @@ bool pkg_extract(const Pkg& pkg, const fs::path& dest,
     const PkgEntry* cur = nullptr;
     for (uint64_t pos = 0; pos < pkg.file_size;) {
         const size_t n = (size_t)std::min<uint64_t>(kChunk, pkg.file_size - pos);
-        if (fread(buf.data(), 1, n, in.f) != n) { *err = "cannot read " + u8s(pkg.path); return false; }
+        if (fread(buf.data(), 1, n, in.f) != n) { *err = "cannot read " + utf8(pkg.path); return false; }
         if (pos < hashed_end) sha.update(buf.data(), (size_t)std::min<uint64_t>(n, hashed_end - pos));
         /* the files this chunk overlaps */
         const uint64_t lo = pos, hi = pos + n;
@@ -168,11 +147,10 @@ bool pkg_extract(const Pkg& pkg, const fs::path& dest,
                 const PkgEntry* e = files[next];
                 if (pkg.data_offset + e->offset >= hi) break;
                 cur = e; next++;
-                const fs::path t = target(*e);
-                make_dirs(t.parent_path());
+                const fs::path t = dest / fs::path(e->name);
+                fs::create_directories(t.parent_path(), ec);
                 out.reset(new File(t, "wb"));
-                if (!out->f) { *err = "cannot write " + u8s(t); return false; }
-                if (created) created->push_back(t);
+                if (!out->f) { *err = "cannot write " + utf8(t); return false; }
                 if (e->size == 0) { out.reset(); cur = nullptr; continue; }
             }
             const uint64_t a = std::max(lo, pkg.data_offset + cur->offset);
@@ -190,7 +168,7 @@ bool pkg_extract(const Pkg& pkg, const fs::path& dest,
     }
     if (cur) { *err = "the package is cut short"; return false; }
     if (sha.hex() != pkg_footer_sha1(pkg.path)) {
-        *err = "the package is damaged (its checksum does not match): " + u8s(pkg.path.filename());
+        *err = "the package is damaged (its checksum does not match): " + utf8(pkg.path.filename());
         return false;
     }
     return true;
@@ -205,7 +183,7 @@ bool pkg_read_file(const Pkg& pkg, const std::string& name, std::vector<uint8_t>
     File f(pkg.path, "rb");
     out->resize((size_t)e->size);
     if (!f.f || !f.seek(pkg.data_offset + e->offset) || fread(out->data(), 1, out->size(), f.f) != out->size()) {
-        *err = "cannot read " + name + " from " + u8s(pkg.path.filename());
+        *err = "cannot read " + name + " from " + utf8(pkg.path.filename());
         return false;
     }
     Aes aes;

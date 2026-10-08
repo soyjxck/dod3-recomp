@@ -1,61 +1,51 @@
 /*
- * ps3recomp game project -- entry point template.
+ * Drakengard 3 Recompiled: the runner.
  *
- * This is the runner. It boots a lifted title through the toolkit's PPU
- * scaffold: allocate the flat guest VM, load the PPU ELF named on the command
- * line, register the lifted function table and the HLE NID handlers, start a
- * frame clock, and dispatch the entry OPD.
- *
- * The scaffold does the work; nothing below reimplements it. ppu_load_elf,
- * ppu_recomp_register, ppu_hle_init, ppu_sysprx_register, ppu_fs_register,
- * lv2_init_syscalls and ppu_run all come from the toolkit, compiled into this
- * project from PS3RECOMP_DIR (see CMakeLists.txt). What is left here is the
- * part a port owns: which backend to present through, how the frame clock is
- * paced, and whatever diagnostics the title turns out to need.
- *
- * runtime/ppu/tests/boot_main.cpp in the toolkit is the same boot in its
- * fully-instrumented form -- crash filter, hang watchdog, guest-PC sampling
- * profiler. Read it when a boot goes wrong; copy from it what the title
- * needs. It is deliberately not what a fresh project starts with.
- *
- * The one part that IS duplicated from it is the frame clock below, because a
- * port is expected to change its pacing and a shared one would be the wrong
- * shape for that. It was copied faithfully, comments and all. If a pacing bug
- * is fixed in one of the two, look at the other.
- *
- * This builds on Windows, macOS and Linux. CI builds and runs it against the
- * boot smoke title on the last two, and compile-checks it against clang-cl on
- * the first (tools/check_ppu_scaffold.py).
+ * Boots the lifted title on ps3recomp's PPU scaffold: allocate the flat guest
+ * VM, load the EBOOT's ELF, register the lifted function table and the HLE
+ * handlers, start the frame clock and dispatch the entry OPD. The scaffold
+ * itself (ppu_load_elf, ppu_recomp_register, ppu_hle_init,
+ * ppu_sysprx_register, ppu_fs_register, lv2_init_syscalls, ppu_run) is the
+ * toolkit's; what is here is the port's own part:
+ *   - the frame clock: vblanks, flips and FIFO drains, presented through
+ *     D3D12 (Windows), Metal (macOS) or the null backend;
+ *   - the frame-rate lock (DOD3_FPS) and what happens out of focus
+ *     (DOD3_UNFOCUSED);
+ *   - the title-specific runtime defaults, in main();
+ *   - the release layout: with no arguments the installer runs when the
+ *     game is not installed yet, then the installed game boots
+ *     (src/setup_install.h); --install, --check and --setup;
+ *   - dod3.ini, the player's settings;
+ *   - diagnostics: DOD3_AB, DOD3_FRAME_CPU, DOD3_TRACE_HITCH, DOD3_PROF,
+ *     DOD3_STALL_SAMPLE, DOD3_STUTTER_MS.
  */
 
-/* The lifter's generated header, which declares ppu_context and the function
- * table. It comes first: everything below is written against that struct. */
-#ifdef _WIN32
-#include <intrin.h>
-#include <immintrin.h>
-#endif
 #include <math.h>
-#include "ps3emu/vm_watch.h"
-#include "ppu_recomp.h"
-#include "src/dod3_eboot.h"   /* the EBOOT version's addresses */
-#include "src/setup_install.h"   /* the release layout (the installer) */
-#include "src/dod3_mp3_standin.h"   /* our flashMP3.pic (tools/make_spu_overlays.py standin) */
-#include "src/dod3_sysset.h"        /* the engine's graphics switches */
-#ifdef __APPLE__
-extern "C" {   /* src/setup_mac.mm */
-const char* dod3_mac_data_dir(void);
-void dod3_mac_log_to_file(void);
-int dod3_setup_mac(const char* base_dir, int force);
-int dod3_mac_option_held(void);
-}
-#endif
-void dod3_settings_menu_install();  /* src/dod3_settings_menu.cpp: the Graphics Settings page */
-void dod3_dlc_prepare();            /* src/dod3_dlc.cpp: DLC that needs no license */
-bool dod3_menu_patch_prepare();     /* src/dod3_menu_patch.cpp: the script patch that adds it */
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <mutex>
 #include <string>
+#include <vector>
+
+#include "ps3emu/vm_watch.h"
+#include "ppu_recomp.h"                  /* the lifter's: ppu_context and the function table */
+#include "src/dod3_eboot.h"              /* the EBOOT version's addresses */
+#include "src/dod3_mp3_standin.h"        /* our flashMP3.pic (tools/make_spu_overlays.py standin) */
+#include "src/dod3_sysset.h"             /* the engine's graphics switches */
+#include "src/dod3_util.h"
+#include "src/setup_crypto.h"
+#include "src/setup_install.h"           /* the release layout (the installer) */
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
  * VirtualAlloc, the scalar typedefs -- from one place. On Windows this is a
@@ -63,11 +53,36 @@ bool dod3_menu_patch_prepare();     /* src/dod3_menu_patch.cpp: the script patch
  * names over pthreads and mmap, so the call sites below are written once. */
 #include "win32_compat.h"
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
+#ifdef _WIN32
+#include <intrin.h>
+#include <immintrin.h>
+#include <io.h>
+#include <fcntl.h>
+#include <shellapi.h>                    /* CommandLineToArgvW */
+#include <tlhelp32.h>
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "winmm.lib")
+#else
+#include <pthread.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <spawn.h>
+extern char** environ;
+extern "C" {   /* src/setup_mac.mm */
+const char* dod3_mac_data_dir(void);
+void dod3_mac_log_to_file(void);
+int dod3_setup_mac(const char* base_dir, int force);
+int dod3_mac_option_held(void);
+}
+#endif
+
+void dod3_settings_menu_install();  /* src/dod3_settings_menu.cpp: the Graphics Settings page */
+void dod3_dlc_prepare();            /* src/dod3_dlc.cpp: the installed DLC's file lists */
+bool dod3_menu_patch_prepare();     /* src/dod3_menu_patch.cpp: the script patch that adds it */
 
 #ifdef _WIN32
 /* timeBeginPeriod: <windows.h> arrives with WIN32_LEAN_AND_MEAN set, which
@@ -77,13 +92,7 @@ bool dod3_menu_patch_prepare();     /* src/dod3_menu_patch.cpp: the script patch
  * around is a Windows problem. */
 #include <timeapi.h>
 #include <direct.h>
-/* The defaults main() sets are written with POSIX setenv/mkdir; the CRT has
- * them as _putenv_s/_mkdir. getenv sees _putenv_s, so the runtime does too. */
-static int setenv(const char* k, const char* v, int overwrite)
-{
-    if (!overwrite && getenv(k)) return 0;
-    return _putenv_s(k, v) ? -1 : 0;
-}
+/* main() makes its folders with POSIX mkdir; the CRT has it as _mkdir. */
 #define mkdir(path, mode) _mkdir(path)
 /* src/win_prof.cpp: DOD3_PROF sampling profiler and DOD3_STALL_MS stack dumps. */
 extern "C" void win_prof_start(void);
@@ -103,9 +112,7 @@ void     ppu_fs_register(void);               /* cellFs over the real game direc
 void     lv2_init_syscalls(void);             /* the lv2 syscall table */
 int      ppu_run(uint32_t entry_opd, uint32_t stack_top);
 
-/* This project's own: load whatever real system PRX modules the title needs
- * into guest RAM and register their exports. stubs.cpp has the empty version
- * a game with no lifted PRX wants. */
+/* The port's own HLE handlers (src/dod3_hle.cpp). */
 void     ps3_load_prx_modules(void);
 
 extern const char* ppu_vfs_root;              /* host dir the PS3 mount points map into */
@@ -217,17 +224,11 @@ static void present_guest_frame(void)
     InterlockedIncrement(&g_frames_presented);
 }
 
-extern "C" unsigned cellGcm_user_queue_depth(void);
-
 /* The FIFO walker sleeps between drains. A guest thread polling with usleep
  * is usually waiting on something only a drain writes -- the render thread's
  * GPU fence wait (func_008B0C70) re-reads a label every 200 us -- so every
  * guest usleep wakes the walker (sys_timer.c, g_lv2_usleep_hook). It cost the
- * render thread up to the whole 4 ms sleep, several times a frame.
- * DOD3_FIFO_KICK=0 goes back to the plain sleep. */
-#include <atomic>
-#include <condition_variable>
-#include <mutex>
+ * render thread up to the whole 4 ms sleep, several times a frame. */
 static std::mutex              s_kick_mu;
 static std::condition_variable s_kick_cv;
 static std::atomic<bool>       s_kicked{false};
@@ -241,21 +242,14 @@ static void fifo_kick(void)
 }
 
 /* The render thread's GPU fence wait (func_008B0C70) polls a label with
- * usleep(200), about 20 times a frame. A drain usually writes the label well
- * inside that, but the thread slept its whole 200 us (258 with timer slack)
- * every time -- some 5 ms of a frame on the busiest thread. That one poll
- * instead sleeps until the next drain completes, never longer than it asked.
- * DOD3_FAST_POLL_LR=<hex guest return address>, 0 for none.
- *
- * It is also woken when the walker writes a label (g_gcm_label_write_hook).
- * The label the thread waits for comes in the middle of a long drain pass --
- * the pass that renders the frame up to it, GPU round trip for the occlusion
- * counts included -- so "the next drain completes" was milliseconds after it
- * landed, and a wait that times out is no 200 us on Windows but the
- * scheduler's millisecond or two: three quarters of the polls timed out, at
- * 1.02 ms apiece, 4 ms of every 11 ms frame, and the game thread behind the
- * render thread waited with it (Unreal's end-of-frame sync). DOD3_AB=labelwake
- * switches the label wake in a run. */
+ * usleep(200), about 20 times a frame. That one poll sleeps instead until
+ * the walker writes a label (g_gcm_label_write_hook) or a drain pass
+ * completes, never longer than it asked: the label it waits for lands in the
+ * middle of a long drain pass, and a usleep that runs its course costs the
+ * scheduler's millisecond or two on Windows, not 200 us -- several ms of
+ * every frame on the busiest thread, with the game thread waiting behind it
+ * (Unreal's end-of-frame sync). DOD3_FAST_POLL_LR=<hex guest return
+ * address>, 0 for none; DOD3_AB=labelwake switches the label wake in a run. */
 extern "C" void (*g_gcm_label_write_hook)(void);
 extern "C" void (*g_gcm_fifo_kick_hook)(void);   /* cellGcmSys.c: the ring-full recycle */
 static std::atomic<uint64_t> s_drain_gen{0};
@@ -276,7 +270,6 @@ static void drain_wake(void)
  * and the walker did -- every guest usleep (caller, length, thread), every
  * FIFO drain (get/put after it), label write and present -- and, for each
  * logged hitch, the events of the frame before it as [trace] lines. */
-static uint64_t frame_clock_us(void);
 struct TraceEv { uint64_t t; uint32_t type, tid, a, b; };
 static const uint32_t TRACE_N = 1u << 16;
 static TraceEv* s_trace;
@@ -290,12 +283,12 @@ static void trace(uint32_t type, uint32_t a, uint32_t b)
 #else
     e.tid = 0;
 #endif
-    e.t = frame_clock_us(); e.type = type; e.a = a; e.b = b;
+    e.t = dod3_now_us(); e.type = type; e.a = a; e.b = b;
 }
 static void trace_dump(double ms)
 {
     if (!s_trace) return;
-    const uint64_t now = frame_clock_us(), from = now - (uint64_t)(ms * 1000.0) - 16000;
+    const uint64_t now = dod3_now_us(), from = now - (uint64_t)(ms * 1000.0) - 16000;
     const uint32_t end = s_trace_i.load();
     static const char* names[] = { "?", "usleep", "drain", "label", "present", "usleep-done",
                                    "recycle", "recycled", "fifo-flip", "pos-flip-set", "pos-flip", "gcm-pump" };
@@ -322,20 +315,17 @@ static void label_written(void)
 }
 static std::atomic<uint64_t> s_fp_calls{0}, s_fp_early{0}, s_fp_us{0};
 /* Kick only when the FIFO holds commands the walker has not read (put !=
- * get). The render thread's command-ring poll (usleep(30) at 0x000B4464,
- * ~10k a second) kicked every time: a lock, a notify and a walker pass with
- * nothing to do (the Mac session found it: ~11% of the render thread's busy
- * time there). The fence poll below keeps its own drain/label wake.
- * DOD3_KICK_BUSY=0 kicks on every usleep again; DOD3_AB=kickbusy switches it
- * in a run. */
-static std::atomic<int> s_kick_busy{-1};
+ * get). Kicking on every usleep meant a lock, a notify and a walker pass with
+ * nothing to do for each of the render thread's command-ring polls
+ * (usleep(30) at 0x000B4464, ~10k a second): ~11% of its busy time on the
+ * Mac. The fence poll below keeps its own drain/label wake. DOD3_AB=kickbusy
+ * switches it in a run. */
+static std::atomic<int> s_kick_busy{1};
 static void ab_kickbusy(int on) { s_kick_busy = on; }
 static int guest_usleep_hook(uint32_t lr, uint64_t usec)
 {
     if (s_trace) trace(1, lr, (uint32_t)usec);
-    int busy_only = s_kick_busy.load(std::memory_order_relaxed);
-    if (busy_only < 0) { const char* e = getenv("DOD3_KICK_BUSY"); busy_only = !(e && e[0] == '0'); s_kick_busy = busy_only; }
-    if (!busy_only || vm_read32(ppu_hle_inject_base + 0x2000u) != vm_read32(ppu_hle_inject_base + 0x2004u))
+    if (!s_kick_busy.load(std::memory_order_relaxed) || vm_read32(ppu_hle_inject_base + 0x2000u) != vm_read32(ppu_hle_inject_base + 0x2004u))
         fifo_kick();
     if (!s_fast_poll_lr || lr != s_fast_poll_lr || usec > 100000) return 0;
     /* A label written since this thread last looked: let it look again now.
@@ -363,23 +353,6 @@ static int guest_usleep_hook(uint32_t lr, uint64_t usec)
 extern "C" int  ppu_waitprof_on(void);
 extern "C" void ppu_waitprof_report(double window_s);
 
-/* A monotonic microsecond clock: the vblank period is not a whole number of
- * milliseconds once it is raised above 60 Hz. */
-static uint64_t frame_clock_us(void)
-{
-#ifdef _WIN32
-    static LARGE_INTEGER f; LARGE_INTEGER c;
-    if (!f.QuadPart) QueryPerformanceFrequency(&f);
-    QueryPerformanceCounter(&c);
-    return (uint64_t)(c.QuadPart / f.QuadPart) * 1000000ull +
-           (uint64_t)(c.QuadPart % f.QuadPart) * 1000000ull / (uint64_t)f.QuadPart;
-#else
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000ull + (uint64_t)ts.tv_nsec / 1000u;
-#endif
-}
-
 /* The draw engine's RSX_HITCH_LOG hook (see the frame clock below). */
 extern "C" void (*g_rsx_hitch_hook)(double frame_ms);
 static void hitch_to_profiler(double ms)
@@ -389,7 +362,7 @@ static void hitch_to_profiler(double ms)
 #ifdef _WIN32
     /* Handed to the profiler thread: symbolising here, on the walker, could
      * deadlock against the profiler's thread suspension. */
-    const uint64_t now = frame_clock_us();
+    const uint64_t now = dod3_now_us();
     win_prof_slow_frame_async(now - (uint64_t)(ms * 1000.0), now, ms);
 #else
     (void)ms;
@@ -405,12 +378,12 @@ static void hitch_to_profiler(double ms)
  * passed. GetMaxTickRate is UEngine's frame-rate smoothing (bSmoothFrameRate,
  * MinSmoothedFrameRate 22, MaxSmoothedFrameRate 30 in Coalesced_INT): a
  * running average of the frame rate over ~300 frames, clamped to [22, 30].
- * The old unlock scaled the numerator (the 1.0 at 0x008EDC5C) to 30/n, so
- * the cap followed the average: after the destruction scene's heavy frames
- * the average sank below 22 and the title held itself at 44 fps for seconds
- * on frames that could have run at 60 (the game thread slept 63% of the
- * time at 42 fps). Now GetMaxTickRate itself is replaced: it returns n, or 0
- * for no cap, and the numerator stays 1.0 -- no smoothing at all.
+ * GetMaxTickRate itself is replaced (fps_install_override): it returns n, or
+ * 0 for no cap, so there is no smoothing at all. (Scaling the limiter's
+ * numerator instead left the cap following the average: after a heavy scene
+ * the title held itself at 44 fps on frames that could have run at 60.) The
+ * numerator (DOD3_A_FPS_NUMERATOR, 1.0) is only checked, as a sign that this
+ * is the right build.
  *
  * The title's vblank handler flips on every second vblank, so the vblank
  * runs at DOD3_VBLANK_MULT * n Hz (default 8: 480 Hz at 60; 2000 Hz when
@@ -440,8 +413,8 @@ static void apply_fps_unlock(void)
     const uint32_t addr = DOD3_A_FPS_NUMERATOR;
     const uint32_t word = vm_read32(addr);
     if (word != 0x3F800000u) {           /* 1.0f: anything else is another build */
-        fprintf(stderr, "[fps] DOD3_FPS=%s ignored: 0x%08X holds 0x%08X, not 1.0 -- not BLUS31197 1.00?\n",
-                e, addr, word);
+        fprintf(stderr, "[fps] DOD3_FPS=%s ignored: 0x%08X holds 0x%08X, not 1.0 -- not BLUS31197 %s?\n",
+                e, addr, word, DOD3_EBOOT_NAME);
         return;
     }
     s_fps_lock = fps;
@@ -529,7 +502,7 @@ static int unfocused_hold(uint64_t now_us)
  * and the audio device until Task Manager found it. The guest threads cannot
  * be joined (they run lifted code with no exit path), so this is a hard exit
  * after the logs are flushed. */
-static void window_closed_exit(void)
+[[noreturn]] static void window_closed_exit(void)
 {
     fprintf(stderr, "[rsx] window closed -- exiting\n");
     fflush(stdout); fflush(stderr);
@@ -571,15 +544,10 @@ static void apply_sha_overrides(void)
         const std::string item = all.substr(p, q - p);
         p = q + 1;
         const size_t eq = item.find('=');
-        uint8_t sha[20];
-        bool ok = eq != std::string::npos && item.size() - eq - 1 == 40;
-        for (int i = 0; ok && i < 20; i++) {
-            unsigned v;
-            ok = sscanf(item.c_str() + eq + 1 + 2 * i, "%2x", &v) == 1;
-            sha[i] = (uint8_t)v;
-        }
+        std::vector<uint8_t> sha;
+        const bool ok = eq != std::string::npos && dod3setup::from_hex(item.substr(eq + 1), &sha) && sha.size() == 20;
         const std::string name = ok ? item.substr(0, eq) : item;
-        if (!ok || !dod3_sha_override(name.c_str(), sha))
+        if (!ok || !dod3_sha_override(name.c_str(), sha.data()))
             fprintf(stderr, "[sha] DOD3_SHA_OVERRIDE: '%s' not applied\n", item.c_str());
         else
             fprintf(stderr, "[sha] %s: hash replaced\n", name.c_str());
@@ -615,10 +583,7 @@ static void fps_install_override(void)
             s_fps_lock < 0 ? "the title's own" : s_fps_lock ? "fixed cap" : "no cap");
 }
 
-#ifndef _WIN32
-#include <spawn.h>
-#include <unistd.h>
-extern char** environ;
+#ifdef __APPLE__
 extern "C" uint32_t g_rsx_engine_frame;
 /* DOD3_STALL_SAMPLE=<dir>: a watchdog for hitches. When no frame has been
  * presented for 300 ms it runs `sample` on this process for a second, so
@@ -632,12 +597,12 @@ static void* stall_watch(void* arg)
     const uint64_t thr_us = (getenv("DOD3_STALL_MS") ? (uint64_t)atoi(getenv("DOD3_STALL_MS")) : 300u) * 1000u;
     const int max_n = getenv("DOD3_STALL_MAX") ? atoi(getenv("DOD3_STALL_MAX")) : 12;
     uint32_t last = g_rsx_engine_frame;
-    uint64_t last_t = frame_clock_us(), last_sample = 0, stall_from = 0;
+    uint64_t last_t = dod3_now_us(), last_sample = 0, stall_from = 0;
     int n = 0;
     for (;;) {
         usleep(20000);
         const uint32_t f = g_rsx_engine_frame;
-        const uint64_t t = frame_clock_us();
+        const uint64_t t = dod3_now_us();
         if (f != last) {
             if (stall_from)
                 fprintf(stderr, "[stall] frame %u came after %.0f ms\n", f, (t - last_t) / 1000.0);
@@ -664,11 +629,6 @@ static void* stall_watch(void* arg)
 #endif
 
 #ifdef __APPLE__
-#include <mach/mach.h>
-#include <map>
-#include <string>
-#include <vector>
-#include <algorithm>
 /* DOD3_STUTTER_MS=<n> also starts this: at every present it reads each host
  * thread's CPU time, and for a frame slower than n ms prints the threads that
  * used the CPU during it ([stutter-cpu]). The guest-side [stutter] report
@@ -686,7 +646,7 @@ static void* cpu_watch(void*)
         usleep(1000);
         const uint32_t f = g_rsx_engine_frame;
         if (f == last) continue;
-        const uint64_t t = frame_clock_us();
+        const uint64_t t = dod3_now_us();
         std::map<uint64_t, Snap> cur;
         thread_act_array_t th; mach_msg_type_number_t n = 0;
         if (task_threads(mach_task_self(), &th, &n) == KERN_SUCCESS) {
@@ -803,12 +763,6 @@ static const struct { const char* name; void (*set)(int on); } s_ab_switches[] =
     { "none",   ab_none },
 };
 #ifdef _WIN32
-#include <tlhelp32.h>
-#include <intrin.h>
-#include <map>
-#include <string>
-#include <vector>
-#include <algorithm>
 struct AbThread { HANDLE h = NULL; uint64_t last = 0; bool seen = false; double cyc[2] = { 0, 0 }; std::string name; };
 static std::map<DWORD, AbThread> s_ab_threads;
 static double s_ab_frames[2];
@@ -874,7 +828,8 @@ static void ab_cpu_report(const char* name)
  * present before; a frame longer than <ms> prints the threads that used the
  * most of it. "Who burned this 40 ms frame" -- or nobody, which is a wait.
  * Thread cycle counters, read on the thread that presents; the thread list
- * is refreshed every 120 presents (the snapshot is slow). */
+ * is refreshed every DOD3_FRAME_CPU_REFRESH presents (600; the snapshot is
+ * slow). */
 static void frame_cpu_tick(void)
 {
     static long thr = -1;
@@ -882,7 +837,7 @@ static void frame_cpu_tick(void)
     if (thr <= 0) return;
     static std::map<DWORD, AbThread> th;
     static uint64_t last_us = 0, tsc0 = 0; static LARGE_INTEGER q0, qf; static unsigned calls = 0;
-    const uint64_t now = frame_clock_us();
+    const uint64_t now = dod3_now_us();
     if (!tsc0) { tsc0 = __rdtsc(); QueryPerformanceCounter(&q0); QueryPerformanceFrequency(&qf); }
     /* The snapshot is itself a 20-30 ms stall of this (the presenting)
      * thread, so it is rare, and the frame it lands in says so. */
@@ -1008,8 +963,8 @@ static DWORD WINAPI frame_clock(LPVOID)
             rsx_ok ? "OK -- window open" : "FAILED");
 
     unsigned  last_flip = 0;
-    /* The vblank period: 16 ms (62.5 Hz) as it has always been, 1/(2n) s for
-     * DOD3_FPS=n, or DOD3_VBLANK_HZ=<hz> outright. The title flips on every
+    /* The vblank period: 16 ms (62.5 Hz) by default, 1/(DOD3_VBLANK_MULT * n)
+     * s for DOD3_FPS=n, or DOD3_VBLANK_HZ=<hz> outright. The title flips on every
      * second vblank. DOD3_FIFO_SLEEP_MS=<n>: the walker's sleep between drains. */
     auto vblank_period = []() -> uint64_t {
         uint64_t us = 16000;
@@ -1021,10 +976,10 @@ static DWORD WINAPI frame_clock(LPVOID)
     unsigned vblank_gen = s_fps_gen.load();
     DWORD fifo_sleep_ms = 4;
     if (const char* e = getenv("DOD3_FIFO_SLEEP_MS")) fifo_sleep_ms = (DWORD)atoi(e);
-    const bool kick_on = !(getenv("DOD3_FIFO_KICK") && getenv("DOD3_FIFO_KICK")[0] == '0');
     if (const char* e = getenv("DOD3_FAST_POLL_LR")) s_fast_poll_lr = (uint32_t)strtoul(e, 0, 16);
-    if (kick_on) { g_lv2_usleep_hook = guest_usleep_hook; g_gcm_label_write_hook = label_written;
-                   g_gcm_fifo_kick_hook = fifo_kick; }
+    g_lv2_usleep_hook = guest_usleep_hook;
+    g_gcm_label_write_hook = label_written;
+    g_gcm_fifo_kick_hook = fifo_kick;
     /* RSX_HITCH_LOG with DOD3_PROF: each logged hitch also prints the
      * profiler's samples of the frame it ends ([slow-frame]). */
     if (getenv("DOD3_TRACE_HITCH")) {
@@ -1032,21 +987,21 @@ static DWORD WINAPI frame_clock(LPVOID)
         g_gcm_trace_hook = trace;
     }
     if (getenv("DOD3_PROF") || s_trace) g_rsx_hitch_hook = hitch_to_profiler;
-    uint64_t next_tick = frame_clock_us();
+    uint64_t next_tick = dod3_now_us();
     uint64_t last_pump = 0, last_boot_present = 0;
 
     for (;;) {
         /* DOD3_UNFOCUSED=pause, out of focus: only the window is served. */
-        if (unfocused_hold(frame_clock_us()) == 2) {
+        if (unfocused_hold(dod3_now_us()) == 2) {
             if (rsx_ok && rsx_backend_pump() != 0) window_closed_exit();
             Sleep(10);
-            next_tick = frame_clock_us();   /* no burst of vblanks on the way back */
+            next_tick = dod3_now_us();   /* no burst of vblanks on the way back */
             continue;
         }
-        if (kick_on) {
+        {
             /* Until a guest poll kicks it, the next vblank, or the usual sleep
              * -- whichever comes first. */
-            const uint64_t t = frame_clock_us();
+            const uint64_t t = dod3_now_us();
             uint64_t wait_us = (uint64_t)fifo_sleep_ms * 1000ull;
             if ((long long)(next_tick - t) < (long long)wait_us)
                 wait_us = (long long)(next_tick - t) > 0 ? next_tick - t : 0;
@@ -1054,53 +1009,8 @@ static DWORD WINAPI frame_clock(LPVOID)
             s_kick_cv.wait_for(lk, std::chrono::microseconds(wait_us),
                                [] { return s_kicked.load(std::memory_order_acquire); });
             s_kicked.store(false, std::memory_order_release);
-        } else {
-            Sleep(fifo_sleep_ms);
         }
-        /* DOD3_GCM_WATCH=1 (temporary): every 5 s, the FIFO pointers, the sync
-         * label, and the command words at `get` -- parked with work pending, or
-         * drained dry? */
-        { static int on = -1; if (on < 0) on = getenv("DOD3_GCM_WATCH") ? 1 : 0;
-          static ULONGLONG last = 0; ULONGLONG t = GetTickCount64();
-          if (on && t - last >= 5000) { last = t;
-              uint32_t put = vm_read32(ppu_hle_inject_base + 0x2000u), get = vm_read32(ppu_hle_inject_base + 0x2004u), ref = vm_read32(ppu_hle_inject_base + 0x2008u);
-              uint32_t ea = 0x40000000u + get;
-              fprintf(stderr, "[gcm-watch] put=0x%08X get=0x%08X ref=0x%08X label=0x%08X cache64=0x%016llX words@get: %08X %08X %08X %08X flips=%u\n",
-                      put, get, ref, vm_read32(ppu_hle_inject_base + 0x0FF0u), (unsigned long long)vm_read64(DOD3_A_GCM_CACHE64),
-                      vm_read32(ea), vm_read32(ea + 4), vm_read32(ea + 8),
-                      vm_read32(ea + 12), cellGcm_flip_request_count());
-              fprintf(stderr, "[gcm-watch] user commands pending delivery: %u\n", cellGcm_user_queue_depth());
-              fprintf(stderr, "[gcm-watch] malloc lwmutex 0x40400010: owner=%u waiter=%u attr=0x%X recur=%u\n",
-                      vm_read32(0x40400010u), vm_read32(0x40400014u), vm_read32(0x40400018u), vm_read32(0x4040001Cu));
-              uint32_t gctx = vm_read32(DOD3_A_GCM_CONTEXT);   /* CellGcmContextData* the title got */
-              uint32_t cur = vm_read32(gctx + 8);
-              fprintf(stderr, "[gcm-watch] ctx=0x%08X begin=0x%08X end=0x%08X current=0x%08X (io 0x%08X) cb=0x%08X words@current-16: %08X %08X %08X %08X\n",
-                      gctx, vm_read32(gctx), vm_read32(gctx + 4), cur, cur - 0x40000000u, vm_read32(gctx + 12),
-                      vm_read32(cur - 16), vm_read32(cur - 12), vm_read32(cur - 8), vm_read32(cur - 4));
-              static int dumped = 0; static unsigned last_flips = 0; static int same = 0;
-              unsigned fl = cellGcm_flip_request_count();
-              same = (fl == last_flips) ? same + 1 : 0; last_flips = fl;
-              if (!dumped && same >= 4) { dumped = 1;   /* no flip for 20 s: stalled */
-                  /* The ShaderPatching job chain as the title left it (entry 0x01A2A880):
-                   * did it write jobs the walker never ran? */
-                  /* Which job descriptors (256 B each, from 0x01A2BA00) name a FIFO
-                   * address -- the notify target each job clears on completion. */
-                  for (uint32_t j = 0; j < 40; j++) {
-                      uint32_t d = DOD3_A_SHADER_JOB_DESCS + j * 0x100u;
-                      for (uint32_t o = 0; o < 0x100; o += 4) {
-                          uint32_t v = vm_read32(d + o);
-                          if (v >= 0x40000000u && v < 0x40300000u)
-                              fprintf(stderr, "[jc-desc] job@%08X +0x%02X = %08X (io 0x%06X)\n", d, o, v, v - 0x40000000u);
-                      }
-                  }
-                  for (uint32_t a = DOD3_A_SHADER_JOB_CHAIN; a < DOD3_A_SHADER_JOB_CHAIN + 48 * 8; a += 32)
-                      fprintf(stderr, "[jc-dump] %08X: %016llX %016llX %016llX %016llX\n", a,
-                              (unsigned long long)vm_read64(a), (unsigned long long)vm_read64(a + 8),
-                              (unsigned long long)vm_read64(a + 16), (unsigned long long)vm_read64(a + 24));
-                  for (uint32_t a = cur - 0x8000; a < cur; a += 16)
-                      fprintf(stderr, "[gcm-tail] io %08X: %08X %08X %08X %08X\n", a - 0x40000000u,
-                              vm_read32(a), vm_read32(a + 4), vm_read32(a + 8), vm_read32(a + 12)); } } }
-        uint64_t now = frame_clock_us();
+        uint64_t now = dod3_now_us();
         fps_install_override();
         dod3_sysset_poll();
         if (s_fps_gen.load() != vblank_gen) { vblank_gen = s_fps_gen.load(); vblank_us = vblank_period(); }
@@ -1145,36 +1055,19 @@ static DWORD WINAPI frame_clock(LPVOID)
          * those at 16 ms apiece paces the guest into single-figure frame rates.
          * The real RSX writes them in microseconds. */
         if (rsx_ok) {
-            /* DOD3_SLOW_STEP=1: report any frame-clock step over 300 ms. This
-             * thread is the FIFO walker; a step that blocks it stalls the
-             * title's command-buffer callback, which waits for the walker. */
-            static int slow = -1; if (slow < 0) slow = getenv("DOD3_SLOW_STEP") ? 1 : 0;
-            ULONGLONG t0 = GetTickCount64();
             if (cellGcm_take_flip_pending()) {
                 present_guest_frame();
                 last_flip = cellGcm_flip_request_count();
             }
-            ULONGLONG t1 = GetTickCount64();
             cellGcm_rsx_process_fifo();
             drain_done();
-            ULONGLONG t2 = GetTickCount64();
-            if (slow && (t1 - t0 > 300 || t2 - t1 > 300))
-                fprintf(stderr, "[slow-step] present %llu ms, fifo %llu ms\n", (unsigned long long)(t1 - t0), (unsigned long long)(t2 - t1));
 
             /* Window events need no more than a few hundred polls a second,
              * however often a kick wakes this loop. */
-            const uint64_t pump_now = frame_clock_us();
+            const uint64_t pump_now = dod3_now_us();
             if (pump_now - last_pump >= 2000) {
                 last_pump = pump_now;
-                ULONGLONG t3 = GetTickCount64();
-                int pumped = rsx_backend_pump();
-                if (slow && GetTickCount64() - t3 > 300)
-                    fprintf(stderr, "[slow-step] window pump %llu ms\n", (unsigned long long)(GetTickCount64() - t3));
-                if (pumped != 0) {
-                    window_closed_exit();
-                    rsx_ok = 0;
-                    continue;
-                }
+                if (rsx_backend_pump() != 0) window_closed_exit();
             }
             /* Present on a guest flip. A present on a fixed clock can catch the
              * drain mid-frame and flash a partial one. Before the first flip
@@ -1253,7 +1146,6 @@ static LONG WINAPI vm_commit_veh(EXCEPTION_POINTERS* ep)
 #endif
 
 #ifndef _WIN32
-#include <sys/mman.h>
 /* The texture write-watch's faults (ps3emu/vm_watch.h): a store to a page it
  * protected is noted, the page opened, and the store re-runs. */
 static LONG WINAPI vm_watch_veh(EXCEPTION_POINTERS* ep)
@@ -1303,9 +1195,6 @@ static void harness_guest_caller(uint32_t opd, uint64_t a0, uint64_t a1,
 }
 
 #ifdef __APPLE__
-#include <pthread.h>
-#include <sys/stat.h>
-
 static uint32_t s_boot_entry;
 
 /* The guest's half of the Apple split in main(): run the entry OPD, then end
@@ -1376,7 +1265,7 @@ static void load_settings_file(const char* argv0)
         *ve = 0;
         if (!*p) continue;
         if (getenv(p)) continue;            /* the environment wins */
-        setenv(p, v, 1);
+        dod3_setenv(p, v, 1);
         applied++;
     }
     fclose(f);
@@ -1385,8 +1274,6 @@ static void load_settings_file(const char* argv0)
 
 #ifdef _WIN32
 extern "C" int dod3_setup_win(const wchar_t* base_dir, int force);   /* src/setup_win.cpp */
-#include <io.h>
-#include <fcntl.h>
 
 /* dod3.exe is linked as a windowed program (CMakeLists.txt, DOD3_CONSOLE), so
  * it has a console only if one is lent to it. Output goes where the parent
@@ -1395,9 +1282,8 @@ extern "C" int dod3_setup_win(const wchar_t* base_dir, int force);   /* src/setu
  * beside the executable (the previous run's kept as dod3.prev.log). */
 /* Make `h` the process's standard output and error, as a parent's redirection
  * would: the Win32 handles and the C runtime's descriptors 1 and 2, which the
- * stdout/stderr streams already use. (freopen instead moves the streams onto
- * new descriptors and leaves 1 and 2 without a handle; the game then died
- * silently a second into the boot.) */
+ * stdout/stderr streams already use. (Not freopen: it moves the streams onto
+ * new descriptors and leaves 1 and 2 without a handle.) */
 static void win_stdio_to(HANDLE h)
 {
     SetStdHandle(STD_OUTPUT_HANDLE, h);
@@ -1467,17 +1353,13 @@ static bool dod3_mp3_standin_install(const char* dev_flash)
     std::ofstream out(p, std::ios::binary | std::ios::trunc);
     out.write(reinterpret_cast<const char*>(k_dod3_mp3_standin), sizeof k_dod3_mp3_standin);
     out.close();
-    if (!out) fprintf(stderr, "[mp3] cannot write %s\n", p.string().c_str());
+    if (!out) fprintf(stderr, "[mp3] cannot write %s\n", dod3::utf8(p).c_str());
     return static_cast<bool>(out);
 }
 
 /* File arguments from `from` on, as paths. On Windows from the wide command
  * line: argv is in the ANSI code page, which cannot hold every name
  * ("Kainé's Garb.pkg" is not valid UTF-8 there). */
-#ifdef _WIN32
-#include <shellapi.h>   /* CommandLineToArgvW */
-#pragma comment(lib, "shell32.lib")
-#endif
 static std::vector<std::filesystem::path> cli_paths(int argc, char** argv, int from)
 {
     std::vector<std::filesystem::path> out;
@@ -1519,15 +1401,14 @@ int main(int argc, char** argv)
     snprintf(s_release_elf, sizeof s_release_elf, "%s", dod3setup::eboot_path());   /* per version */
     static char* s_release_argv[3];
     /* --check <file>...: what the installer makes of each file (the disc,
-     * the update, EBOOT.ELF, DLC), installing nothing (support, and tests). */
+     * the update, DLC), installing nothing (support, and tests). */
     if (argc >= 3 && (!strcmp(argv[1], "--check") || !strcmp(argv[1], "--check-disc"))) {
         int bad = 0;
         for (const std::filesystem::path& f : cli_paths(argc, argv, 2)) {
             dod3setup::Source s;
             std::string err;
             const bool ok = dod3setup::identify(f, &s, &err);
-            const auto name = f.u8string();
-            printf("%s: %s", std::string(name.begin(), name.end()).c_str(), ok ? s.name.c_str() : err.c_str());
+            printf("%s: %s", dod3::utf8(f).c_str(), ok ? s.name.c_str() : err.c_str());
             if (ok) printf(" (%.2f GB to install)", (double)s.bytes / (1u << 30));
             printf("\n");
             bad |= !ok;
@@ -1535,7 +1416,7 @@ int main(int argc, char** argv)
         return bad;
     }
     /* --install <file>...: the installer without a UI, into the release
-     * layout (any mix of the disc, the update, EBOOT.ELF and DLC packages). */
+     * layout (any mix of the disc, the update and DLC packages). */
     if (argc >= 3 && !strcmp(argv[1], "--install")) {
 #ifdef _WIN32
         wchar_t dir[MAX_PATH] = L"";
@@ -1591,8 +1472,8 @@ int main(int argc, char** argv)
             return 2;
         }
 #endif
-        setenv("PS3_TITLE", "Drakengard 3", 0);
-        setenv("PS3_VFS_ROOT", "game/disc", 0);
+        dod3_setenv("PS3_TITLE", "Drakengard 3", 0);
+        dod3_setenv("PS3_VFS_ROOT", "game/disc", 0);
         s_release_argv[0] = argv[0]; s_release_argv[1] = s_release_elf; s_release_argv[2] = NULL;
         argv = s_release_argv; argc = 2;
     }
@@ -1604,7 +1485,6 @@ int main(int argc, char** argv)
     }
 
 #ifdef _WIN32
-#pragma comment(lib, "winmm.lib")
     /* 1 ms timer resolution. The default granularity is about 15.6 ms, which
      * inflates every shorter wait the title makes and throttles the whole
      * thing. POSIX timers are already fine-grained. */
@@ -1612,64 +1492,60 @@ int main(int argc, char** argv)
     setvbuf(stdout, NULL, _IONBF, 0);   /* unbuffered: do not lose prints on a kill */
 #endif
 
-    printf("=== ps3recomp game runner ===\n");
+    printf("=== Drakengard 3 Recompiled (BLUS31197 %s) ===\n", DOD3_EBOOT_NAME);
 
     /* Drakengard 3's RHI appends commands behind a JUMP-to-self park and patches
      * the park shortly after. The toolkit's FIFO resyncs skip past such a park
      * and drop the back-end label releases the render thread waits on, so keep
      * the FIFO waiting instead. An explicit GCM_FIFO_NO_RESYNC=0 overrides. */
-    setenv("GCM_FIFO_NO_RESYNC", "1", 0);
+    dod3_setenv("GCM_FIFO_NO_RESYNC", "1", 0);
     /* The memory-manager SPU tasks send on SPU port 1, the port lv2 would hand
      * a dynamic attach; the toolkit hands out 0x10 upward unless told not to. */
-    setenv("SPURS_DYNPORT_LOW", "1", 0);
+    dod3_setenv("SPURS_DYNPORT_LOW", "1", 0);
     /* Loading the title peaks around 514 MB, just past the default overflow
      * window's end at 0x80000000; give it room. */
-    setenv("SYS_MEM_OVERFLOW_END", "88000000", 0);
+    dod3_setenv("SYS_MEM_OVERFLOW_END", "88000000", 0);
     /* The ShaderPatching job chain must run inside RunJobChain: the render
      * thread refills its 21 job descriptors every frame, and a job that runs
      * late reads the refilled one and never clears the FIFO park it was for. */
-    setenv("SPURS_JC_SYNC", "1", 0);
+    dod3_setenv("SPURS_JC_SYNC", "1", 0);
     /* The HLE posts a job-chain completion event to every lv2 queue attached
      * to SPURS. This title's only attached queue belongs to CellMemoryManager,
      * which reads each one as a request and allocates: 400 MB in five seconds. */
-    setenv("SPURS_JC_DONE_EVENTS", "0", 0);
+    dod3_setenv("SPURS_JC_DONE_EVENTS", "0", 0);
     /* The toolkit's per-event log is on whenever stderr is redirected: two
      * lines and two flushes per SPURS job, a line per event-queue wait. At
      * this title's ~2700 jobs/s that is a measurable share of the render
      * thread, and the threads contend for the FILE lock. Quiet unless asked
      * (PS3_VERBOSE=1); the port's own milestone lines are not gated by it. */
-    setenv("PS3_VERBOSE", "0", 0);
+    dod3_setenv("PS3_VERBOSE", "0", 0);
     /* The one firmware file the title loads: MultiStream fetches its MP3
      * decoder from /dev_flash/sys/external/flashMP3.pic when the first MP3
      * stream starts (without it the audio SPU task dies and the game hangs on
      * the next sound). We decode natively (src/dod3_mp3_native.c), so what it
      * loads is our stand-in, written to gamedata/dev_flash -- nothing from the
      * firmware is needed. DOD3_MP3_NATIVE=0 and the MP3 check modes use Sony's
-     * decoder instead, from a firmware dev_flash (fw/dev_flash: RPCS3's). */
+     * decoder instead, from a firmware dev_flash in fw/dev_flash. */
     if (!getenv("PS3_DEV_FLASH") && dod3_mp3_standin_wanted() && dod3_mp3_standin_install("gamedata/dev_flash"))
-        setenv("PS3_DEV_FLASH", "gamedata/dev_flash", 1);
-    setenv("PS3_DEV_FLASH", "fw/dev_flash", 0);
+        dod3_setenv("PS3_DEV_FLASH", "gamedata/dev_flash", 1);
+    dod3_setenv("PS3_DEV_FLASH", "fw/dev_flash", 0);
     /* The PhysX taskset (memory-manager and physics tasks sharing request
-     * blocks). With no limit, as many of its tasks ran at once as there were
-     * host threads, and they raced: a task read a request record before it
-     * was filled, dispatched type 0 to a null handler and died mid-chapter
-     * (a double dispatch fixed since, in cellSpursCreateTask, may have been
-     * that race). It was then run one task at a time, which in the
-     * destruction scenes queued each Havok task behind the others for 1-3 ms
-     * while the game thread waited for the step. Now it runs as hardware
-     * runs it: up to its maxContention (3) at once, started in creation
-     * order. SPURS_TASKSET_SERIAL=01AA7700 is the one-at-a-time fallback. */
-    setenv("SPURS_TASKSET_CONTENTION", "01AA7700", 0);
+     * blocks) runs as hardware runs it: up to its maxContention (3) tasks at
+     * once, started in creation order. With no limit its tasks raced (a task
+     * read a request record before it was filled and died mid-chapter); one
+     * at a time queued each Havok task behind the others for 1-3 ms in the
+     * destruction scenes. SPURS_TASKSET_SERIAL=01AA7700 runs it one at a time. */
+    dod3_setenv("SPURS_TASKSET_CONTENTION", "01AA7700", 0);
     /* The runtime treats SPU image 22 as You Don't Know Jack's cri media task
      * (context from the CreateTask globals, an EXIT that returns to the task).
      * Here image 22 is a PhysX task; it never returned and the serialised
      * taskset stalled behind it a few seconds into the first level. */
-    setenv("SPU_CRI_IMAGE", "-1", 0);
+    dod3_setenv("SPU_CRI_IMAGE", "-1", 0);
     /* Drakengard 3's libgcm keeps NV0039 (memory-to-memory copy) on
      * subchannel 1: cellGcmSetTransferReportData is how its occlusion
      * queries come back. The runtime's default routes subchannel 1 to the 3D
      * engine (Twisted Metal binds NV4097 there). */
-    setenv("GCM_SUBCH1_2D", "1", 0);
+    dod3_setenv("GCM_SUBCH1_2D", "1", 0);
     /* The runtime's GCM window (labels, reports, the put/get/ref control
      * block and the IO offset tables) defaults to 0x20000000, and Drakengard 3
      * maps 10 MB of its own memory there (cellGcmMapMainMemory(0x20000000,
@@ -1684,18 +1560,18 @@ int main(int argc, char** argv)
      * unclamped, and the shaft composite multiplies the scene by about
      * 0.3 + 1.05 * mask^2: the village interior's smoky doorway and windows
      * blew out to white. Clamped to [0, 1] the room matches the original. */
-    setenv("RSX_FP_SAT_ALPHA", "1a9b74dc1afc2a84", 0);
+    dod3_setenv("RSX_FP_SAT_ALPHA", "1a9b74dc1afc2a84", 0);
     /* Translated shaders survive between runs (see rsx_metal_backend.m). */
-    setenv("PS3RECOMP_MSL_CACHE", "cache/msl", 0);
+    dod3_setenv("PS3RECOMP_MSL_CACHE", "cache/msl", 0);
     /* ...and compiled DXBC on Windows (rsx_d3d12_engine.c). */
-    setenv("PS3RECOMP_DXBC_CACHE", "cache/dxbc", 0);
+    dod3_setenv("PS3RECOMP_DXBC_CACHE", "cache/dxbc", 0);
     mkdir("cache", 0755);
     /* The sound driver (CDevSd's MultiStream threads and the MultiStream SPU
      * task, image 1 = spu_0000) at user-interactive QoS: at default QoS a
      * busy moment wrote its blocks late, 88 gaps (3.9 s of sound) in a
      * 4-minute battle, against 2 boosted (AUDIO_GAPS=1 counts them). */
-    setenv("PPU_QOS_INTERACTIVE", "CDevSd", 0);
-    setenv("SPU_QOS_INTERACTIVE", "1", 0);
+    dod3_setenv("PPU_QOS_INTERACTIVE", "CDevSd", 0);
+    dod3_setenv("SPU_QOS_INTERACTIVE", "1", 0);
 
     if (!alloc_guest_vm()) {
         fprintf(stderr, "ERROR: could not allocate the guest address space\n");
@@ -1717,13 +1593,7 @@ int main(int argc, char** argv)
     /* 1.01 is the update: it finds its PATCH folder (the update's script
      * packages, which its EBOOT's hash table names) only when booted as one
      * (cellGame, PS3_GAME_PATCH). */
-    if (!getenv("PS3_GAME_PATCH")) {
-#ifdef _WIN32
-        _putenv_s("PS3_GAME_PATCH", "1");
-#else
-        setenv("PS3_GAME_PATCH", "1", 1);
-#endif
-    }
+    dod3_setenv("PS3_GAME_PATCH", "1", 0);
 #endif
     apply_fps_unlock();
     apply_unfocused();
@@ -1735,7 +1605,7 @@ int main(int argc, char** argv)
 #ifdef _WIN32
     /* DOD3_PROF / DOD3_STALL_MS / DOD3_STALL_SAMPLE: src/win_prof.cpp. */
     win_prof_start();
-#else
+#elif defined(__APPLE__)
     if (const char* d = getenv("DOD3_STALL_SAMPLE")) {
         mkdir(d, 0755);
         pthread_t th;

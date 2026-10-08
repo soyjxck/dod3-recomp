@@ -49,9 +49,10 @@
  * factor -- the tangent of the half-angle times tan((65+N)/2) / tan(65/2) --
  * so its default 65 degrees (horizontal) becomes 65+N and the game's own
  * zooms keep their proportion. Cutscene cameras are left alone. */
-#include "ppu_recomp.h"
-#include "dod3_eboot.h"
-#include "dod3_sysset.h"      /* the Advanced Graphics page's rows   /* the EBOOT version's addresses */
+#include "dod3_ppu.h"
+#include "dod3_eboot.h"       /* the EBOOT version's addresses */
+#include "dod3_sysset.h"      /* the Advanced Graphics page's rows */
+#include "dod3_util.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,7 +62,6 @@
 #include <vector>
 
 extern "C" void ps3_indirect_call(ppu_context* ctx);
-extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
 const char* dod3_settings_path();   /* main.cpp: the dod3.ini read at boot, or the one to create */
 void dod3_fps_reload();             /* main.cpp: DOD3_FPS again */
@@ -71,15 +71,10 @@ extern "C" volatile int g_rsx_display_reload;   /* rsx_draw_engine.c: the render
 extern "C" int g_rsx_aniso;         /* the live anisotropy level: rsx_d3d12_engine.c, rsx_metal_backend.m */
 #endif
 extern "C" int g_rsx_aa;            /* rsx_draw_engine.c: 1 = FXAA at present */
-#ifdef _WIN32
-/* The CRT's spelling; an empty value removes the variable. */
-static int setenv(const char* k, const char* v, int) { return _putenv_s(k, v) ? -1 : 0; }
-static int unsetenv(const char* k) { return _putenv_s(k, "") ? -1 : 0; }
-#endif
 
 namespace {
 
-/* BLUS31197 1.00 */
+/* the EBOOT's (src/dod3_eboot.h) */
 const uint32_t GNATIVES          = DOD3_A_GNATIVES;        /* 8 bytes an opcode: function, this-adjust */
 const uint32_t THUNK_GETSTRING   = DOD3_A_EXEC_GETSTRING;  /* USqex03DataMessage::execGetString */
 const uint32_t THUNK_BRIDGE      = DOD3_A_EXEC_BRIDGE;     /* USqex03GameOption::execUpdateDisplayParam */
@@ -87,14 +82,6 @@ const uint32_t FRAME_OBJECT = 0x14, FRAME_CODE = 0x18;
 
 const int MAGIC = 900000;
 
-inline void drain(ppu_context* ctx)
-{
-    while (g_trampoline_fn) {
-        void (*f)(void*) = g_trampoline_fn;
-        g_trampoline_fn = 0;
-        f((void*)ctx);
-    }
-}
 
 /* One FFrame::Step: the native for the opcode at Code, with the result
  * written to `result` (guest). */
@@ -113,7 +100,7 @@ void step(ppu_context* ctx, uint32_t stack, uint32_t result)
     ctx->gpr[5] = result;
     ctx->ctr = vm_read32(fn);
     ps3_indirect_call(ctx);
-    drain(ctx);
+    dod3_drain(ctx);
 }
 
 /* Evaluate one int argument, in a frame of our own below the caller's. */
@@ -132,7 +119,7 @@ int32_t eval_int(ppu_context* ctx, uint32_t stack)
 uint32_t app_realloc(ppu_context* ctx, uint32_t p, uint32_t size)
 {
     ctx->gpr[3] = p; ctx->gpr[4] = size; ctx->gpr[5] = 8;
-    DOD3_FN_APP_REALLOC(ctx); drain(ctx);
+    DOD3_FN_APP_REALLOC(ctx); dod3_drain(ctx);
     return (uint32_t)ctx->gpr[3];
 }
 
@@ -383,7 +370,7 @@ void apply()
         kv.push_back({r.key, v});
         r.saved = r.pending;
         if (r.live) {
-            if (v) setenv(r.key, v, 1); else unsetenv(r.key);
+            if (v) dod3_setenv(r.key, v, 1); else dod3_unsetenv(r.key);
             r.running = r.pending;
 #if defined(_WIN32) || defined(__APPLE__)
             if (!strcmp(r.key, "RSX_ANISO")) g_rsx_aniso = v ? atoi(v) : 16;
@@ -491,7 +478,7 @@ void hook_getstring(ppu_context* ctx)
         vm_write32(stack + FRAME_CODE, s_scratch);
         ctx->gpr[2] = r2; ctx->gpr[3] = self; ctx->gpr[4] = stack; ctx->gpr[5] = result;
         ctx->lr = lr;
-        DOD3_FN_EXEC_GETSTRING(ctx); drain(ctx);
+        DOD3_FN_EXEC_GETSTRING(ctx); dod3_drain(ctx);
         vm_write32(stack + FRAME_CODE, after + 1);
     }
     ctx->gpr[2] = r2;
@@ -503,7 +490,7 @@ void hook_bridge(ppu_context* ctx)
     const uint64_t lr = ctx->lr, r2 = ctx->gpr[2];
     const uint32_t stack = (uint32_t)ctx->gpr[4], result = (uint32_t)ctx->gpr[5];
     if (vm_read8(vm_read32(stack + FRAME_CODE)) == 0x16) {   /* no arguments: the title's call */
-        DOD3_FN_EXEC_BRIDGE(ctx); drain(ctx);
+        DOD3_FN_EXEC_BRIDGE(ctx); dod3_drain(ctx);
         ctx->gpr[2] = r2; ctx->lr = lr;
         return;
     }

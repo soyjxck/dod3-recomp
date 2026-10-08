@@ -1,4 +1,4 @@
-/* The player's keys: see setup_keys.h. */
+/* The keys for the game's executable: see setup_keys.h. */
 #include "setup_keys.h"
 #include "setup_keys_builtin.h"
 #include "setup_crypto.h"

@@ -3,7 +3,7 @@
  * (DOD3_STALL_SAMPLE) and the mach-based [stutter-cpu] report.
  *
  *   DOD3_PROF=<ms>        sample every host thread's stack every <ms> ms
- *                         (1-10; 2 is a good default) and print, every
+ *                         (1-50; 2 is a good default) and print, every
  *                         DOD3_PROF_REPORT seconds (default 5), each busy
  *                         thread's CPU share and its hottest functions, plus
  *                         the hottest functions of the whole process.
@@ -14,9 +14,10 @@
  *                         writes the dumps to <dir>/stall_NN_fFRAME.txt instead
  *                         of stderr -- the macOS switch, same meaning.
  *
- * A sample is one SuspendThread + GetThreadContext + StackWalk64 per thread;
- * a thread whose CPU time has not moved since the last sample was asleep and
- * is not counted, so the shares are on-CPU time. Host functions are named
+ * A sample is one SuspendThread + GetThreadContext + an unwind per thread
+ * (RtlVirtualUnwind; see walk()). A thread caught in a wait -- its leaf a
+ * wait or sleep in ntdll -- counts as waiting, charged to the first frame
+ * outside the system DLLs, so the shares are on-CPU time. Host functions are named
  * through dbghelp (the build links with /DEBUG and compiles the runtime with
  * /Z7); lifted PPU code has no symbols and is named through the lifter's
  * function table as ppu:<guest address>.
@@ -38,6 +39,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <direct.h>
+#include "dod3_util.h"
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -63,13 +65,6 @@ struct ThreadStat {
     struct Sample { uint64_t t_us; int n; uint64_t fr[6]; };
     std::vector<Sample> ring; size_t ring_pos = 0;
 };
-static uint64_t prof_now_us(void)
-{
-    static LARGE_INTEGER f; LARGE_INTEGER c;
-    if (!f.QuadPart) QueryPerformanceFrequency(&f);
-    QueryPerformanceCounter(&c);
-    return (uint64_t)(c.QuadPart / f.QuadPart) * 1000000ull + (uint64_t)(c.QuadPart % f.QuadPart) * 1000000ull / (uint64_t)f.QuadPart;
-}
 
 struct Sym { std::string name; uint64_t base; };
 
@@ -108,8 +103,8 @@ static const Sym& symbolize(uint64_t addr)
     uint64_t pb = 0;
     /* dbghelp first: the runtime and the SPU code have symbols, the lifted
      * PPU TUs do not, so a hit is right and a miss falls back to the lifted
-     * function table. (The table first misnamed SPU functions as the last
-     * PPU function before them in memory.) */
+     * function table (the table alone would name SPU code after the last
+     * PPU function before it in memory). */
     char buf[sizeof(SYMBOL_INFO) + 256] = {0};
     SYMBOL_INFO* si = (SYMBOL_INFO*)buf;
     si->SizeOfStruct = sizeof(SYMBOL_INFO); si->MaxNameLen = 255;
@@ -157,9 +152,9 @@ static std::string thread_name(HANDLE h, DWORD tid)
 /* One thread's stack, suspended. Returns frames written.
  *
  * Unwound with RtlVirtualUnwind rather than StackWalk64: dbghelp takes
- * locks (its own and the loader's) that the suspended thread may hold, and
- * the first version of this hung the profiler on its first pass. The x64
- * unwinder needs only the image's function tables. */
+ * locks (its own and the loader's) that the suspended thread may hold, which
+ * deadlocks the profiler. The x64 unwinder needs only the image's function
+ * tables. */
 static int safe_read64(uint64_t at, uint64_t* out)
 {
     SIZE_T n = 0;
@@ -168,8 +163,7 @@ static int safe_read64(uint64_t at, uint64_t* out)
 /* One frame up. A thread stopped in the middle of a prologue, or in code
  * whose unwind data does not describe where it is, hands the unwinder a
  * stack pointer that points nowhere; RtlVirtualUnwind then faults reading
- * it. That killed the profiler (and with it the report of the run) once the
- * walk went 64 frames deep. The walk just ends there. */
+ * it. The walk ends there. */
 static bool unwind_step(CONTEXT* ctx)
 {
     __try {
@@ -382,9 +376,8 @@ static DWORD WINAPI prof_thread(LPVOID arg)
     long report_s = 5;
     if (const char* e = getenv("DOD3_PROF_REPORT")) report_s = atol(e) > 0 ? atol(e) : 5;
     /* Not before the first frame is presented: suspending threads while the
-     * D3D12 device and window are being created deadlocked the boot twice
-     * (a thread held the loader lock while suspended, and the walk here
-     * needs it), hanging at GCM init with only the 30 us polls in the log. */
+     * D3D12 device and window are being created can deadlock the boot (a
+     * thread suspended holding the loader lock, which the walk here needs). */
     while (g_rsx_engine_frame == 0) Sleep(50);
     LARGE_INTEGER qf, t0; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&t0);
     for (;;) {
@@ -393,7 +386,7 @@ static DWORD WINAPI prof_thread(LPVOID arg)
         refresh_threads();
         AcquireSRWLockExclusive(&s_dbg);
         s_passes++;
-        const uint64_t pass_us = prof_now_us();
+        const uint64_t pass_us = dod3_now_us();
         for (auto& t : s_threads) {
             ThreadStat& st = s_stats[t.tid];
             if (st.name.empty() || st.name.compare(0, 4, "tid ") == 0) st.name = thread_name(t.h, t.tid);

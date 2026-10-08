@@ -1,17 +1,17 @@
 /*
- * The keys the player supplies so the setup can make the game's executable
- * (src/setup_self.h). A 1.01 build decrypts the update's EBOOT.BIN, an NPDRM
- * SELF; a 1.00 build the disc's, an application SELF. Both are key revision
- * 0x1C:
+ * The keys the setup makes the game's executable with (src/setup_self.h). A
+ * 1.01 build decrypts the update's EBOOT.BIN, an NPDRM SELF; a 1.00 build
+ * the disc's, an application SELF. Both are key revision 0x1C:
  *   1.01   npdrm_erk (32 bytes), npdrm_riv (16): the NPDRM key set
  *          klic_free (16), klic_key (16): a free licence's klicensee, and
  *          the key that unwraps it
  *   1.00   app_erk (32), app_riv (16): the application key set
- * Each is pasted as hex, or read from a key file of `name=hex` lines, and
- * kept in the install's keys.txt (the player's own copy, so the executable
- * can be made again without asking). The setup holds no keys; a key is
- * checked by its length, then by decrypting the EBOOT with it, and the
- * executable that comes out by its hash.
+ * They are built in (src/setup_keys_builtin.h). Should that file be emptied,
+ * the player is asked instead: each key pasted as hex, or read from a key
+ * file of `name=hex` lines, and kept in the install's keys.txt so the
+ * executable can be made again without asking. A key is checked by its
+ * length, then by decrypting the EBOOT with it, and the executable that
+ * comes out by its hash.
  */
 #pragma once
 #include <cstdint>

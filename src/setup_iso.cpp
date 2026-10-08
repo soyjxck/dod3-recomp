@@ -1,6 +1,7 @@
-/* First-run setup, portable half: see setup_iso.h. */
+/* The installer's disc reader: see setup_iso.h. */
 #include "setup_iso.h"
 #include "setup_crypto.h"
+#include "dod3_util.h"
 
 #include <algorithm>
 #include <cctype>
@@ -15,10 +16,8 @@ const char* const kEbootElfSha256 = "82e0f955658428b226828c4045d0865185cabc3a57c
 const char* const kEbootBinSha256 = "d251717ade653a74290fd2d5028083c575b9c6f9a253ca0c230f65ea6f5197c8";
 const char* const kTitleId = "BLUS31197";
 const char* const kAppVer = "01.00";
-const uint64_t kDiscBytes = 16ull << 30;
 
-/* A path as UTF-8 in a std::string (u8string is std::u8string from C++20). */
-static std::string utf8(const fs::path& p) { const auto s = p.u8string(); return std::string(s.begin(), s.end()); }
+using dod3::utf8;
 static std::string utf8_generic(const fs::path& p) { const auto s = p.generic_u8string(); return std::string(s.begin(), s.end()); }
 
 std::string sha256_file(const fs::path& p)
@@ -55,14 +54,11 @@ bool param_sfo(const std::vector<uint8_t>& d, std::string* title_id, std::string
     return true;
 }
 
-Installed check_installed(const fs::path& base)
+bool disc_installed(const fs::path& base)
 {
     std::error_code ec;
-    Installed r;
-    r.disc = fs::exists(base / "game/disc/PS3_GAME/PARAM.SFO", ec) &&
-             fs::exists(base / "game/disc/PS3_GAME/USRDIR/EBOOT.BIN", ec);
-    r.elf = fs::file_size(base / "elf/EBOOT.ELF", ec) > 0 && !ec;
-    return r;
+    return fs::exists(base / "game/disc/PS3_GAME/PARAM.SFO", ec) &&
+           fs::exists(base / "game/disc/PS3_GAME/USRDIR/EBOOT.BIN", ec);
 }
 
 /* ---- ISO 9660 ------------------------------------------------------------------

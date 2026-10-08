@@ -5,8 +5,7 @@
  * checked against their test vectors before first use (crypto_selftest).
  *
  * Keys: the retail package key comes from ps3recomp (CMakeLists.txt); the
- * keys that open the game's executable come from the player
- * (src/setup_keys.h).
+ * keys that open the game's executable are src/setup_keys.h's.
  */
 #pragma once
 #include <cstddef>

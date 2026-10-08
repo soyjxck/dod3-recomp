@@ -66,14 +66,13 @@ static uint32_t run_libsre(ppu_context* ctx, uint32_t fn, const uint64_t args[4]
 
 /* ---- waking a blocked push/pop -----------------------------------------
  *
- * A blocking call retries until the queue has an item/room. It used to retry
- * on a timer (64 yields, then 100 us sleeps), and PhysX pops 20-30 SPU task
- * results a frame on the thread the game thread then waits on: the sleeps
- * alone held the game thread up for about a sixth of every frame. Now a
+ * A blocking call retries until the queue has an item/room. Between tries a
  * waiter sleeps until the queue's line changes -- an SPU task pushing or
  * popping commits it with PUTLLC, which the SPU runtime reports through
  * g_spu_line_commit_hook2, and the PPU side reports its own calls -- with a
- * 1 ms timeout in case a change arrives some other way. */
+ * 1 ms timeout in case a change arrives some other way. (PhysX pops 20-30
+ * SPU task results a frame on the thread the game thread then waits on;
+ * retrying on a timer held the game thread up for a sixth of every frame.) */
 static std::mutex              s_wait_mu;
 static std::condition_variable s_wait_cv;
 static std::atomic<unsigned>   s_wait_gen{0};
@@ -109,29 +108,20 @@ static void watch_queue(uint32_t q)
 }
 
 /* Run non-blocking, and retry until the queue has room/an item if the caller
- * asked to block. args[block_arg] is the call's isBlocking flag.
- * DOD3_QUEUE_POLL=1: the old timed retry. */
-static thread_local unsigned s_last_spins;   /* retries the last blocking call needed */
+ * asked to block. args[block_arg] is the call's isBlocking flag. */
 static uint32_t run_blocking(ppu_context* ctx, uint32_t fn, uint64_t args[4], int block_arg)
 {
-    static const bool poll = getenv("DOD3_QUEUE_POLL") != nullptr;
     const bool blocking = (uint8_t)args[block_arg] != 0;
     args[block_arg] = 0;
     uint32_t rc;
     for (unsigned spins = 0;; spins++) {
         const unsigned gen = s_wait_gen.load(std::memory_order_acquire);
         rc = run_libsre(ctx, fn, args);
-        s_last_spins = spins;
         if (!blocking || (rc != CELL_SPURS_TASK_ERROR_AGAIN && rc != CELL_SPURS_TASK_ERROR_BUSY)) {
             if (rc == 0) queue_changed();   /* a PPU push/pop: room or an item for someone */
             return rc;
         }
         if (rc == CELL_SPURS_TASK_ERROR_BUSY || spins < 8) { std::this_thread::yield(); continue; }
-        if (poll) {
-            if (spins < 64) std::this_thread::yield();
-            else std::this_thread::sleep_for(std::chrono::microseconds(100));
-            continue;
-        }
         std::unique_lock<std::mutex> lk(s_wait_mu);
         s_waiters.fetch_add(1);
         s_wait_cv.wait_for(lk, std::chrono::milliseconds(1),
@@ -147,17 +137,13 @@ static void queue_initialize(ppu_context* ctx)
     const uint64_t r7 = ctx->gpr[7], r8 = ctx->gpr[8];
     const uint32_t rc = run_libsre(ctx, LIBSRE_QUEUE_INITIALIZE, args);
     if (rc == 0) watch_queue((uint32_t)args[2]);
-    printf("[spurs-queue] init taskset=0x%08X q=0x%08X buf=0x%08X size=%u depth=%u -> 0x%08X\n",
+    fprintf(stderr, "[spurs-queue] init taskset=0x%08X q=0x%08X buf=0x%08X size=%u depth=%u -> 0x%08X\n",
            (uint32_t)args[1], (uint32_t)args[2], (uint32_t)args[3],
            (uint32_t)r7, (uint32_t)r8, rc);
 }
 
 static void queue_push_body(ppu_context* ctx)
 {
-    { static int on = -1; if (on < 0) on = getenv("DOD3_QUEUE_LOG") ? 1 : 0;   /* item trace */
-      if (on) { const uint32_t b = (uint32_t)ctx->gpr[4];
-          fprintf(stderr, "[spurs-queue] push q=0x%08X item={%08X %08X %08X %08X}\n", (uint32_t)ctx->gpr[3],
-                  vm_read32(b), vm_read32(b + 4), vm_read32(b + 8), vm_read32(b + 12)); } }
     uint64_t args[4] = { ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], 0 };
     run_blocking(ctx, LIBSRE_QUEUE_PUSH_BODY, args, 2);   /* isBlocking = r5 */
 }
@@ -165,13 +151,7 @@ static void queue_push_body(ppu_context* ctx)
 static void queue_pop_body(ppu_context* ctx)
 {
     uint64_t args[4] = { ctx->gpr[3], ctx->gpr[4], ctx->gpr[5], ctx->gpr[6] };
-    const uint32_t q = (uint32_t)ctx->gpr[3], buf = (uint32_t)ctx->gpr[4];
     run_blocking(ctx, LIBSRE_QUEUE_POP_BODY, args, 3);    /* isBlocking = r6 */
-    { static int on = -1; if (on < 0) on = getenv("DOD3_QUEUE_LOG") ? 1 : 0;   /* item trace */
-      if (on && (uint32_t)ctx->gpr[3] == 0)
-          fprintf(stderr, "[spurs-queue] pop  q=0x%08X item={%08X %08X %08X %08X} tid=%u spins=%u\n", q,
-                  vm_read32(buf), vm_read32(buf + 4), vm_read32(buf + 8), vm_read32(buf + 12),
-                  (unsigned)ctx->thread_id, s_last_spins); }
 }
 
 /* ---- hooks the lifted libsre calls (see tools/gen_libsre.py) ------------- */

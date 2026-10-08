@@ -42,15 +42,11 @@ bool pkg_open(const std::filesystem::path& p, Pkg* pkg, std::string* err);
 /* Just the content ID, from the plain-text header (cheap). */
 std::string pkg_content_id(const std::filesystem::path& p);
 
-/* Extract the entries `want` accepts (all if null) under `dest`, as
- * map(name) (dest / name if null). Reads the package once, start to end,
+/* Extract the whole package under `dest`. Reads it once, start to end,
  * checking its SHA-1 footer. progress(bytes read, total) returns false to
- * cancel. Every file and directory created is appended to `created`. */
+ * cancel. */
 bool pkg_extract(const Pkg& pkg, const std::filesystem::path& dest,
-                 const std::function<bool(const PkgEntry&)>& want,
-                 const std::function<std::filesystem::path(const PkgEntry&)>& map,
-                 const std::function<bool(uint64_t, uint64_t)>& progress,
-                 std::vector<std::filesystem::path>* created, std::string* err);
+                 const std::function<bool(uint64_t, uint64_t)>& progress, std::string* err);
 
 /* One file of the package, decrypted into memory (EBOOT.BIN). Not checked
  * against the footer: what is read from it is checked by its own hash. */

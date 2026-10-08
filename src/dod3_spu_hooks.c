@@ -21,6 +21,7 @@
  */
 #include "spu_context.h"
 #include "spu_helpers.h"   /* spu_ls_read128 */
+#include "dod3_spu_check.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,20 +47,24 @@ static int checking(void)
  * state. dst/n: the window the loop writes. */
 static void check_run(spu_context* ctx, void (*fn)(spu_context*), uint32_t dst, uint32_t n)
 {
-    static _Thread_local u128 g0[128], ga[128];
-    static _Thread_local uint8_t w0[SPU_LS_SIZE], wa[SPU_LS_SIZE];
-    memcpy(g0, ctx->gpr, sizeof g0);
+    dod3_spu_scratch* c = dod3_spu_check_scratch();
+    u128* g0 = c->g0;
+    u128* ga = c->ga;
+    uint8_t* w0 = c->l0;
+    uint8_t* wa = c->la;
+    if (n > SPU_LS_SIZE) n = SPU_LS_SIZE;
+    memcpy(g0, ctx->gpr, sizeof c->g0);
     for (uint32_t i = 0; i < n; i++) w0[i] = ctx->ls[(dst + i) & SPU_LS_MASK];
     const uint32_t pc0 = (uint32_t)ctx->pc;
     t_in_check = 1; fn(ctx); t_in_check = 0;
-    memcpy(ga, ctx->gpr, sizeof ga);
+    memcpy(ga, ctx->gpr, sizeof c->ga);
     for (uint32_t i = 0; i < n; i++) wa[i] = ctx->ls[(dst + i) & SPU_LS_MASK];
     const uint32_t pca = (uint32_t)ctx->pc; void (*tfa)(spu_context*) = g_spu_trampoline_fn;
-    memcpy(ctx->gpr, g0, sizeof g0);
+    memcpy(ctx->gpr, g0, sizeof c->g0);
     for (uint32_t i = 0; i < n; i++) ctx->ls[(dst + i) & SPU_LS_MASK] = w0[i];
     ctx->pc = pc0;
     t_in_check = 2; fn(ctx); t_in_check = 0;
-    int bad = memcmp(ga, ctx->gpr, sizeof ga) != 0 || pca != (uint32_t)ctx->pc ||
+    int bad = memcmp(ga, ctx->gpr, sizeof c->ga) != 0 || pca != (uint32_t)ctx->pc ||
               tfa != g_spu_trampoline_fn;
     for (uint32_t i = 0; i < n && !bad; i++) bad = wa[i] != ctx->ls[(dst + i) & SPU_LS_MASK];
     s_checked++;
@@ -173,7 +178,7 @@ typedef struct {
     uint8_t* bytes;          /* the window, the output, the `back` bytes before it */
 } lzf_memo;
 #define LZF_MEMO_N 4096
-static _Thread_local lzf_memo t_memo[LZF_MEMO_N];
+static _Thread_local lzf_memo* t_memo;   /* LZF_MEMO_N entries, allocated on first use */
 static unsigned long long s_memo_hit, s_memo_miss, s_memo_skip, s_memo_outside, s_memo_overlap, s_memo_stored;
 
 /* Switchable at run time by main.cpp's DOD3_AB=lzfmemo. */
@@ -216,6 +221,9 @@ static int lzf_token_native(spu_context* ctx, uint32_t* out_tokens)
     const uint32_t we = ((end + 15u) & ~0xFu) + 16u;
     if (!(end > ip0) || we <= ws || we > SPU_LS_SIZE || ip0 >= SPU_LS_SIZE || (we - ws) > 0x10000u) {
         s_memo_skip++;
+        uint32_t back; return lzf_decode_native(ctx, out_tokens, &back);
+    }
+    if (!t_memo && !(t_memo = (lzf_memo*)calloc(LZF_MEMO_N, sizeof *t_memo))) {
         uint32_t back; return lzf_decode_native(ctx, out_tokens, &back);
     }
     const uint32_t win_len = we - ws, in_off = ip0 - ws, span = end - ip0;
@@ -308,35 +316,14 @@ static int lzf_decode_native(spu_context* ctx, uint32_t* out_tokens, uint32_t* b
 }
 
 static unsigned long long s_tok_checked, s_tok_bad;
-/* Run the decoder from 0x560 to its exit at 0x678 through the lifted
- * functions alone (they only branch among themselves). */
-static void lzf_run_lifted(spu_context* ctx)
-{
-    spurs_job_01785E00_spu_func_00000560(ctx);
-    while (g_spu_trampoline_fn && ((uint32_t)ctx->pc & SPU_LS_MASK) != 0x678u) {
-        void (*f)(spu_context*) = g_spu_trampoline_fn;
-        g_spu_trampoline_fn = 0;
-        f(ctx);
-    }
-}
 
 int dod3_spu_lzf_token_hook(spu_context* ctx)
 {
     if (t_in_check == 2 || !hooks_on()) return 0;
     if (t_in_check == 0 && checking()) {
-        /* Compare the whole decode, both ways, then keep the lifted one. The
-         * output window is bounded by the remaining input's decoded size. */
-        static _Thread_local u128 g0[128], ga[128];
-        static _Thread_local uint8_t l0[SPU_LS_SIZE], la[SPU_LS_SIZE];
-        memcpy(g0, ctx->gpr, sizeof g0); memcpy(l0, ctx->ls, SPU_LS_SIZE);
-        const uint32_t pc0 = (uint32_t)ctx->pc;
-        t_in_check = 3; lzf_run_lifted(ctx); t_in_check = 0;   /* 3: hooks active */
-        memcpy(ga, ctx->gpr, sizeof ga); memcpy(la, ctx->ls, SPU_LS_SIZE);
-        const uint32_t pca = (uint32_t)ctx->pc; void (*tfa)(spu_context*) = g_spu_trampoline_fn;
-        memcpy(ctx->gpr, g0, sizeof g0); memcpy(ctx->ls, l0, SPU_LS_SIZE); ctx->pc = pc0;
-        t_in_check = 2; lzf_run_lifted(ctx); t_in_check = 0;
-        const int bad = memcmp(ga, ctx->gpr, sizeof ga) || memcmp(la, ctx->ls, SPU_LS_SIZE) ||
-                        pca != (uint32_t)ctx->pc || tfa != g_spu_trampoline_fn;
+        /* Compare the whole decode, 0x560 to its exit at 0x678, both ways
+         * (3: the hooks active), then keep the lifted one. */
+        const int bad = dod3_spu_check_both(ctx, spurs_job_01785E00_spu_func_00000560, 0x678u, &t_in_check, 3, 2);
         s_tok_checked++;
         if ((s_tok_checked % 2000) == 0 || (bad && s_tok_bad < 8))
             fprintf(stderr, "[spu-native-check] lzf decodes: %llu compared, %llu mismatched%s\n",
@@ -388,16 +375,6 @@ static uint32_t ls_half_at(const uint8_t* ls, uint32_t a)
 
 static unsigned long long s_patch_checked, s_patch_bad;
 
-static void patch_run_lifted(spu_context* ctx)
-{
-    spurs_job_01785E00_spu_func_000006A0(ctx);
-    while (g_spu_trampoline_fn && ((uint32_t)ctx->pc & SPU_LS_MASK) != 0x808u) {
-        void (*f)(spu_context*) = g_spu_trampoline_fn;
-        g_spu_trampoline_fn = 0;
-        f(ctx);
-    }
-}
-
 /* DOD3_SPU_PATCH_HOOK=0 turns this hook alone off; DOD3_AB=patchhook
  * switches it in a run. */
 int g_dod3_spu_patch_hook = -1;
@@ -406,17 +383,8 @@ int dod3_spu_patch_loop_hook(spu_context* ctx)
     if (g_dod3_spu_patch_hook < 0) { const char* e = getenv("DOD3_SPU_PATCH_HOOK"); g_dod3_spu_patch_hook = !(e && e[0] == '0'); }
     if (t_in_check == 2 || !hooks_on() || !g_dod3_spu_patch_hook) return 0;
     if (t_in_check == 0 && checking()) {
-        static _Thread_local u128 g0[128], ga[128];
-        static _Thread_local uint8_t l0[SPU_LS_SIZE], la[SPU_LS_SIZE];
-        memcpy(g0, ctx->gpr, sizeof g0); memcpy(l0, ctx->ls, SPU_LS_SIZE);
-        const uint32_t pc0 = (uint32_t)ctx->pc;
-        t_in_check = 4; patch_run_lifted(ctx); t_in_check = 0;   /* this hook active */
-        memcpy(ga, ctx->gpr, sizeof ga); memcpy(la, ctx->ls, SPU_LS_SIZE);
-        const uint32_t pca = (uint32_t)ctx->pc; void (*tfa)(spu_context*) = g_spu_trampoline_fn;
-        memcpy(ctx->gpr, g0, sizeof g0); memcpy(ctx->ls, l0, SPU_LS_SIZE); ctx->pc = pc0;
-        t_in_check = 2; patch_run_lifted(ctx); t_in_check = 0;
-        const int bad = memcmp(ga, ctx->gpr, sizeof ga) || memcmp(la, ctx->ls, SPU_LS_SIZE) ||
-                        pca != (uint32_t)ctx->pc || tfa != g_spu_trampoline_fn;
+        /* 0x6A0 to the loop's exit at 0x808, both ways (4: this hook active) */
+        const int bad = dod3_spu_check_both(ctx, spurs_job_01785E00_spu_func_000006A0, 0x808u, &t_in_check, 4, 2);
         s_patch_checked++;
         if ((s_patch_checked % 2000) == 0 || (bad && s_patch_bad < 8))
             fprintf(stderr, "[spu-native-check] patch loops: %llu compared, %llu mismatched%s\n",

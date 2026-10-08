@@ -1,6 +1,6 @@
 /*
- * The title's garbage collector, wrapped natively (lifted with
- * --hook 0x000C1E50 --hook 0x00EE6538; README, "Lift").
+ * The title's garbage collector, wrapped natively (the PPU lift's --hook
+ * 0x000C1E50 --hook 0x00EE6538; addresses as in 1.00).
  *
  *   func_000C1E50  UObject::CollectGarbage: entered nearly every frame,
  *                  does real work about every 15 s.
@@ -12,8 +12,9 @@
  * DOD3_GC_LOG=1 prints every collection that takes over 1 ms, with the
  * reachability pass's share; =2 adds the profiler's sampled stacks.
  */
-#include "ppu_recomp.h"
+#include "dod3_ppu.h"
 #include "dod3_eboot.h"   /* the EBOOT version's addresses */
+#include "dod3_util.h"
 #include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,43 +23,15 @@
 #include <vector>
 #include <algorithm>
 #ifdef _WIN32
-#include <windows.h>
 extern "C" void win_prof_slow_frame_async(uint64_t start_us, uint64_t end_us, double frame_ms);
 #endif
 
-extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
-extern "C" uint8_t* vm_base;
 extern "C" uint32_t g_rsx_engine_frame;   /* rsx_draw_engine.c: the present count */
-
-/* Finish any tail call the lifted body left in the trampoline, so the time
- * measured is the whole function (the caller would drain it next anyway). */
-static void drain(ppu_context* ctx)
-{
-    while (g_trampoline_fn) {
-        void (*f)(void*) = g_trampoline_fn;
-        g_trampoline_fn = 0;
-        f((void*)ctx);
-    }
-}
 
 static double now_ms(void)
 {
     using namespace std::chrono;
     return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
-}
-
-/* The clock of the profiler's sample ring (frame_clock_us in main.cpp). */
-static uint64_t clock_us(void)
-{
-#ifdef _WIN32
-    static LARGE_INTEGER f; LARGE_INTEGER c;
-    if (!f.QuadPart) QueryPerformanceFrequency(&f);
-    QueryPerformanceCounter(&c);
-    return (uint64_t)(c.QuadPart / f.QuadPart) * 1000000ull +
-           (uint64_t)(c.QuadPart % f.QuadPart) * 1000000ull / (uint64_t)f.QuadPart;
-#else
-    return 0;
-#endif
 }
 
 static int gc_log(void)
@@ -113,7 +86,7 @@ static void reach_check(ppu_context* ctx)
     const uint32_t list = (uint32_t)ctx->gpr[3];
     const uint32_t num0 = be32(list + 4), cur0 = be32(list + 0xC);
     ppu_context saved = *ctx;
-    DOD3_FN_GC_REACH_LIFTED(ctx); drain(ctx);
+    DOD3_FN_GC_REACH_LIFTED(ctx); dod3_drain(ctx);
     ReachResult a; reach_snapshot(list, &a);
     const ppu_context after_lifted = *ctx;
     /* Same input for the native pass: the list as it came in. */
@@ -146,7 +119,7 @@ void DOD3_FN_GC_REACH(ppu_context* ctx)
     switch (gc_native()) {
     case 1:  dod3_gc_reach_native(ctx); break;
     case 2:  reach_check(ctx); break;
-    default: DOD3_FN_GC_REACH_LIFTED(ctx); drain(ctx); break;
+    default: DOD3_FN_GC_REACH_LIFTED(ctx); dod3_drain(ctx); break;
     }
     s_reach_ms += now_ms() - t0;
     s_reach_calls++;
@@ -158,7 +131,7 @@ void DOD3_FN_GC_REACH(ppu_context* ctx)
  * TimeBetweenPurgingPendingKillObjects (GEngine+0x4AC; ~10 s here) through
  * func_0041C270: CollectGarbage, then the levels' actor lists compacted, then
  * TimeSinceLastPendingKillPurge (world+0x1A0) zeroed. The frame limiter
- * (appUpdateTimeAndHandleMaxTickRate, func_008EDC6C) sleeps *before* the
+ * (appUpdateTimeAndHandleMaxTickRate, func_008EDC78) sleeps *before* the
  * tick, so the collection's 3-5 ms land on top of a frame that had already
  * waited out its budget: that frame reaches the screen late (16.7 + 4 ms, a
  * third vblank at 120 Hz) and the next one early -- a visible judder every
@@ -212,7 +185,7 @@ static void gc_usleep_pre(ppu_context* ctx, uint64_t* usec)
     ctx->lr = LIMITER_SLEEP_RET;
     s_in_deferred = 1;
     DOD3_FN_PERIODIC_GC(ctx);
-    drain(ctx);
+    dod3_drain(ctx);
     s_in_deferred = 0;
     *ctx = saved;
     const double ms = now_ms() - t0;
@@ -240,22 +213,23 @@ void DOD3_FN_COLLECT_GARBAGE(ppu_context* ctx)
         s_def_dropped = 0;
     }
     s_reach_ms = 0; s_reach_calls = 0;
-    const uint64_t u0 = clock_us();
+    const uint64_t u0 = dod3_now_us();
     const double t0 = now_ms();
     DOD3_FN_COLLECT_GARBAGE_LIFTED(ctx);
-    drain(ctx);
+    dod3_drain(ctx);
     const double ms = now_ms() - t0;
     if (gc_log() && ms > 1.0) {
         static unsigned n = 0;
-        /* GObjObjects: a TArray (data, num, max) at 0x01A0C2B4. */
-        const uint32_t nobj = __builtin_bswap32(*(const uint32_t*)(vm_base + DOD3_A_GOBJOBJECTS + 4));
+        const uint32_t nobj = be32(DOD3_A_GOBJOBJECTS + 4);   /* GObjObjects: a TArray (data, num, max) */
 
         fprintf(stderr, "[gc] #%u collection %.2f ms, reachability %.2f ms (%u passes), %u objects, %.0f ns each, frame %u, from %08X\n",
                 ++n, ms, s_reach_ms, s_reach_calls, nobj, nobj ? s_reach_ms * 1e6 / nobj : 0.0, g_rsx_engine_frame, caller);
 #ifdef _WIN32
         /* DOD3_GC_LOG=2 with DOD3_PROF / DOD3_PROF_TREE: the sampled stacks
          * of the collection, as [slow-frame] lines. */
-        if (gc_log() >= 2) win_prof_slow_frame_async(u0, clock_us(), ms);
+        if (gc_log() >= 2) win_prof_slow_frame_async(u0, dod3_now_us(), ms);
+#else
+        (void)u0;
 #endif
     }
 }

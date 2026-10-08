@@ -8,16 +8,12 @@
  *   func_00272F58  the float-heavy collision test that dominates the game
  *                  thread when scenery breaks up (32-37% of it there)
  */
-#include "ppu_recomp.h"
+#include "dod3_ppu.h"
 #include "dod3_eboot.h"   /* the EBOOT version's addresses */
 #include "dod3_cycles.h"
+#include "dod3_util.h"
 #include <stdio.h>
 #include <stdlib.h>
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
-extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 
 namespace {
 struct HotStat { const char* name; uint64_t calls, cycles; };
@@ -32,28 +28,17 @@ int hot_log(void)
 
 void hot_report(void)
 {
-#ifdef _WIN32
-    static ULONGLONG last = 0;
-    const ULONGLONG now = GetTickCount64();
+    static uint64_t last = 0;
+    const uint64_t now = dod3_now_us();
     if (!last) { last = now; return; }
-    if (now - last < 5000) return;
-    const double secs = (now - last) / 1000.0;
+    if (now - last < 5000000) return;
+    const double secs = (now - last) / 1e6;
     last = now;
     for (HotStat& h : s_hot) {
         if (!h.calls) continue;
         fprintf(stderr, "[hot] %s: %.0f calls/s, %.0f cycles each, %.1f Mcycles/s\n",
                 h.name, h.calls / secs, (double)h.cycles / (double)h.calls, h.cycles / secs / 1e6);
         h.calls = 0; h.cycles = 0;
-    }
-#endif
-}
-
-inline void drain(ppu_context* ctx)
-{
-    while (g_trampoline_fn) {
-        void (*f)(void*) = g_trampoline_fn;
-        g_trampoline_fn = 0;
-        f((void*)ctx);
     }
 }
 }  // namespace
@@ -63,7 +48,7 @@ void DOD3_FN_COLLISION_TEST(ppu_context* ctx)
     if (!hot_log()) { DOD3_FN_COLLISION_TEST_LIFTED(ctx); return; }
     const uint64_t c0 = dod3_cycles();
     DOD3_FN_COLLISION_TEST_LIFTED(ctx);
-    drain(ctx);
+    dod3_drain(ctx);
     s_hot[0].cycles += dod3_cycles() - c0;
     s_hot[0].calls++;
     hot_report();

@@ -51,7 +51,7 @@ enum : uint32_t {
 enum : uint32_t {
     CELL_SYNC_ERROR_AGAIN      = 0x80410101,
     CELL_SPURS_TASK_ERROR_INVAL = 0x80410902,
-    CELL_SPURS_TASK_ERROR_PERM  = 0x80410909,
+    CELL_SPURS_TASK_ERROR_STAT  = 0x8041090F,
     CELL_SPURS_TASK_ERROR_ALIGN = 0x80410910,
     CELL_SPURS_TASK_ERROR_NULL_POINTER = 0x80410911,
     CELL_SPURS_TASK_ERROR_SRCH  = 0x80410914,
@@ -84,35 +84,6 @@ static uint32_t call_libsre(ppu_context* ctx, uint32_t fn, uint64_t a3, uint64_t
     ctx->lr = lr;
     ctx->gpr[2] = r2;
     return (uint32_t)ctx->gpr[3];
-}
-
-/* LFQ_DUMP=1: print every queue's 128-byte line once a second, so a stalled
- * producer/consumer pair can be read off the state machine directly. */
-static uint32_t s_queues[8];
-static int      s_nqueues;
-
-static void lfq_dump_thread()
-{
-    for (;;) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        for (int i = 0; i < s_nqueues; i++) {
-            const uint32_t q = s_queues[i];
-            fprintf(stderr, "[lfq-dump] q=0x%08X", q);
-            for (uint32_t o = 0; o < 128; o += 4) {
-                if (!(o & 0x1F)) fprintf(stderr, "\n[lfq-dump]   +%02X:", o);
-                fprintf(stderr, " %08X", vm_read32(q + o));
-            }
-            fprintf(stderr, "\n");
-        }
-    }
-}
-
-static void lfq_track(uint32_t q)
-{
-    static bool on = getenv("LFQ_DUMP") != nullptr;
-    if (!on || s_nqueues >= 8) return;
-    s_queues[s_nqueues++] = q;
-    if (s_nqueues == 1) std::thread(lfq_dump_thread).detach();
 }
 
 /* _cellSpursLFQueueInitialize(void* pTasksetOrSpurs, CellSpursLFQueue* q,
@@ -158,8 +129,7 @@ static void lfq_initialize(ppu_context* ctx)
     }
     /* m_v2, m_eq_id and init stay 0. */
 
-    lfq_track(q);
-    printf("[lfq] init q=0x%08X owner=0x%08X buf=0x%08X size=%u depth=%u dir=%u\n",
+    fprintf(stderr, "[lfq] init q=0x%08X owner=0x%08X buf=0x%08X size=%u depth=%u dir=%u\n",
            q, owner, buf, size, depth, dir);
     ctx->gpr[3] = 0;
 }
@@ -228,7 +198,7 @@ static void lfq_push_body(ppu_context* ctx)
                      q, (int64_t)pos, q + LFQ_EA_SIGNAL, 0);
     ctx->gpr[1] = sp;
 
-    if (rc == 0x80410902u || rc == 0x8041090Fu) rc = CELL_SPURS_TASK_ERROR_SRCH;
+    if (rc == CELL_SPURS_TASK_ERROR_INVAL || rc == CELL_SPURS_TASK_ERROR_STAT) rc = CELL_SPURS_TASK_ERROR_SRCH;
     else if ((int32_t)rc < 0)                   rc = spurs_err(rc);
     ctx->gpr[3] = (int64_t)(int32_t)rc;
 

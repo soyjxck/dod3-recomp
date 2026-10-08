@@ -4,6 +4,7 @@
 #include "setup_pkg.h"
 #include "setup_crypto.h"
 #include "dod3_eboot.h"
+#include "dod3_util.h"
 
 #include <cstdio>
 #include <cstring>
@@ -24,11 +25,11 @@ namespace {
 const char kUpdateId[] = "UP0082-BLUS31197_00-DOD3PATCH0000000";
 const char kUpdateSha1[] = "d71bc929d53703bf6899cb18d6041bcc7ecb5419";
 const char kDlcPrefix[] = "UP0082-NPUB31251_00-";
-/* SHA-256 of the update's EBOOT.BIN decrypted with RPCS3 (1.01); the disc's
- * (1.00) is setup_iso.h's kEbootElfSha256. */
+/* SHA-256 of the update's EBOOT.BIN as an ELF (1.01); the disc's (1.00) is
+ * setup_iso.h's kEbootElfSha256. */
 const char kElf101Sha256[] = "ed89e80f2336a948074c32151d2cadfb6965d174a15d9c067aeeff97c21e7e6c";
 
-std::string utf8(const fs::path& p) { const auto s = p.u8string(); return std::string(s.begin(), s.end()); }
+using dod3::utf8;
 
 fs::path update_dir(const fs::path& base) { return base / "game/disc/game/BLES00000"; }
 fs::path dlc_dir(const fs::path& base) { return base / "game/disc/game/NPUB31251"; }
@@ -37,12 +38,7 @@ fs::path staging(const fs::path& base) { return base / "game/setup.partial"; }
 /* a file's first four bytes, big-endian, and the next two in `rev` */
 uint32_t magic(const fs::path& p, uint16_t* rev = nullptr)
 {
-    FILE* f = nullptr;
-#ifdef _WIN32
-    f = _wfopen(p.wstring().c_str(), L"rb");
-#else
-    f = fopen(p.string().c_str(), "rb");
-#endif
+    FILE* f = dod3::open_file(p, "rb");
     uint8_t m[6] = {};
     if (f) { if (fread(m, 1, 6, f) != 6) m[0] = 0; fclose(f); }
     if (rev) *rev = (uint16_t)(m[4] << 8 | m[5]);
@@ -253,7 +249,7 @@ Status installed(const fs::path& base)
 {
     std::error_code ec;
     Status s;
-    s.disc = check_installed(base).disc;
+    s.disc = disc_installed(base);
     s.update = fs::exists(update_dir(base) / "USRDIR/PATCH/SQEX03GAME/COOKEDPS3/COALESCED_INT.BIN", ec);
     s.eboot = fs::file_size(base / eboot_path(), ec) > 0 && !ec;
     s.eboot_bin = fs::exists(update_required() ? update_dir(base) / "USRDIR/EBOOT.BIN"
@@ -402,12 +398,7 @@ bool read_eboot_bin(const fs::path& base, const Plan& plan, std::vector<uint8_t>
         file = base / "game/disc/PS3_GAME/USRDIR/EBOOT.BIN";
     }
     const uint64_t n = fs::file_size(file, ec);
-    FILE* f = nullptr;
-#ifdef _WIN32
-    if (!ec) f = _wfopen(file.wstring().c_str(), L"rb");
-#else
-    if (!ec) f = fopen(file.string().c_str(), "rb");
-#endif
+    FILE* f = ec ? nullptr : dod3::open_file(file, "rb");
     if (!f || n > (256u << 20)) { if (f) fclose(f); *err = update_required() ? "the update is not installed" : "the disc is not installed"; return false; }
     self->resize((size_t)n);
     const bool ok = fread(self->data(), 1, self->size(), f) == self->size();
@@ -505,9 +496,8 @@ bool install(const fs::path& base, const Plan& plan,
         if (!pkg_open(plan.update.path, &pkg, err)) return fail(*err);
         const fs::path part = stage / "update";
         const uint64_t start = done;
-        if (!pkg_extract(pkg, part, nullptr, nullptr,
-                         [&](uint64_t d, uint64_t) { return progress(start + d, total, "Installing update 1.01"); },
-                         nullptr, err))
+        if (!pkg_extract(pkg, part, [&](uint64_t d, uint64_t) { return progress(start + d, total, "Installing update 1.01"); },
+                         err))
             return fail(*err);
         /* the whole package, as the console installs it (EBOOT.BIN too, so
          * the executable can be made again); the old PATCH folder goes whole,
@@ -522,12 +512,7 @@ bool install(const fs::path& base, const Plan& plan,
         const fs::path part = stage / "EBOOT.ELF", to = base / eboot_path();
         fs::create_directories(stage, ec);
         fs::create_directories(to.parent_path(), ec);
-        FILE* f = nullptr;
-#ifdef _WIN32
-        f = _wfopen(part.wstring().c_str(), L"wb");
-#else
-        f = fopen(part.string().c_str(), "wb");
-#endif
+        FILE* f = dod3::open_file(part, "wb");
         const bool wrote = f && fwrite(elf.data(), 1, elf.size(), f) == elf.size();
         if (f) fclose(f);
         if (wrote) fs::rename(part, to, ec);
@@ -541,8 +526,7 @@ bool install(const fs::path& base, const Plan& plan,
         const fs::path part = stage / "dlc";
         const uint64_t start = done;
         const std::string what = "Installing " + d.name;
-        if (!pkg_extract(pkg, part, nullptr, nullptr,
-                         [&](uint64_t x, uint64_t) { return progress(start + x, total, what); }, nullptr, err))
+        if (!pkg_extract(pkg, part, [&](uint64_t x, uint64_t) { return progress(start + x, total, what); }, err))
             return fail(*err);
         /* each pack is its own folder under USRDIR/DLC; the voice pack also
          * fills USRDIR/DLC_JPV. The shared PARAM.SFO and icons are the same

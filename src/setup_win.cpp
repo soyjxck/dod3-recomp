@@ -20,7 +20,7 @@ extern "C" int dod3_setup_win(const wchar_t* base_dir, int force)
     MessageBoxW(NULL,
                 L"Setup could not open its window (it needs Direct3D 12).\n\n"
                 L"The game can be installed from a command prompt instead, in this folder:\n\n"
-                L"dod3.exe --install --keys <key file> <disc .iso or folder> <update .pkg> [DLC .pkg ...]\n\n"
+                L"dod3.exe --install <disc .iso or folder> <update .pkg> [DLC .pkg ...]\n\n"
                 L"Details are in dod3.log.",
                 L"Drakengard 3 Recompiled", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
     return 1;

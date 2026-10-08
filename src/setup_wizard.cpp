@@ -14,6 +14,7 @@
 #include "setup_install.h"
 #include "setup_crypto.h"
 #include "dod3_eboot.h"
+#include "dod3_util.h"
 
 #include "imgui.h"
 
@@ -39,7 +40,7 @@ const ImU32 kOff = IM_COL32(110, 110, 120, 255);
 const ImVec4 kErrText = ImVec4(0.90f, 0.33f, 0.35f, 1.0f);
 const ImVec4 kDimText = ImVec4(0.58f, 0.58f, 0.63f, 1.0f);
 
-std::string u8(const fs::path& p) { const auto s = p.u8string(); return std::string(s.begin(), s.end()); }
+using dod3::utf8;
 
 std::string gb(uint64_t b)
 {
@@ -81,7 +82,7 @@ void style()
  * to "..." (the drive and the file name are what tell paths apart). */
 void path_line(const char* prefix, const fs::path& p)
 {
-    const std::string s = u8(p), pre = prefix;
+    const std::string s = utf8(p), pre = prefix;
     const float avail = ImGui::GetContentRegionAvail().x;
     auto width = [](const std::string& t) { return ImGui::CalcTextSize(t.c_str()).x; };
     std::string out = pre + s;
@@ -209,7 +210,7 @@ struct Wizard {
         for (size_t i = 0; i < checks.size();) {
             if (checks[i].fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) { i++; continue; }
             auto [s, err] = checks[i].fut.get();
-            const std::string name = u8(checks[i].path.filename().empty() ? checks[i].path : checks[i].path.filename());
+            const std::string name = utf8(checks[i].path.filename().empty() ? checks[i].path : checks[i].path.filename());
             switch (s.kind) {
             case SourceKind::Disc: plan.disc = s; break;
             case SourceKind::Update: plan.update = s; break;
@@ -448,9 +449,9 @@ struct Wizard {
                 std::string err;
                 if (keys_load(picked[0], &k, &err)) {
                     fill_boxes(k);
-                    key_note = std::to_string(k.v.size()) + " of " + std::to_string(f.size()) + " keys found in " + u8(picked[0].filename());
+                    key_note = std::to_string(k.v.size()) + " of " + std::to_string(f.size()) + " keys found in " + utf8(picked[0].filename());
                 } else {
-                    key_note = u8(picked[0].filename()) + ": " + err;
+                    key_note = utf8(picked[0].filename()) + ": " + err;
                 }
             }
         }
@@ -492,7 +493,11 @@ struct Wizard {
             if (plan.disc.set()) row("Game disc", plan.disc.bytes);
             if (plan.update.set()) row("Update 1.01", plan.update.bytes);
             if (plan.eboot.set()) row("EBOOT.ELF", plan.eboot.bytes);
-            else if (make_elf_needed()) row(need_keys() ? "The game's executable (made with your keys)" : "The game's executable (made from the update)", 26872424);
+            else if (make_elf_needed())
+                row(need_keys()         ? "The game's executable (made with your keys)"
+                    : update_required() ? "The game's executable (made from the update)"
+                                        : "The game's executable (made from the disc)",
+                    update_required() ? 26872424u : 26872552u);
             for (const Source& d : plan.dlc) row(d.name, d.bytes);
             ImGui::EndTable();
         }

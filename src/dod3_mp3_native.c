@@ -60,6 +60,7 @@
 #include "spu_context.h"
 #include "spu_helpers.h"
 #include "dod3_mp3dec.h"
+#include "dod3_spu_check.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -252,12 +253,7 @@ static void run_lifted(spu_context* ctx)
 {
     const uint32_t ret = ctx->gpr[0]._u32[0] & SPU_LS_MASK;
     t_inner = 1;
-    ((void (*)(spu_context*))g_dod3_mp3_sony_entry)(ctx);
-    while (g_spu_trampoline_fn && ((uint32_t)ctx->pc & SPU_LS_MASK) != ret) {
-        void (*f)(spu_context*) = g_spu_trampoline_fn;
-        g_spu_trampoline_fn = 0;
-        f(ctx);
-    }
+    dod3_spu_run_to(ctx, (void (*)(spu_context*))g_dod3_mp3_sony_entry, ret);
     t_inner = 0;
 }
 
