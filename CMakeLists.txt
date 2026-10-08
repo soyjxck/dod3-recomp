@@ -302,6 +302,14 @@ if(WIN32)
         gdi32
         winmm
     )
+    # A windowed program, so a double-click opens no console. Output still goes
+    # wherever a parent redirects it (the scripts' logs), else to the parent
+    # terminal's console, else to dod3.log beside the executable (main.cpp,
+    # win_stdio_init). -DDOD3_CONSOLE=ON builds a console program again.
+    option(DOD3_CONSOLE "Link dod3.exe as a console program" OFF)
+    if(NOT DOD3_CONSOLE)
+        target_link_options(${PROJECT_NAME} PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------

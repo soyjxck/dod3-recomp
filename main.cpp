@@ -1213,6 +1213,62 @@ static void load_settings_file(const char* argv0)
 
 #ifdef _WIN32
 extern "C" int dod3_setup_win(const wchar_t* base_dir, int force);   /* src/setup_win.cpp */
+#include <io.h>
+#include <fcntl.h>
+
+/* dod3.exe is linked as a windowed program (CMakeLists.txt, DOD3_CONSOLE), so
+ * it has a console only if one is lent to it. Output goes where the parent
+ * redirected it (the scripts' logs: unchanged); with no redirection, to the
+ * console of a terminal that started it; and from a double-click, to dod3.log
+ * beside the executable (the previous run's kept as dod3.prev.log). */
+/* Make `h` the process's standard output and error, as a parent's redirection
+ * would: the Win32 handles and the C runtime's descriptors 1 and 2, which the
+ * stdout/stderr streams already use. (freopen instead moves the streams onto
+ * new descriptors and leaves 1 and 2 without a handle; the game then died
+ * silently a second into the boot.) */
+static void win_stdio_to(HANDLE h)
+{
+    SetStdHandle(STD_OUTPUT_HANDLE, h);
+    SetStdHandle(STD_ERROR_HANDLE, h);
+    /* Started with no standard handles at all (a double-click), the streams
+     * have no descriptor yet: give them one first. */
+    FILE* f;
+    if (_fileno(stdout) < 0) freopen_s(&f, "NUL", "w", stdout);
+    if (_fileno(stderr) < 0) freopen_s(&f, "NUL", "w", stderr);
+    const int fd = _open_osfhandle((intptr_t)h, _O_TEXT | _O_APPEND);
+    if (fd < 0) return;
+    _dup2(fd, 1);
+    _dup2(fd, 2);
+    if (_fileno(stdout) > 2) _dup2(fd, _fileno(stdout));
+    if (_fileno(stderr) > 2) _dup2(fd, _fileno(stderr));
+    if (fd > 2 && fd != _fileno(stdout) && fd != _fileno(stderr)) _close(fd);
+    setvbuf(stderr, NULL, _IONBF, 0);
+}
+
+static void win_stdio_init(void)
+{
+    const HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+    const bool force_log = getenv("DOD3_LOG_FILE") != NULL;   /* the double-click path, from anywhere */
+    if (!force_log && h && h != INVALID_HANDLE_VALUE && GetFileType(h) != FILE_TYPE_UNKNOWN) return;
+    if (!force_log && AttachConsole(ATTACH_PARENT_PROCESS)) {
+        const HANDLE con = CreateFileW(L"CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                       NULL, OPEN_EXISTING, 0, NULL);
+        if (con != INVALID_HANDLE_VALUE) win_stdio_to(con);
+        return;
+    }
+    wchar_t log[MAX_PATH] = L"", prev[MAX_PATH];
+    GetModuleFileNameW(NULL, log, MAX_PATH);
+    wchar_t* sl = wcsrchr(log, L'\\');
+    if (!sl || (size_t)(sl - log) + 16 >= MAX_PATH) return;
+    wcscpy_s(sl + 1, MAX_PATH - (sl + 1 - log), L"dod3.prev.log");
+    wcscpy_s(prev, MAX_PATH, log);
+    wcscpy_s(sl + 1, MAX_PATH - (sl + 1 - log), L"dod3.log");
+    MoveFileExW(log, prev, MOVEFILE_REPLACE_EXISTING);
+    /* Append-only, so the two descriptors never overwrite each other. */
+    const HANDLE f = CreateFileW(log, FILE_APPEND_DATA | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                 NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f != INVALID_HANDLE_VALUE) win_stdio_to(f);
+}
 #endif
 
 /* Our stand-in flashMP3.pic (see the PS3_DEV_FLASH default in main()):
@@ -1245,6 +1301,9 @@ static bool dod3_mp3_standin_install(const char* dev_flash)
 
 int main(int argc, char** argv)
 {
+#ifdef _WIN32
+    win_stdio_init();
+#endif
     /* No arguments -- a double-click, a shortcut -- or --setup: the release
      * layout. Everything is relative to the executable's directory (the
      * player's files, dod3.ini, saves, shader cache), the title and disc root
