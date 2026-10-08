@@ -60,6 +60,38 @@ An Xbox-compatible (XInput) controller is recommended.
 - `dod3.exe --check-disc <your .iso or folder> [EBOOT.ELF]` checks your
   files without installing anything.
 
+## macOS
+
+The same game on a Mac, as **Drakengard 3 Recompiled.app**.
+
+- **What you need:** a Mac with Apple silicon (M1 or newer) on **macOS 13
+  Ventura or newer**, about 16 GB of free disk space, and the same two things
+  from your copy of the game as above (the disc and EBOOT.ELF). RPCS3 has a
+  macOS version; its *Utilities › Decrypt PS3 Binaries* works the same way.
+- **Installing:**
+  1. Unzip the release and move **Drakengard 3 Recompiled.app** to
+     Applications (or anywhere you like).
+  2. The first time, macOS refuses to open it, because the app is not
+     notarized by Apple. On macOS 15 and later: try to open it once, then
+     go to *System Settings › Privacy & Security* and choose **Open Anyway**.
+     On macOS 13 and 14: Control-click the app, choose **Open**, then
+     **Open** again. After that it opens normally.
+  3. The setup asks for the disc, then EBOOT.ELF, checks both and copies the
+     game's files into `~/Library/Application Support/Drakengard 3 Recompiled`
+     (this takes a few minutes). The game then starts; the first minutes
+     stutter while shaders are compiled, as on Windows.
+
+  To run the setup again, hold **Option** while opening the app.
+- **Settings and logs:** dod3.ini (the same settings as above) and dod3.log
+  are in `~/Library/Application Support/Drakengard 3 Recompiled`. In Finder,
+  choose *Go › Go to Folder…* and paste that path.
+- **Controls:** Xbox, PlayStation (DualShock 4, DualSense) and Switch Pro
+  controllers work, wired or over Bluetooth.
+- **Checking your files:** in Terminal,
+  `"/Applications/Drakengard 3 Recompiled.app/Contents/MacOS/dod3" --check-disc <your .iso or folder> [EBOOT.ELF]`.
+- Tested on an M1 Pro: 60 fps with the cap at 60, dipping to the 50s in the
+  heaviest battles.
+
 ## Known issues
 
 - Pre-rendered movies play with uneven frame pacing.

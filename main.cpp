@@ -39,6 +39,14 @@
 #include "ppu_recomp.h"
 #include "src/setup_iso.h"   /* the release layout (first-run setup) */
 #include "src/dod3_mp3_standin.h"   /* our flashMP3.pic (tools/make_spu_overlays.py standin) */
+#ifdef __APPLE__
+extern "C" {   /* src/setup_mac.mm */
+const char* dod3_mac_data_dir(void);
+void dod3_mac_log_to_file(void);
+int dod3_setup_mac(const char* base_dir, int force);
+int dod3_mac_option_held(void);
+}
+#endif
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -1346,6 +1354,10 @@ int main(int argc, char** argv)
         GetModuleFileNameW(NULL, dir, MAX_PATH);
         if (wchar_t* sl = wcsrchr(dir, L'\\')) *sl = 0;
         const std::filesystem::path base(dir);
+#elif defined(__APPLE__)
+        const char* data = dod3_mac_data_dir();
+        if (!data) return 1;
+        const std::filesystem::path base(data);
 #else
         const std::filesystem::path base = std::filesystem::path(argv[0]).parent_path();
 #endif
@@ -1359,6 +1371,18 @@ int main(int argc, char** argv)
         if (wchar_t* sl = wcsrchr(dir, L'\\')) *sl = 0;
         SetCurrentDirectoryW(dir);
         if (dod3_setup_win(dir, force_setup ? 1 : 0) != 0) return 1;
+#elif defined(__APPLE__)
+        /* Not the app's folder -- a signed .app is read-only, and a
+         * downloaded one may run from a translocated copy -- but
+         * ~/Library/Application Support/Drakengard 3 Recompiled
+         * (src/setup_mac.mm). Option held at launch runs setup again. */
+        const char* data = dod3_mac_data_dir();
+        if (!data || chdir(data) != 0) {
+            fprintf(stderr, "cannot open the data folder %s\n", data ? data : "(Application Support)");
+            return 1;
+        }
+        dod3_mac_log_to_file();
+        if (dod3_setup_mac(data, (force_setup || dod3_mac_option_held()) ? 1 : 0) != 0) return 1;
 #else
         if (!dod3setup::check_installed(".").all()) {
             printf("usage: %s <PPU ELF>\n(or run it from a folder holding elf/EBOOT.ELF and game/disc; "

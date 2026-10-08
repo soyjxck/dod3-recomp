@@ -31,3 +31,6 @@ out/logs/
 
 # Release packages (tools/package_win.sh)
 dist/
+
+# macOS release dependencies (tools/build_mac_deps.sh)
+deps/

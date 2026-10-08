@@ -4,6 +4,9 @@ project(dod3
     LANGUAGES C CXX
     DESCRIPTION "Recompiled PS3 game project (ps3recomp)"
 )
+if(APPLE)
+    enable_language(OBJCXX)   # src/setup_mac.mm
+endif()
 
 # ---------------------------------------------------------------------------
 # Standards
@@ -200,6 +203,11 @@ set_source_files_properties("${LIBSRE_LIFTED_CPP}" PROPERTIES COMPILE_OPTIONS "-
 if(WIN32)
     list(APPEND PORT_WIN_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/win_prof.cpp"
                                  "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_win.cpp")
+elseif(APPLE)
+    # The first-run setup's panels (AppKit), the counterpart of setup_win.cpp.
+    list(APPEND PORT_WIN_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_mac.mm")
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/setup_mac.mm"
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
 
 add_executable(${PROJECT_NAME}
