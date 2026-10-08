@@ -279,12 +279,12 @@ static void trace_dump(double ms)
     const uint64_t now = frame_clock_us(), from = now - (uint64_t)(ms * 1000.0) - 16000;
     const uint32_t end = s_trace_i.load();
     static const char* names[] = { "?", "usleep", "drain", "label", "present", "usleep-done",
-                                   "recycle", "recycled", "fifo-flip", "pos-flip-set", "pos-flip" };
+                                   "recycle", "recycled", "fifo-flip", "pos-flip-set", "pos-flip", "gcm-pump" };
     for (uint32_t k = end > TRACE_N ? end - TRACE_N : 0; k < end; k++) {
         const TraceEv e = s_trace[k & (TRACE_N - 1)];
         if (e.t < from || e.t > now) continue;
         fprintf(stderr, "[trace] %8.2f ms %-11s tid %5u %08X %u\n", (double)(int64_t)(e.t - now) / 1000.0,
-                e.type < 11 ? names[e.type] : "?", e.tid, e.a, e.b);
+                e.type < 12 ? names[e.type] : "?", e.tid, e.a, e.b);
     }
 }
 extern "C" void (*g_gcm_trace_hook)(uint32_t type, uint32_t a, uint32_t b);   /* cellGcmSys.c */
@@ -302,10 +302,22 @@ static void label_written(void)
     drain_wake();
 }
 static std::atomic<uint64_t> s_fp_calls{0}, s_fp_early{0}, s_fp_us{0};
+/* Kick only when the FIFO holds commands the walker has not read (put !=
+ * get). The render thread's command-ring poll (usleep(30) at 0x000B4464,
+ * ~10k a second) kicked every time: a lock, a notify and a walker pass with
+ * nothing to do (the Mac session found it: ~11% of the render thread's busy
+ * time there). The fence poll below keeps its own drain/label wake.
+ * DOD3_KICK_BUSY=0 kicks on every usleep again; DOD3_AB=kickbusy switches it
+ * in a run. */
+static std::atomic<int> s_kick_busy{-1};
+static void ab_kickbusy(int on) { s_kick_busy = on; }
 static int guest_usleep_hook(uint32_t lr, uint64_t usec)
 {
     if (s_trace) trace(1, lr, (uint32_t)usec);
-    fifo_kick();
+    int busy_only = s_kick_busy.load(std::memory_order_relaxed);
+    if (busy_only < 0) { const char* e = getenv("DOD3_KICK_BUSY"); busy_only = !(e && e[0] == '0'); s_kick_busy = busy_only; }
+    if (!busy_only || vm_read32(ppu_hle_inject_base + 0x2000u) != vm_read32(ppu_hle_inject_base + 0x2004u))
+        fifo_kick();
     if (!s_fast_poll_lr || lr != s_fast_poll_lr || usec > 100000) return 0;
     /* A label written since this thread last looked: let it look again now.
      * (It reads the label, then calls here; one written in between would
@@ -607,6 +619,7 @@ static const struct { const char* name; void (*set)(int on); } s_ab_switches[] =
 #ifdef _WIN32
     { "bufpool",   ab_bufpool },
 #endif
+    { "kickbusy",  ab_kickbusy },
     { "texwatch",  ab_texwatch },
     { "patchhook", ab_patchhook },
     { "lzfmemo",   ab_lzfmemo },
