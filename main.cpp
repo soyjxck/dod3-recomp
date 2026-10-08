@@ -526,6 +526,10 @@ extern "C" int g_eng_buf_pool;
 static void ab_bufpool(int on) { g_eng_buf_pool = on; }
 extern "C" int g_eng_tex_watch;
 static void ab_texwatch(int on) { g_eng_tex_watch = on; }
+extern "C" int g_dod3_spu_patch_hook;   /* src/dod3_spu_hooks.c */
+static void ab_patchhook(int on) { g_dod3_spu_patch_hook = on; }
+extern "C" int g_dod3_lzf_memo;
+static void ab_lzfmemo(int on) { g_dod3_lzf_memo = on; }
 extern "C" uint32_t g_rsx_engine_hitches;   /* rsx_draw_engine.c: presents over 25 ms apart */
 static void ab_none(int) {}
 static const struct { const char* name; void (*set)(int on); } s_ab_switches[] = {
@@ -536,6 +540,8 @@ static const struct { const char* name; void (*set)(int on); } s_ab_switches[] =
     { "jcpar",     ab_jcpar },
     { "bufpool",   ab_bufpool },
     { "texwatch",  ab_texwatch },
+    { "patchhook", ab_patchhook },
+    { "lzfmemo",   ab_lzfmemo },
     { "none",   ab_none },
 };
 #ifdef _WIN32

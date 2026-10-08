@@ -20,6 +20,7 @@
  * and keeps the lifted result.
  */
 #include "spu_context.h"
+#include "spu_helpers.h"   /* spu_ls_read128 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -175,11 +176,12 @@ typedef struct {
 static _Thread_local lzf_memo t_memo[LZF_MEMO_N];
 static unsigned long long s_memo_hit, s_memo_miss, s_memo_skip, s_memo_outside, s_memo_overlap, s_memo_stored;
 
+/* Switchable at run time by main.cpp's DOD3_AB=lzfmemo. */
+int g_dod3_lzf_memo = -1;
 static int memo_on(void)
 {
-    static int on = -1;
-    if (on < 0) { const char* e = getenv("DOD3_LZF_MEMO"); on = !(e && e[0] == '0'); }
-    return on;
+    if (g_dod3_lzf_memo < 0) { const char* e = getenv("DOD3_LZF_MEMO"); g_dod3_lzf_memo = !(e && e[0] == '0'); }
+    return g_dod3_lzf_memo;
 }
 
 static void memo_report(void)
@@ -344,5 +346,128 @@ int dod3_spu_lzf_token_hook(spu_context* ctx)
     }
     uint32_t tokens = 0;
     lzf_token_native(ctx, &tokens);
+    return 0;
+}
+
+/* ---- 0x6A0: the patch loop -------------------------------------------------
+ *
+ * After the decode, the job walks the fragment program 16 bytes (one
+ * instruction) at a time: 0x6A0 swaps the halfwords of each of the
+ * instruction's four words in place (RSX microcode order) and reads a copy
+ * count from the byte at r21; 0x750 (re-entered through 0x744, which reloads
+ * word 0) copies the swapped instruction, word by word, to r18 + each 16-bit
+ * offset read from r84; 0x7E8 counts r22 up to r23 and steps r16. Every
+ * register the iteration touches besides r16, r21, r22 and r84 it writes
+ * first, so whole iterations are done here -- every one before the last that
+ * copies anything -- and the lifted code runs from that one on, which leaves
+ * every temporary exactly as it always did. The adds act on all four lanes
+ * (spu_ai), so all four lanes advance.
+ *
+ * Quadword semantics are kept: a word is read from its address with a rotate
+ * inside its 16-byte line (rotqby) and written into the word slot its address
+ * names in that line (cwd/cwx + shufb). */
+void spurs_job_01785E00_spu_func_000006A0(spu_context* ctx);
+
+static uint32_t ls_word_rot(const uint8_t* ls, uint32_t a)
+{
+    const uint32_t line = a & ~0xFu & SPU_LS_MASK;
+    uint32_t w = 0;
+    for (uint32_t i = 0; i < 4; i++) w = (w << 8) | ls[line + ((a + i) & 0xFu)];
+    return w;
+}
+static void ls_word_ins(uint8_t* ls, uint32_t a, uint32_t w)
+{
+    uint8_t* p = ls + (a & ~0x3u & SPU_LS_MASK);
+    p[0] = (uint8_t)(w >> 24); p[1] = (uint8_t)(w >> 16); p[2] = (uint8_t)(w >> 8); p[3] = (uint8_t)w;
+}
+static uint32_t ls_half_at(const uint8_t* ls, uint32_t a)
+{
+    const uint32_t line = a & ~0xFu & SPU_LS_MASK;
+    return ((uint32_t)ls[line + (a & 0xFu)] << 8) | ls[line + ((a + 1u) & 0xFu)];
+}
+
+static unsigned long long s_patch_checked, s_patch_bad;
+
+static void patch_run_lifted(spu_context* ctx)
+{
+    spurs_job_01785E00_spu_func_000006A0(ctx);
+    while (g_spu_trampoline_fn && ((uint32_t)ctx->pc & SPU_LS_MASK) != 0x808u) {
+        void (*f)(spu_context*) = g_spu_trampoline_fn;
+        g_spu_trampoline_fn = 0;
+        f(ctx);
+    }
+}
+
+/* DOD3_SPU_PATCH_HOOK=0 turns this hook alone off; DOD3_AB=patchhook
+ * switches it in a run. */
+int g_dod3_spu_patch_hook = -1;
+int dod3_spu_patch_loop_hook(spu_context* ctx)
+{
+    if (g_dod3_spu_patch_hook < 0) { const char* e = getenv("DOD3_SPU_PATCH_HOOK"); g_dod3_spu_patch_hook = !(e && e[0] == '0'); }
+    if (t_in_check == 2 || !hooks_on() || !g_dod3_spu_patch_hook) return 0;
+    if (t_in_check == 0 && checking()) {
+        static _Thread_local u128 g0[128], ga[128];
+        static _Thread_local uint8_t l0[SPU_LS_SIZE], la[SPU_LS_SIZE];
+        memcpy(g0, ctx->gpr, sizeof g0); memcpy(l0, ctx->ls, SPU_LS_SIZE);
+        const uint32_t pc0 = (uint32_t)ctx->pc;
+        t_in_check = 4; patch_run_lifted(ctx); t_in_check = 0;   /* this hook active */
+        memcpy(ga, ctx->gpr, sizeof ga); memcpy(la, ctx->ls, SPU_LS_SIZE);
+        const uint32_t pca = (uint32_t)ctx->pc; void (*tfa)(spu_context*) = g_spu_trampoline_fn;
+        memcpy(ctx->gpr, g0, sizeof g0); memcpy(ctx->ls, l0, SPU_LS_SIZE); ctx->pc = pc0;
+        t_in_check = 2; patch_run_lifted(ctx); t_in_check = 0;
+        const int bad = memcmp(ga, ctx->gpr, sizeof ga) || memcmp(la, ctx->ls, SPU_LS_SIZE) ||
+                        pca != (uint32_t)ctx->pc || tfa != g_spu_trampoline_fn;
+        s_patch_checked++;
+        if ((s_patch_checked % 2000) == 0 || (bad && s_patch_bad < 8))
+            fprintf(stderr, "[spu-native-check] patch loops: %llu compared, %llu mismatched%s\n",
+                    s_patch_checked, s_patch_bad + (bad ? 1 : 0), bad ? " -- MISMATCH" : "");
+        if (bad) s_patch_bad++;
+        return 1;   /* the lifted result stands */
+    }
+    uint8_t* ls = ctx->ls;
+    const uint32_t r22 = ctx->gpr[22]._u32[0], r23 = ctx->gpr[23]._u32[0];
+    if (!(r23 > r22)) return 0;
+    const uint32_t n = r23 - r22;                     /* iterations left, this one included */
+    if (n < 2 || n > 0x4000u) return 0;
+    const uint32_t r21 = ctx->gpr[21]._u32[0];
+    /* The last iteration that copies anything runs lifted (or the last one). */
+    uint32_t L = n - 1;
+    for (uint32_t t = n; t-- > 0; ) if (ls[(r21 + t) & SPU_LS_MASK]) { L = t; break; }
+    if (L == 0) return 0;
+    const uint32_t a0 = ctx->gpr[16]._u32[0], r18 = ctx->gpr[18]._u32[0];
+    uint32_t r84 = ctx->gpr[84]._u32[0];
+    uint32_t copies = 0;
+    /* r66 is written only at 0x744 (second and later copies of an
+     * instruction): if the lifted run from L never reaches it, it must hold
+     * what the last skipped 0x744 loaded. */
+    int r66_set = 0; u128 r66 = ctx->gpr[66];
+    for (uint32_t t = 0; t < L; t++) {
+        const uint32_t a = a0 + 16u * t;
+        uint32_t w0 = 0;
+        for (uint32_t k = 0; k < 4; k++) {
+            const uint32_t w = ls_word_rot(ls, a + 4u * k);
+            const uint32_t s = (w << 16) | (w >> 16);
+            ls_word_ins(ls, a + 4u * k, s);
+            if (k == 0) w0 = s;
+        }
+        const uint32_t c = ls[(r21 + t) & SPU_LS_MASK];
+        for (uint32_t j = 0; j < c; j++) {
+            if (j > 0) { r66 = spu_ls_read128(ctx, a); r66_set = 1; }   /* 0x744's lq */
+            const uint32_t word0 = j == 0 ? w0 : ls_word_rot(ls, a);   /* 0x744 reloads it */
+            const uint32_t dst = r18 + ls_half_at(ls, r84);
+            r84 += 2u;
+            ls_word_ins(ls, dst, word0);
+            for (uint32_t k = 1; k < 4; k++)
+                ls_word_ins(ls, dst + 4u * k, ls_word_rot(ls, a + 4u * k));
+        }
+        copies += c;
+    }
+    if (r66_set) ctx->gpr[66] = r66;
+    for (int k = 0; k < 4; k++) {
+        ctx->gpr[16]._u32[k] += 16u * L;
+        ctx->gpr[21]._u32[k] += L;
+        ctx->gpr[22]._u32[k] += L;
+        ctx->gpr[84]._u32[k] += 2u * copies;
+    }
     return 0;
 }
