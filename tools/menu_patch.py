@@ -1,9 +1,11 @@
 """Generate the Graphics / System Settings (and skip-intro) patch for SQEX03GAME.XXX.
 
-menu_patch.py [<overlay dir>] [--header=src/dod3_menu_patch_data.h] [--show]
+menu_patch.py [<overlay dir>] [--header=src/dod3_menu_patch_data.h] [--show] [--eboot=101]
 
 The overlay is for testing (PS3_VFS_OVERLAY=<dir> and DOD3_SHA_OVERRIDE from
 <dir>/sha1.txt); the header is what dod3 applies to the player's own copy.
+--eboot=101 patches the 1.01 update's package instead (its PATCH folder,
+game/disc/game/BLES00000/USRDIR/PATCH; header src/dod3_menu_patch_data_101.h).
 
 Settings root: two more entries, "Graphics Settings" and "System Settings",
 in the empty row between Audio Settings and Restore Defaults and one row
@@ -21,7 +23,9 @@ MAGIC+100+row row label, MAGIC+200+row value, MAGIC+300+row row description.
 Bridge: 0 begin (pending = current), 1 change(row, dir), 2 is-default(row),
 3 reset (pending = defaults), 4 apply, 5 changed?, 6 skip the intro?,
 7 open(root entry: 3 Graphics, 4 System, 5 Restore Defaults = every page),
-8 the open page's row count, 9 the camera's field of view.
+8 the open page's row count, 9 the camera's field of view, 10 is the
+Graphics page on screen? (in play the pause screen's dimming and frost are
+left out while it is, so what a setting changes can be seen behind it).
 
 Also: Sqex03GameCamera.UpdateViewTarget hands every view's final FOV to the
 port (bridge(9, FOV, the gameplay camera made it)) and takes back the one to
@@ -40,11 +44,16 @@ from ue3.script import Node
 
 MAGIC = 900000
 MAX_ROWS = 7     # the layout's
-CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO, CMD_OPEN, CMD_ROWS, CMD_FOV = range(10)
+CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO, CMD_OPEN, CMD_ROWS, CMD_FOV, \
+    CMD_GRAPHICS_SHOWN = range(11)
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'game', 'disc', 'PS3_GAME', 'USRDIR', 'SQEX03GAME')
+GAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'game', 'disc')
+ROOT = os.path.join(GAME, 'PS3_GAME', 'USRDIR', 'SQEX03GAME')
 SRC = ROOT + '/COOKEDPS3/SQEX03GAME.XXX'
 ORIG_SHA1 = '70e1e44a648eaf8dee338eaf439c69c97d1c0d71'   # the EBOOT's table entry
+# 1.01: the update's package, which its EBOOT's table names
+ROOT_101 = os.path.join(GAME, 'game', 'BLES00000', 'USRDIR', 'PATCH', 'SQEX03GAME')
+ORIG_SHA1_101 = 'ac297f7cd33faee49708fbf7f5b1bb4f8a2031d8'
 
 def main():
     args = [x for x in sys.argv[1:] if not x.startswith('--')]
@@ -53,14 +62,33 @@ def main():
     header = None
     for x in sys.argv[1:]:
         if x.startswith('--header='): header = x[9:]
+    global ROOT, SRC, ORIG_SHA1
+    v101 = '--eboot=101' in sys.argv
+    if v101:
+        ROOT, ORIG_SHA1 = ROOT_101, ORIG_SHA1_101
+        SRC = ROOT + '/COOKEDPS3/SQEX03GAME.XXX'
     disasm.load_natives([ROOT + '/COOKEDPS3/' + n for n in ('CORE.XXX', 'ENGINE.XXX', 'GAMEFRAMEWORK.XXX', 'SQEX03GAME.XXX')])
     u = upk.decompress(SRC)
-    assert hashlib.sha1(u).hexdigest() == ORIG_SHA1, 'not the BLUS31197 1.00 script package'
+    assert hashlib.sha1(u).hexdigest() == ORIG_SHA1, 'not the BLUS31197 %s script package' % ('1.01' if v101 else '1.00')
     pk = Pkg(u)
     new = {}
 
     OPT, ROOTC, DISP = 'Sqex03GameHUDOption', 'Sqex03GameHUDOptionRoot', 'Sqex03GameHUDOptionDisplay'
     bridge = graphics_page(pk, new, show)
+
+    # ---- in play, the pause screen's dimming (a black rectangle) and frost
+    # (HUD_Pause's pause_bg) are left out while the Graphics page is on
+    # screen, so what a setting changes can be seen behind it ----
+    def unless_graphics(cls, fn, text):
+        f = pk.func(cls, fn); st = pk.parse(f)
+        i = pk.find(st, text)
+        skip = Node(0x07, [('jmp', st[i + 1].mem),
+                           ('e', pk.native('EqualEqual_IntInt', bridge(CMD_GRAPHICS_SHOWN), pk.int_(0)))],
+                    st[i].mem)   # the test takes the draw's place: jumps to the draw land on it
+        st.insert(i, skip)
+        new[f] = st
+    unless_graphics('Sqex03GameHUDCommon', 'DrawPause_Battle', 'self.m_xHUD.self.Canvas.DrawRect(1280f, 720f, <empty>)')
+    unless_graphics('Sqex03GameHUDSelectMenu', 'Draw', 'self.m_xMenu.DrawAll(self.m_xHUD.self.Canvas, <empty>, <empty>, <empty>, <empty>)')
 
     # ---- Sqex03GameHUDOption.Initialize: a fifth child, the Display page ----
     f = pk.func(OPT, 'Initialize'); st = pk.parse(f)
@@ -214,7 +242,11 @@ def main():
         bodies.append((f, old, body))
         u2 = pkgpatch.replace_export(u2, pk.exps, f, body)
     sha = hashlib.sha1(u2).hexdigest()
-    if out:
+    if out and v101:
+        ov = out + '/game/BLES00000/USRDIR/PATCH/SQEX03GAME'   # patch files have no TOC
+        pkgpatch.save_full(u2, ov + '/COOKEDPS3/SQEX03GAME.XXX', pkgpatch.block_size_of(SRC))
+        open(out + '/sha1.txt', 'w').write(sha)
+    elif out:
         ov = out + '/PS3_GAME/USRDIR/SQEX03GAME'
         csize = pkgpatch.save_full(u2, ov + '/COOKEDPS3/SQEX03GAME.XXX', pkgpatch.block_size_of(SRC))
         n = pkgpatch.toc_set(ROOT + '/PS3TOC.TXT', ov + '/PS3TOC.TXT', 'Sqex03Game.xxx', csize, len(u2))
@@ -253,6 +285,7 @@ def write_header(path, bodies, size, sha):
                 ' * patch to SQEX03GAME.XXX (see src/dod3_menu_patch.cpp). */\n')
         h.write('static const char k_menu_patch_version[] = "%s";\n' % ver)
         h.write('static const char k_menu_patch_orig_sha1[] = "%s";\n' % ORIG_SHA1)
+        h.write('static const char k_menu_patch_eboot[] = "%s";\n' % ('1.01' if ORIG_SHA1 == ORIG_SHA1_101 else '1.00'))
         h.write('static const char k_menu_patch_sha1[] = "%s";\n' % sha)
         h.write('static const unsigned k_menu_patch_size = %d;\n' % size)
         h.write('static const unsigned k_menu_patch_count = %d;\n' % len(bodies))

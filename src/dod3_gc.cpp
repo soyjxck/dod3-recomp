@@ -13,6 +13,7 @@
  * reachability pass's share; =2 adds the profiler's sampled stacks.
  */
 #include "ppu_recomp.h"
+#include "dod3_eboot.h"   /* the EBOOT version's addresses */
 #include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,7 +100,7 @@ static void reach_snapshot(uint32_t list, ReachResult* r)
     const uint32_t n = be32(list + 4), data = be32(list + 0);
     r->queued.resize(n);
     for (uint32_t i = 0; i < n; i++) r->queued[i] = be32(data + i * 4);
-    const uint32_t nobj = be32(0x01A0C2B8u), objs = be32(0x01A0C2B4u);
+    const uint32_t nobj = be32(DOD3_A_GOBJOBJECTS + 4), objs = be32(DOD3_A_GOBJOBJECTS);
     r->unreachable.assign(nobj, 0);
     for (uint32_t i = 0; i < nobj; i++) {
         const uint32_t o = be32(objs + i * 4);
@@ -112,7 +113,7 @@ static void reach_check(ppu_context* ctx)
     const uint32_t list = (uint32_t)ctx->gpr[3];
     const uint32_t num0 = be32(list + 4), cur0 = be32(list + 0xC);
     ppu_context saved = *ctx;
-    func_00EE6538_lifted(ctx); drain(ctx);
+    DOD3_FN_GC_REACH_LIFTED(ctx); drain(ctx);
     ReachResult a; reach_snapshot(list, &a);
     const ppu_context after_lifted = *ctx;
     /* Same input for the native pass: the list as it came in. */
@@ -139,13 +140,13 @@ static void reach_check(ppu_context* ctx)
             after_lifted.gpr[1] == ctx->gpr[1] ? "same" : "DIFFERENT", regs);
 }
 
-void func_00EE6538(ppu_context* ctx)
+void DOD3_FN_GC_REACH(ppu_context* ctx)
 {
     const double t0 = now_ms();
     switch (gc_native()) {
     case 1:  dod3_gc_reach_native(ctx); break;
     case 2:  reach_check(ctx); break;
-    default: func_00EE6538_lifted(ctx); drain(ctx); break;
+    default: DOD3_FN_GC_REACH_LIFTED(ctx); drain(ctx); break;
     }
     s_reach_ms += now_ms() - t0;
     s_reach_calls++;
@@ -174,9 +175,9 @@ void func_00EE6538(ppu_context* ctx)
  * as before, so the world tick does not ask again meanwhile. If no limiter
  * sleep comes (a frame over budget), the next periodic request collects at
  * once. */
-static const uint32_t PERIODIC_GC_RET = 0x0041C2C8u;   /* func_0041C270's call */
-static const uint32_t LIMITER_SLEEP_RET = 0x008EDF10u; /* appSleep in the limiter */
-static const uint32_t GWORLD = 0x0199B880u;           /* UGameEngine::Tick's world (func_009053D0) */
+static const uint32_t PERIODIC_GC_RET = DOD3_A_PERIODIC_GC_RET;   /* 1.00: func_0041C270's call at 0x0041C2C8 */
+static const uint32_t LIMITER_SLEEP_RET = DOD3_A_LIMITER_SLEEP_RET; /* appSleep in the limiter */
+static const uint32_t GWORLD = DOD3_A_GWORLD;           /* UGameEngine::Tick's world (func_009053D0) */
 static uint32_t s_def_world;     /* a deferred purge's world, 0 if none */
 static uint32_t s_def_frame;
 static int s_in_deferred;
@@ -210,7 +211,7 @@ static void gc_usleep_pre(ppu_context* ctx, uint64_t* usec)
     ctx->gpr[3] = world;
     ctx->lr = LIMITER_SLEEP_RET;
     s_in_deferred = 1;
-    func_0041C270(ctx);
+    DOD3_FN_PERIODIC_GC(ctx);
     drain(ctx);
     s_in_deferred = 0;
     *ctx = saved;
@@ -222,7 +223,7 @@ static void gc_usleep_pre(ppu_context* ctx, uint64_t* usec)
     *usec = spent >= *usec ? 0 : *usec - spent;
 }
 
-void func_000C1E50(ppu_context* ctx)
+void DOD3_FN_COLLECT_GARBAGE(ppu_context* ctx)
 {
     const uint32_t caller = (uint32_t)ctx->lr;
     if (gc_defer() && !s_in_deferred) {
@@ -241,13 +242,13 @@ void func_000C1E50(ppu_context* ctx)
     s_reach_ms = 0; s_reach_calls = 0;
     const uint64_t u0 = clock_us();
     const double t0 = now_ms();
-    func_000C1E50_lifted(ctx);
+    DOD3_FN_COLLECT_GARBAGE_LIFTED(ctx);
     drain(ctx);
     const double ms = now_ms() - t0;
     if (gc_log() && ms > 1.0) {
         static unsigned n = 0;
         /* GObjObjects: a TArray (data, num, max) at 0x01A0C2B4. */
-        const uint32_t nobj = __builtin_bswap32(*(const uint32_t*)(vm_base + 0x01A0C2B8u));
+        const uint32_t nobj = __builtin_bswap32(*(const uint32_t*)(vm_base + DOD3_A_GOBJOBJECTS + 4));
 
         fprintf(stderr, "[gc] #%u collection %.2f ms, reachability %.2f ms (%u passes), %u objects, %.0f ns each, frame %u, from %08X\n",
                 ++n, ms, s_reach_ms, s_reach_calls, nobj, nobj ? s_reach_ms * 1e6 / nobj : 0.0, g_rsx_engine_frame, caller);

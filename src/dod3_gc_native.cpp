@@ -25,6 +25,7 @@
  */
 #define PPU_INLINE_VM 1
 #include "ppu_recomp.h"
+#include "dod3_eboot.h"   /* the EBOOT version's addresses */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,13 +82,13 @@ extern "C" void ps3_indirect_call(ppu_context* ctx);
 
 namespace {
 
-const uint32_t GOBJ          = 0x01A0C2B4u;
-const uint32_t GOBJ_FIRST    = 0x01A0C33Cu;
-const uint32_t VISIT_COUNTER = 0x019C816Cu;
-const uint32_t PERM_START    = 0x019907CCu;
-const uint32_t PERM_END      = 0x019907D0u;
-const uint32_t GMALLOC       = 0x0197FFA0u;
-const uint32_t MASKS         = 0x00EE6528u;
+const uint32_t GOBJ          = DOD3_A_GOBJOBJECTS;
+const uint32_t GOBJ_FIRST    = DOD3_A_GOBJ_FIRST_GC_INDEX;
+const uint32_t VISIT_COUNTER = DOD3_A_GC_VISIT_COUNTER;
+const uint32_t PERM_START    = DOD3_A_PERM_OBJ_START;
+const uint32_t PERM_END      = DOD3_A_PERM_OBJ_END;
+const uint32_t GMALLOC       = DOD3_A_GMALLOC;
+const uint32_t MASKS         = DOD3_GC_PC(0x00EE6528u);
 const uint64_t BIT_PENDING_KILL = 1ull << 61;
 const uint64_t BIT_UNREACHABLE  = 1ull << 33;
 
@@ -112,7 +113,7 @@ inline uint32_t vcall(ppu_context* ctx, uint32_t obj_vtable_holder, uint32_t slo
      *               r4 = that bit isolated
      *   0x00018EF0  UObject::AddReferencedObjects: its first instruction
      *               is blr, an empty function */
-    if (code == 0x00EF8010u) {
+    if (code == DOD3_GC_PC(0x00EF8010u)) {
         const uint64_t pk = vm_read64((uint32_t)ctx->gpr[3] + 8) & (1ull << 61);
         ctx->gpr[4] = pk;
         ctx->gpr[3] = pk ? 1 : 0;
@@ -134,7 +135,7 @@ inline uint32_t gmalloc(ppu_context* ctx, uint32_t ret_lr_init)
     uint32_t m = vm_read32(GMALLOC);
     if (m == 0) {
         ctx->lr = ret_lr_init;
-        func_008EBDD0(ctx); drain(ctx);
+        DOD3_FN_GMALLOC_CREATE(ctx); drain(ctx);
         m = vm_read32(GMALLOC);
     }
     return m;
@@ -260,7 +261,7 @@ struct ParShared {
 ParShared* s_par;
 
 const uint32_t P1_CHUNK = 2048;
-const uint32_t UOBJ_KEEP_TEST = 0x00EF8010u;  /* UObject's keep test: r3 = pending kill */
+const uint32_t UOBJ_KEEP_TEST = DOD3_GC_PC(0x00EF8010u);  /* UObject's keep test: r3 = pending kill */
 
 /* Phase 1 for one chunk of the object array: what needs no guest code, done
  * here; the rest recorded, in index order, for the game thread.
@@ -568,13 +569,13 @@ uint32_t phase2_parallel(ppu_context* ctx, Pass& p, uint32_t list)
         for (uint32_t cur : calls) {
             vm_write32(list + 0xC, cur);
             ctx->gpr[3] = cur; ctx->gpr[4] = list;
-            vcall(ctx, cur, 0xFC, 0x00EE6940);
+            vcall(ctx, cur, 0xFC, DOD3_GC_PC(0x00EE6940));
         }
     }
     /* The workers' objects into the guest list (they are queued in it in
      * the serial pass), one growth for all of them. */
     if (!S.reached.empty()) {
-        list_append(ctx, list, S.reached, 0x00EE6B78, 0x00EE6B98);
+        list_append(ctx, list, S.reached, DOD3_GC_PC(0x00EE6B78), DOD3_GC_PC(0x00EE6B98));
         last = S.reached.back();
     }
     (void)p;
@@ -601,7 +602,7 @@ inline void phase1_class(ppu_context* ctx, uint32_t o, uint32_t outer_match)
     uint32_t arg = 0;
     if (o != 0 && (vm_read32(outer + 0xC0) & 0x20u)) arg = o;
     ctx->gpr[3] = arg;
-    ctx->lr = 0x00EE6878; func_000C1D48(ctx); drain(ctx);
+    ctx->lr = DOD3_GC_PC(0x00EE6878); DOD3_FN_GC_PREPARE(ctx); drain(ctx);
 }
 
 /* Phase 1 for the object at index i, as the lifted loop body; the visit
@@ -615,10 +616,10 @@ void phase1_one(ppu_context* ctx, Pass& p, uint32_t list, uint32_t i, uint64_t o
     if (visit) vm_write32(VISIT_COUNTER, vm_read32(VISIT_COUNTER) + 1);
     if (vm_read64(obj + 8) & 0x4000u) {
         ctx->gpr[3] = list; ctx->gpr[4] = p.slot70;
-        ctx->lr = 0x00EE6674; func_00ECDD7C(ctx); drain(ctx);
+        ctx->lr = DOD3_GC_PC(0x00EE6674); DOD3_FN_TARRAY_ADDITEM(ctx); drain(ctx);
     } else {
         ctx->gpr[3] = obj;
-        const uint32_t keep_it = vcall(ctx, obj, 0x30, 0x00EE6690);
+        const uint32_t keep_it = vcall(ctx, obj, 0x30, DOD3_GC_PC(0x00EE6690));
         if (keep_it != 0) {
             const uint32_t o = vm_read32(p.slot70);
             vm_write64(o + 8, vm_read64(o + 8) | or_mask);
@@ -628,7 +629,7 @@ void phase1_one(ppu_context* ctx, Pass& p, uint32_t list, uint32_t i, uint64_t o
         if (((f & keep) == 0 && keep != ~0ull) || (f & BIT_PENDING_KILL)) {
             vm_write64(o + 8, f | mark_bit);         /* unreachable until reached */
         } else {
-            p.add_item(0, 1, 0x00EE67DC, 0x00EE6800);
+            p.add_item(0, 1, DOD3_GC_PC(0x00EE67DC), DOD3_GC_PC(0x00EE6800));
         }
     }
     phase1_class(ctx, vm_read32(p.slot70), outer_match);
@@ -660,8 +661,8 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
         vm_write32(VISIT_COUNTER, 0);
         ctx->gpr[3] = list;
         ctx->gpr[4] = (uint64_t)(int64_t)(int32_t)(num - first + 2);
-        ctx->lr = 0x00EE65D4; func_00EE6360(ctx); drain(ctx);
-        ctx->lr = 0x00EE65D8; func_00EE6408(ctx); drain(ctx);
+        ctx->lr = DOD3_GC_PC(0x00EE65D4); DOD3_FN_GC_REACH_A(ctx); drain(ctx);
+        ctx->lr = DOD3_GC_PC(0x00EE65D8); DOD3_FN_GC_REACH_B(ctx); drain(ctx);
     }
     const uint32_t outer_match = (uint32_t)ctx->gpr[3];  /* r31: what func_00EE6408 returned */
 
@@ -690,7 +691,7 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
                 }
             std::vector<uint32_t> q;
             for (auto& c : S.p1) q.insert(q.end(), c.queued.begin(), c.queued.end());
-            list_append(ctx, list, q, 0x00EE67DC, 0x00EE6800);
+            list_append(ctx, list, q, DOD3_GC_PC(0x00EE67DC), DOD3_GC_PC(0x00EE6800));
             i_start = num;
         }
     }
@@ -704,9 +705,9 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
     vm_write64(ctx->gpr[1] + 0x78, 0x80);
     uint32_t stack_buf;
     {
-        const uint32_t m = gmalloc(ctx, 0x00EE68A0);
+        const uint32_t m = gmalloc(ctx, DOD3_GC_PC(0x00EE68A0));
         ctx->gpr[3] = m; ctx->gpr[4] = 0; ctx->gpr[5] = 0xC00; ctx->gpr[6] = 8;
-        stack_buf = vcall(ctx, m, 0xC, 0x00EE68C4);
+        stack_buf = vcall(ctx, m, 0xC, DOD3_GC_PC(0x00EE68C4));
     }
     p.perm_start = vm_read32(PERM_START);
     p.perm_end = vm_read32(PERM_END);
@@ -723,7 +724,7 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
         idx++;
         vm_write32(list + 0xC, cur);
         ctx->gpr[3] = cur; ctx->gpr[4] = list;
-        vcall(ctx, cur, 0xFC, 0x00EE6940);              /* AddReferencedObjects */
+        vcall(ctx, cur, 0xFC, DOD3_GC_PC(0x00EE6940));              /* AddReferencedObjects */
 
         /* The permanent range is re-read per reference in the lifted code;
          * nothing in the pass writes it, but AddReferencedObjects is guest
@@ -771,17 +772,17 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
             switch (type) {
             case 1:                                      /* object */
                 ret = rc;
-                p.handle(data + off, 1, 0x00EE6B78, 0x00EE6B98);
+                p.handle(data + off, 1, DOD3_GC_PC(0x00EE6B78), DOD3_GC_PC(0x00EE6B98));
                 break;
             case 2:                                      /* persistent object */
                 ret = rc;
-                p.handle(data + off, 0, 0x00EE6FD0, 0x00EE6FF0);
+                p.handle(data + off, 0, DOD3_GC_PC(0x00EE6FD0), DOD3_GC_PC(0x00EE6FF0));
                 break;
             case 3: {                                    /* array of objects */
                 const uint32_t arr = data + off;
                 ret = rc;
                 for (int32_t j = 0; j < (int32_t)vm_read32(arr + 4); j++)
-                    p.handle(vm_read32(arr + 0) + (uint32_t)j * 4u, 1, 0x00EE6D64, 0x00EE6D84);
+                    p.handle(vm_read32(arr + 0) + (uint32_t)j * 4u, 1, DOD3_GC_PC(0x00EE6D64), DOD3_GC_PC(0x00EE6D84));
                 break;
             }
             case 4: {                                    /* array of structs */
@@ -819,7 +820,7 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
             case 7: {                                    /* delegate: object, then its name */
                 const uint32_t ref = data + off;
                 ret = rc;
-                if (!p.handle(ref, 1, 0x00EE7204, 0x00EE7224)) break;
+                if (!p.handle(ref, 1, DOD3_GC_PC(0x00EE7204), DOD3_GC_PC(0x00EE7224))) break;
                 if (vm_read32(ref) == 0) { vm_write32(ref + 4, 0); vm_write32(ref + 8, 0); }
                 break;
             }
@@ -840,9 +841,9 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
                 break;
             }
             default:                                     /* appErrorf: unknown token */
-                ctx->gpr[3] = vm_read32(0x0197FF84u);
-                ctx->gpr[4] = 0x016386CCu;              /* 0x01640000 - 31028 */
-                ctx->lr = 0x00EE72FC; func_00012538(ctx); drain(ctx);
+                ctx->gpr[3] = vm_read32(DOD3_A_GERROR);
+                ctx->gpr[4] = DOD3_A_GC_ERROR_FMT;      /* 1.00: 0x01640000 - 31028 */
+                ctx->lr = DOD3_GC_PC(0x00EE72FC); DOD3_FN_APP_ERRORF(ctx); drain(ctx);
                 break;
             }
         }
@@ -851,9 +852,9 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
 phase2_done:
     ctx->gpr[3] = last_num;
     if (stack_buf != 0) {
-        const uint32_t m = gmalloc(ctx, 0x00EE731C);
+        const uint32_t m = gmalloc(ctx, DOD3_GC_PC(0x00EE731C));
         ctx->gpr[3] = m; ctx->gpr[4] = stack_buf;
-        vcall(ctx, m, 0x10, 0x00EE7338);                 /* Free */
+        vcall(ctx, m, 0x10, DOD3_GC_PC(0x00EE7338));                 /* Free */
     }
     ctx->gpr[1] = sp0;
     ctx->lr = lr0;

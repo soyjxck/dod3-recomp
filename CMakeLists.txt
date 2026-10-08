@@ -39,7 +39,18 @@ if(NOT DEFINED PS3RECOMP_DIR)
 endif()
 get_filename_component(PS3RECOMP_DIR "${PS3RECOMP_DIR}" ABSOLUTE)
 
-set(RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/recompiled" CACHE PATH
+# The EBOOT the lift is from: 100 (BLUS31197 1.00, the disc; the default) or
+# 101 (the 1.01 update, lifted into recompiled_101/). src/dod3_eboot.h holds
+# every address the port's own code knows, per version. A 1.01 build sits
+# beside the 1.00 one:  cmake -B build_101 -G Ninja -DDOD3_EBOOT=101
+set(DOD3_EBOOT 100 CACHE STRING "EBOOT version the lift is from: 100 or 101")
+set_property(CACHE DOD3_EBOOT PROPERTY STRINGS 100 101)
+if(DOD3_EBOOT STREQUAL "101")
+    set(_dod3_recomp_default "${CMAKE_CURRENT_SOURCE_DIR}/recompiled_101")
+else()
+    set(_dod3_recomp_default "${CMAKE_CURRENT_SOURCE_DIR}/recompiled")
+endif()
+set(RECOMP_DIR "${_dod3_recomp_default}" CACHE PATH
     "Directory holding the lifter's output: ppu_recomp.h and the lifted sources")
 get_filename_component(RECOMP_DIR "${RECOMP_DIR}" ABSOLUTE)
 
@@ -279,6 +290,9 @@ endif()
 if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
 endif()
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE DOD3_EBOOT=${DOD3_EBOOT})
+message(STATUS "EBOOT:           BLUS31197 ${DOD3_EBOOT}")
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     "${RECOMP_DIR}"                            # the generated ppu_recomp.h

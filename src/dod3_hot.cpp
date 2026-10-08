@@ -9,6 +9,7 @@
  *                  thread when scenery breaks up (32-37% of it there)
  */
 #include "ppu_recomp.h"
+#include "dod3_eboot.h"   /* the EBOOT version's addresses */
 #include "dod3_cycles.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,7 +21,7 @@ extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 
 namespace {
 struct HotStat { const char* name; uint64_t calls, cycles; };
-HotStat s_hot[] = { { "func_00272F58", 0, 0 } };
+HotStat s_hot[] = { { "collision test", 0, 0 } };
 
 int hot_log(void)
 {
@@ -57,11 +58,11 @@ inline void drain(ppu_context* ctx)
 }
 }  // namespace
 
-void func_00272F58(ppu_context* ctx)
+void DOD3_FN_COLLISION_TEST(ppu_context* ctx)
 {
-    if (!hot_log()) { func_00272F58_lifted(ctx); return; }
+    if (!hot_log()) { DOD3_FN_COLLISION_TEST_LIFTED(ctx); return; }
     const uint64_t c0 = dod3_cycles();
-    func_00272F58_lifted(ctx);
+    DOD3_FN_COLLISION_TEST_LIFTED(ctx);
     drain(ctx);
     s_hot[0].cycles += dod3_cycles() - c0;
     s_hot[0].calls++;

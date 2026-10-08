@@ -37,12 +37,13 @@
 #include <chrono>
 #include <vector>
 #include <zlib.h>
+#include "dod3_eboot.h"   /* the EBOOT version's addresses */
 
 extern "C" uint8_t* vm_base;
 
 namespace {
 
-constexpr uint32_t kAddInflateQueueElementPush = 0x00AC7568;   /* lr of its LFQueue push */
+constexpr uint32_t kAddInflateQueueElementPush = DOD3_A_INFLATE_PUSH_LR;   /* lr of its LFQueue push */
 
 std::atomic<unsigned long long> s_native, s_to_task, s_bad, s_bytes_in, s_bytes_out, s_ns;
 

@@ -41,6 +41,11 @@ PS3_VFS_ROOT=game/disc ./build/dod3 elf/EBOOT.ELF
 `--code-end 0x157e770` is the end of the last executable section, so
 `.rodata` in the R-X segment is never promoted to functions.
 
+The 1.01 update's EBOOT (decrypted to `elf/EBOOT_101.ELF`) is lifted the same
+way into `recompiled_101/`, with `--code-end 0x157fc00` and the hooks at
+`0x000C1E50 0x00EE7728 0x00272E58`, and built with `-DDOD3_EBOOT=101`
+(`src/dod3_eboot.h`; docs/WINDOWS_HANDOFF.md, section 16).
+
 The three `--hook`s are required: those functions are supplied natively and
 the lifted bodies are emitted as `func_<addr>_lifted` --
 `src/dod3_gc.cpp` (the garbage collector, `func_000C1E50` and its

@@ -37,6 +37,7 @@
 #include <math.h>
 #include "ps3emu/vm_watch.h"
 #include "ppu_recomp.h"
+#include "src/dod3_eboot.h"   /* the EBOOT version's addresses */
 #include "src/setup_iso.h"   /* the release layout (first-run setup) */
 #include "src/dod3_mp3_standin.h"   /* our flashMP3.pic (tools/make_spu_overlays.py standin) */
 #ifdef __APPLE__
@@ -261,7 +262,7 @@ static std::atomic<int>      s_drain_waiters{0};
 static std::atomic<int>      s_label_wake{1};
 static std::mutex              s_drain_mu;
 static std::condition_variable s_drain_cv;
-static uint32_t s_fast_poll_lr = 0x008B0DD8u;
+static uint32_t s_fast_poll_lr = DOD3_A_FAST_POLL_LR;
 static void drain_wake(void)
 {
     if (s_drain_waiters.load()) {
@@ -434,7 +435,7 @@ static void apply_fps_unlock(void)
         fprintf(stderr, "[fps] DOD3_FPS=%s ignored\n", e);
         return;
     }
-    const uint32_t addr = 0x008EDC5Cu;
+    const uint32_t addr = DOD3_A_FPS_NUMERATOR;
     const uint32_t word = vm_read32(addr);
     if (word != 0x3F800000u) {           /* 1.0f: anything else is another build */
         fprintf(stderr, "[fps] DOD3_FPS=%s ignored: 0x%08X holds 0x%08X, not 1.0 -- not BLUS31197 1.00?\n",
@@ -546,7 +547,7 @@ static void window_closed_exit(void)
  * DOD3_SHA_OVERRIDE=<name>=<40 hex digits>[,<name>=<hex>...] */
 bool dod3_sha_override(const char* name, const uint8_t sha[20])
 {
-    const uint32_t lo = 0x019AD000u, hi = 0x019AD480u;
+    const uint32_t lo = DOD3_A_SHA_TABLE_LO, hi = DOD3_A_SHA_TABLE_HI;
     const size_t n = strlen(name);
     for (uint32_t a = lo; a + n + 1 + 20 <= hi; a++)
         if (!memcmp(vm_base + a, name, n + 1)) {
@@ -587,7 +588,7 @@ static void apply_sha_overrides(void)
  * own (0x00424460, a leaf) when there is no lock. */
 static void fps_get_max_tick_rate(ppu_context* ctx)
 {
-    if (s_fps_lock < 0) { func_00424460(ctx); return; }
+    if (s_fps_lock < 0) { DOD3_FN_GET_MAX_TICK_RATE(ctx); return; }
     ctx->fpr[1] = (double)(float)(s_fps_lock > 0 ? s_fps_lock : 0);
 }
 extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
@@ -599,7 +600,7 @@ static void fps_install_override(void)
 {
     static int done = 0;
     if (done) return;
-    const uint32_t engine = vm_read32(0x01999164u);
+    const uint32_t engine = vm_read32(DOD3_A_GENGINE);
     if (!engine) return;
     const uint32_t vtable = vm_read32(engine);
     if (!vtable) return;
@@ -1063,13 +1064,13 @@ static DWORD WINAPI frame_clock(LPVOID)
               uint32_t put = vm_read32(ppu_hle_inject_base + 0x2000u), get = vm_read32(ppu_hle_inject_base + 0x2004u), ref = vm_read32(ppu_hle_inject_base + 0x2008u);
               uint32_t ea = 0x40000000u + get;
               fprintf(stderr, "[gcm-watch] put=0x%08X get=0x%08X ref=0x%08X label=0x%08X cache64=0x%016llX words@get: %08X %08X %08X %08X flips=%u\n",
-                      put, get, ref, vm_read32(ppu_hle_inject_base + 0x0FF0u), (unsigned long long)vm_read64(0x01A2A1D0u),
+                      put, get, ref, vm_read32(ppu_hle_inject_base + 0x0FF0u), (unsigned long long)vm_read64(DOD3_A_GCM_CACHE64),
                       vm_read32(ea), vm_read32(ea + 4), vm_read32(ea + 8),
                       vm_read32(ea + 12), cellGcm_flip_request_count());
               fprintf(stderr, "[gcm-watch] user commands pending delivery: %u\n", cellGcm_user_queue_depth());
               fprintf(stderr, "[gcm-watch] malloc lwmutex 0x40400010: owner=%u waiter=%u attr=0x%X recur=%u\n",
                       vm_read32(0x40400010u), vm_read32(0x40400014u), vm_read32(0x40400018u), vm_read32(0x4040001Cu));
-              uint32_t gctx = vm_read32(0x01AC3E38u);   /* CellGcmContextData* the title got */
+              uint32_t gctx = vm_read32(DOD3_A_GCM_CONTEXT);   /* CellGcmContextData* the title got */
               uint32_t cur = vm_read32(gctx + 8);
               fprintf(stderr, "[gcm-watch] ctx=0x%08X begin=0x%08X end=0x%08X current=0x%08X (io 0x%08X) cb=0x%08X words@current-16: %08X %08X %08X %08X\n",
                       gctx, vm_read32(gctx), vm_read32(gctx + 4), cur, cur - 0x40000000u, vm_read32(gctx + 12),
@@ -1083,14 +1084,14 @@ static DWORD WINAPI frame_clock(LPVOID)
                   /* Which job descriptors (256 B each, from 0x01A2BA00) name a FIFO
                    * address -- the notify target each job clears on completion. */
                   for (uint32_t j = 0; j < 40; j++) {
-                      uint32_t d = 0x01A2BA00u + j * 0x100u;
+                      uint32_t d = DOD3_A_SHADER_JOB_DESCS + j * 0x100u;
                       for (uint32_t o = 0; o < 0x100; o += 4) {
                           uint32_t v = vm_read32(d + o);
                           if (v >= 0x40000000u && v < 0x40300000u)
                               fprintf(stderr, "[jc-desc] job@%08X +0x%02X = %08X (io 0x%06X)\n", d, o, v, v - 0x40000000u);
                       }
                   }
-                  for (uint32_t a = 0x01A2A880u; a < 0x01A2A880u + 48 * 8; a += 32)
+                  for (uint32_t a = DOD3_A_SHADER_JOB_CHAIN; a < DOD3_A_SHADER_JOB_CHAIN + 48 * 8; a += 32)
                       fprintf(stderr, "[jc-dump] %08X: %016llX %016llX %016llX %016llX\n", a,
                               (unsigned long long)vm_read64(a), (unsigned long long)vm_read64(a + 8),
                               (unsigned long long)vm_read64(a + 16), (unsigned long long)vm_read64(a + 24));
@@ -1670,6 +1671,18 @@ int main(int argc, char** argv)
 #endif
         return 1;
     }
+#if DOD3_EBOOT == 101
+    /* 1.01 is the update: it finds its PATCH folder (the update's script
+     * packages, which its EBOOT's hash table names) only when booted as one
+     * (cellGame, PS3_GAME_PATCH). */
+    if (!getenv("PS3_GAME_PATCH")) {
+#ifdef _WIN32
+        _putenv_s("PS3_GAME_PATCH", "1");
+#else
+        setenv("PS3_GAME_PATCH", "1", 1);
+#endif
+    }
+#endif
     apply_fps_unlock();
     apply_unfocused();
     apply_sha_overrides();

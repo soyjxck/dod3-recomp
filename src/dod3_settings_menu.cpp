@@ -24,6 +24,8 @@
  *     or UE3 logos, no opening movie; DOD3_SKIP_INTRO=0 keeps them)
  *     7 open(root entry): 3 Graphics, 4 System, 5 Restore Defaults (the
  *     reset and apply that follow cover every page)   8 the page's rows
+ *     9 the camera's FOV   10 is the Graphics page on screen? (in play,
+ *     the pause screen's dimming and frost are then left out)
  *
  * Both natives' exec thunks are replaced in the function registry the
  * script VM calls them through. A thunk evaluates its own arguments from the
@@ -46,10 +48,12 @@
  * so its default 65 degrees (horizontal) becomes 65+N and the game's own
  * zooms keep their proportion. Cutscene cameras are left alone. */
 #include "ppu_recomp.h"
+#include "dod3_eboot.h"   /* the EBOOT version's addresses */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -73,9 +77,9 @@ static int unsetenv(const char* k) { return _putenv_s(k, "") ? -1 : 0; }
 namespace {
 
 /* BLUS31197 1.00 */
-const uint32_t GNATIVES          = 0x019BF370u;   /* 8 bytes an opcode: function, this-adjust */
-const uint32_t THUNK_GETSTRING   = 0x0145D030u;   /* USqex03DataMessage::execGetString */
-const uint32_t THUNK_BRIDGE      = 0x013F31B0u;   /* USqex03GameOption::execUpdateDisplayParam */
+const uint32_t GNATIVES          = DOD3_A_GNATIVES;        /* 8 bytes an opcode: function, this-adjust */
+const uint32_t THUNK_GETSTRING   = DOD3_A_EXEC_GETSTRING;  /* USqex03DataMessage::execGetString */
+const uint32_t THUNK_BRIDGE      = DOD3_A_EXEC_BRIDGE;     /* USqex03GameOption::execUpdateDisplayParam */
 const uint32_t FRAME_OBJECT = 0x14, FRAME_CODE = 0x18;
 
 const int MAGIC = 900000;
@@ -125,7 +129,7 @@ int32_t eval_int(ppu_context* ctx, uint32_t stack)
 uint32_t app_realloc(ppu_context* ctx, uint32_t p, uint32_t size)
 {
     ctx->gpr[3] = p; ctx->gpr[4] = size; ctx->gpr[5] = 8;
-    func_0001028C(ctx); drain(ctx);
+    DOD3_FN_APP_REALLOC(ctx); drain(ctx);
     return (uint32_t)ctx->gpr[3];
 }
 
@@ -383,6 +387,8 @@ void apply()
     if (!kv.empty()) write_ini(kv);
 }
 
+std::chrono::steady_clock::time_point s_page_drawn;   /* the page's last is-default query */
+
 int bridge(int cmd, int a, int b)
 {
     init_rows();
@@ -400,7 +406,8 @@ int bridge(int cmd, int a, int b)
         r->pending = i;
         return 1;
     }
-    case 2: { /* is row a at its default? */
+    case 2: { /* is row a at its default? (asked for every row every frame the page is drawn) */
+        s_page_drawn = std::chrono::steady_clock::now();
         const Row* r = row_at(a);
         return (r && r->pending == r->def) ? 1 : 0;
     }
@@ -424,6 +431,10 @@ int bridge(int cmd, int a, int b)
         else if (a == 4) s_page = 1;
         else if (a == 5) s_page = -1;
         return 0;
+    case 10:  /* is the Graphics page on screen? The pause screen's dimming and
+               * frost are left out while it is, so changes can be seen. */
+        return (s_page == 0 &&
+                std::chrono::steady_clock::now() - s_page_drawn < std::chrono::milliseconds(250)) ? 1 : 0;
     case 8:   /* the open page's rows */
         return (int)s_page_rows[s_page > 0 ? s_page : 0].size();
     case 9: { /* the camera's field of view (float bits); b: the gameplay camera's */
@@ -463,7 +474,7 @@ void hook_getstring(ppu_context* ctx)
         vm_write32(stack + FRAME_CODE, s_scratch);
         ctx->gpr[2] = r2; ctx->gpr[3] = self; ctx->gpr[4] = stack; ctx->gpr[5] = result;
         ctx->lr = lr;
-        func_0145D030(ctx); drain(ctx);
+        DOD3_FN_EXEC_GETSTRING(ctx); drain(ctx);
         vm_write32(stack + FRAME_CODE, after + 1);
     }
     ctx->gpr[2] = r2;
@@ -475,7 +486,7 @@ void hook_bridge(ppu_context* ctx)
     const uint64_t lr = ctx->lr, r2 = ctx->gpr[2];
     const uint32_t stack = (uint32_t)ctx->gpr[4], result = (uint32_t)ctx->gpr[5];
     if (vm_read8(vm_read32(stack + FRAME_CODE)) == 0x16) {   /* no arguments: the title's call */
-        func_013F31B0(ctx); drain(ctx);
+        DOD3_FN_EXEC_BRIDGE(ctx); drain(ctx);
         ctx->gpr[2] = r2; ctx->lr = lr;
         return;
     }

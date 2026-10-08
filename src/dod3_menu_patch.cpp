@@ -1,7 +1,9 @@
-/* The Graphics Settings patch, applied to the player's own SQEX03GAME.XXX.
+/* The settings-menu patch, applied to the player's own SQEX03GAME.XXX.
  *
- * tools/menu_patch.py rewrites 14 script functions of the title's script
- * package (src/dod3_settings_menu.cpp has what they do) and records them in
+ * tools/menu_patch.py rewrites some script functions of the title's script
+ * package (`--show` lists them; src/dod3_settings_menu.cpp has what they do:
+ * the Graphics and System pages, skip intro, the field of view, the pause
+ * screen left clear behind the Graphics page) and records them in
  * src/dod3_menu_patch_data.h as edits of the original functions: ranges to
  * copy from each original body and the bytes that are new. At boot this file
  * checks the player's package against the hash the EBOOT itself carries for
@@ -25,7 +27,17 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "dod3_eboot.h"
+#if DOD3_EBOOT == 101
+/* 1.01: the update's package (its PATCH folder), which its EBOOT's table
+ * names; patch files have no TOC line. The overlay is game/patch101, so a
+ * 1.00 build and a 1.01 build never see each other's patched package. */
+#include "dod3_menu_patch_data_101.h"
+#define MENU_OVERLAY "patch101"
+#else
 #include "dod3_menu_patch_data.h"
+#define MENU_OVERLAY "patch"
+#endif
 
 bool dod3_sha_override(const char* name, const uint8_t sha[20]);   /* main.cpp */
 
@@ -257,6 +269,39 @@ bool toc_rewrite(const std::vector<uint8_t>& in, std::string& out, uint32_t csiz
     return hits == 2;
 }
 
+#if DOD3_EBOOT == 101
+const fs::path k_cooked101 = fs::path("game") / "BLES00000" / "USRDIR" / "PATCH" / "SQEX03GAME" / "COOKEDPS3";
+
+bool generate(const fs::path& root, const fs::path& ov)
+{
+    std::vector<uint8_t> f, u;
+    uint32_t bs = 0;
+    if (!read_file(root / k_cooked101 / "SQEX03GAME.XXX", f)) {
+        fprintf(stderr, "[menu] the 1.01 update's script package is missing under %s\n", (root / k_cooked101).string().c_str());
+        return false;
+    }
+    if (!inflate_full(f, u, bs)) { fprintf(stderr, "[menu] SQEX03GAME.XXX: not a compressed package\n"); return false; }
+    f.clear();
+    if (sha1_hex(u) != k_menu_patch_orig_sha1) {
+        fprintf(stderr, "[menu] SQEX03GAME.XXX is not the BLUS31197 %s one; the settings menu stays as shipped\n", k_menu_patch_eboot);
+        return false;
+    }
+    if (!apply_patch(u) || u.size() != k_menu_patch_size || sha1_hex(u) != k_menu_patch_sha1) {
+        fprintf(stderr, "[menu] the patch did not apply\n");
+        return false;
+    }
+    const std::vector<uint8_t> z = deflate_full(u, bs);
+    const std::string side = std::to_string(u.size()) + "\r\n";
+    return write_file(ov / k_cooked101 / "SQEX03GAME.XXX", z.data(), z.size()) &&
+           write_file(ov / k_cooked101 / "SQEX03GAME.XXX.UNCOMPRESSED_SIZE", side.data(), side.size());
+}
+
+bool generated(const fs::path& ov)
+{
+    std::error_code ec;
+    return fs::exists(ov / k_cooked101 / "SQEX03GAME.XXX", ec);
+}
+#else
 bool generate(const fs::path& root, const fs::path& ov)
 {
     const fs::path game = root / "PS3_GAME" / "USRDIR" / "SQEX03GAME";
@@ -269,7 +314,7 @@ bool generate(const fs::path& root, const fs::path& ov)
     if (!inflate_full(f, u, bs)) { fprintf(stderr, "[menu] SQEX03GAME.XXX: not a compressed package\n"); return false; }
     f.clear();
     if (sha1_hex(u) != k_menu_patch_orig_sha1) {
-        fprintf(stderr, "[menu] SQEX03GAME.XXX is not the BLUS31197 1.00 one; the settings menu stays as shipped\n");
+        fprintf(stderr, "[menu] SQEX03GAME.XXX is not the BLUS31197 %s one; the settings menu stays as shipped\n", k_menu_patch_eboot);
         return false;
     }
     if (!apply_patch(u) || u.size() != k_menu_patch_size || sha1_hex(u) != k_menu_patch_sha1) {
@@ -294,6 +339,14 @@ bool generate(const fs::path& root, const fs::path& ov)
     return write_file(ov / "PS3_GAME" / "USRDIR" / "SQEX03GAME" / "PS3TOC.TXT", toc2.data(), toc2.size());
 }
 
+bool generated(const fs::path& ov)
+{
+    std::error_code ec;
+    return fs::exists(ov / "PS3_GAME" / "USRDIR" / "SQEX03GAME" / "COOKEDPS3" / "SQEX03GAME.XXX", ec) &&
+           fs::exists(ov / "game" / "BLES00000DATA" / "USRDIR" / "FIOS-UNREALENGINE3" / "SQEX03GAME" / "COOKEDPS3" / "SQEX03GAME.XXX", ec);
+}
+#endif
+
 }  // namespace
 
 /* At boot, after the EBOOT is in guest memory and before the title runs:
@@ -306,14 +359,12 @@ bool dod3_menu_patch_prepare()
     const char* r = getenv("PS3_VFS_ROOT");
     if (!r || !*r) return false;
     const fs::path root(r);
-    const fs::path ov = root.parent_path().empty() ? fs::path("patch") : root.parent_path() / "patch";
+    const fs::path ov = root.parent_path().empty() ? fs::path(MENU_OVERLAY) : root.parent_path() / MENU_OVERLAY;
     const fs::path stamp = ov / "menu_patch.stamp";
     const std::string want = std::string(k_menu_patch_version) + " " + k_menu_patch_sha1;
     std::vector<uint8_t> have;
     std::error_code ec;
-    const bool fresh = read_file(stamp, have) && std::string(have.begin(), have.end()) == want &&
-        fs::exists(ov / "PS3_GAME" / "USRDIR" / "SQEX03GAME" / "COOKEDPS3" / "SQEX03GAME.XXX", ec) &&
-        fs::exists(ov / "game" / "BLES00000DATA" / "USRDIR" / "FIOS-UNREALENGINE3" / "SQEX03GAME" / "COOKEDPS3" / "SQEX03GAME.XXX", ec);
+    const bool fresh = read_file(stamp, have) && std::string(have.begin(), have.end()) == want && generated(ov);
     if (!fresh) {
         fprintf(stderr, "[menu] adding Graphics Settings to the title's Settings menu (%s)...\n", ov.string().c_str());
         fs::remove(stamp, ec);
