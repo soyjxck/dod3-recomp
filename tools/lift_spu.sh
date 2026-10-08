@@ -13,7 +13,8 @@ T=ps3recomp/tools
 # Lifts already in spu/ are kept (build_spu_workloads.py skips them), so an
 # unchanged image is not recompiled. The overlays (the DSP plugin block and
 # the firmware's MP3 decoder, see tools/make_spu_overlays.py) are rebuilt
-# every time; the MP3 one needs fw/dev_flash from tools/extract_dev_flash.py.
+# every time; the MP3 one needs the firmware's dev_flash: fw/dev_flash, or
+# FW_DEV_FLASH=<RPCS3's dev_flash folder> after installing the firmware there.
 mkdir -p spu/images
 rm -rf spu/spu_ovl_msdsp_37000 spu/spu_ovl_mp3_1A900
 $PY $T/extract_spu_images.py elf/EBOOT.ELF --output spu/images

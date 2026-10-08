@@ -32,6 +32,7 @@ The DSP block layout comes from a dump of that GET (SPU_DUMP_OVL=<dir>,0x37000).
 A different plugin set or order would arrive with a different signature and
 miss, and the runtime would report the branch into unlifted LS.
 """
+import os
 import re
 import struct
 import sys
@@ -48,7 +49,10 @@ PLUGINS = [
 
 MP3_LSA = 0x1A900
 MP3_NAME = "spu_ovl_mp3_1A900"
-MP3_PIC = Path("fw/dev_flash/sys/external/flashMP3.pic")
+# The firmware's dev_flash: FW_DEV_FLASH, else fw/dev_flash. Install the PS3
+# firmware in RPCS3 (File > Install Firmware) and point FW_DEV_FLASH at its
+# dev_flash folder, or copy that folder to fw/dev_flash.
+MP3_PIC = Path("sys/external/flashMP3.pic")
 MP3_HEADER = 0x80          # the PPU's descriptor; the ELF leaves va 0..0x7F free for it
 
 
@@ -135,9 +139,11 @@ def build_mp3(root):
     """-> (image at MP3_LSA, entry seeds, signature, span). The image is the
     module's own address space from va 0: descriptor area, text, rodata, data.
     The signature is what leads the body GET: the 16 bytes at va 0x80."""
-    pic = root / MP3_PIC
+    dev_flash = Path(os.environ.get("FW_DEV_FLASH") or (root / "fw" / "dev_flash"))
+    pic = dev_flash / MP3_PIC
     if not pic.exists():
-        sys.exit(f"make_spu_overlays: {pic} missing -- run tools/extract_dev_flash.py first")
+        sys.exit(f"make_spu_overlays: {pic} missing -- install the PS3 firmware in RPCS3 and set "
+                 f"FW_DEV_FLASH to its dev_flash folder (or copy that folder to fw/dev_flash)")
     elf = pic.read_bytes()
     entry, segs = elf_segments(elf)
     end = max(va + fsz for va, fsz, _m, _f, _c in segs)

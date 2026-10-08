@@ -1260,8 +1260,8 @@ int main(int argc, char** argv)
     /* Firmware files the title loads at run time. MultiStream fetches its MP3
      * decoder from /dev_flash/sys/external/flashMP3.pic when the first MP3
      * stream starts; without it the audio SPU task dies and the game hangs on
-     * the next sound (opening movie, new game). tools/extract_dev_flash.py
-     * unpacks fw/dev_flash from the PS3UPDAT.PUP on the game disc. */
+     * the next sound (opening movie, new game). The file comes from a PS3
+     * firmware installed in RPCS3 (its dev_flash folder); see the README. */
     setenv("PS3_DEV_FLASH", "fw/dev_flash", 0);
     /* The PhysX taskset (memory-manager and physics tasks sharing request
      * blocks). With no limit, as many of its tasks ran at once as there were

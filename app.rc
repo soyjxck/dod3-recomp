@@ -1,4 +1,4 @@
-// Windows resources for dod3.exe: the application icon (assets/app.ico,
-// built from Drakengard_3_boxart.png by tools/make_icon.py). Resource id 101
+// Windows resources for dod3.exe: the application icon (assets/app.ico, an
+// original design drawn by tools/make_icon.py). Resource id 101
 // is what the D3D12 window class loads for its title bar and taskbar entry.
 101 ICON "assets/app.ico"
