@@ -10,7 +10,6 @@ namespace dod3setup {
 
 const char* const kEbootElfSha256 = "82e0f955658428b226828c4045d0865185cabc3a57c91fb54fbe2186f44290bb";
 const char* const kEbootBinSha256 = "d251717ade653a74290fd2d5028083c575b9c6f9a253ca0c230f65ea6f5197c8";
-const char* const kFlashMp3Sha256 = "adbd993483a41f53c994e080665fb5fbf36af783956d0e4ded30057b8b4e894a";
 const char* const kTitleId = "BLUS31197";
 const char* const kAppVer = "01.00";
 const uint64_t kDiscBytes = 16ull << 30;
@@ -118,7 +117,6 @@ Installed check_installed(const fs::path& base)
     r.disc = fs::exists(base / "game/disc/PS3_GAME/PARAM.SFO", ec) &&
              fs::exists(base / "game/disc/PS3_GAME/USRDIR/EBOOT.BIN", ec);
     r.elf = fs::file_size(base / "elf/EBOOT.ELF", ec) > 0 && !ec;
-    r.mp3 = fs::file_size(base / "fw/dev_flash/sys/external/flashMP3.pic", ec) > 0 && !ec;
     return r;
 }
 
@@ -327,7 +325,7 @@ bool copy_disc(const Disc& disc, const fs::path& dest, const std::function<bool(
     return true;
 }
 
-int install_cli(const fs::path& base, const fs::path& disc_path, const fs::path& elf, const fs::path& mp3)
+int install_cli(const fs::path& base, const fs::path& disc_path, const fs::path& elf)
 {
     Disc disc;
     std::string err;
@@ -337,8 +335,6 @@ int install_cli(const fs::path& base, const fs::path& disc_path, const fs::path&
         printf("EBOOT.ELF: does not match BLUS31197 v01.00 (decrypt the disc's EBOOT.BIN with RPCS3)\n");
         return 1;
     }
-    if (sha256_file(mp3) != kFlashMp3Sha256)
-        printf("flashMP3.pic: not firmware 4.55's; MP3 audio may fail with it (continuing)\n");
     std::error_code ec;
     const fs::path part = base / "game/disc.partial", final_dir = base / "game/disc";
     fs::remove_all(part, ec);
@@ -353,14 +349,9 @@ int install_cli(const fs::path& base, const fs::path& disc_path, const fs::path&
     fs::remove_all(final_dir, ec);
     fs::rename(part, final_dir, ec);
     if (ec) { printf("could not finish: %s\n", ec.message().c_str()); return 1; }
-    const std::pair<fs::path, fs::path> copies[2] = {
-        { elf, fs::path("elf/EBOOT.ELF") },
-        { mp3, fs::path("fw/dev_flash/sys/external/flashMP3.pic") } };
-    for (const auto& c : copies) {
-        fs::create_directories((base / c.second).parent_path(), ec);
-        fs::copy_file(c.first, base / c.second, fs::copy_options::overwrite_existing, ec);
-        if (ec) { printf("could not copy %s: %s\n", utf8(c.first).c_str(), ec.message().c_str()); return 1; }
-    }
+    fs::create_directories(base / "elf", ec);
+    fs::copy_file(elf, base / "elf/EBOOT.ELF", fs::copy_options::overwrite_existing, ec);
+    if (ec) { printf("could not copy %s: %s\n", utf8(elf).c_str(), ec.message().c_str()); return 1; }
     printf("installed into %s\n", utf8(base).c_str());
     return 0;
 }

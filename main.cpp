@@ -1322,8 +1322,8 @@ int main(int argc, char** argv)
      * developer layout is unchanged. */
     static char s_release_elf[] = "elf/EBOOT.ELF";
     static char* s_release_argv[3];
-    /* --check-disc <iso or folder> [EBOOT.ELF] [flashMP3.pic]: the setup's
-     * checks without installing anything, as text (support, and tests). */
+    /* --check-disc <iso or folder> [EBOOT.ELF]: the setup's checks without
+     * installing anything, as text (support, and tests). */
     if (argc >= 3 && !strcmp(argv[1], "--check-disc")) {
         dod3setup::Disc disc;
         std::string err;
@@ -1331,17 +1331,16 @@ int main(int argc, char** argv)
         printf("disc %s: %s (%zu files, %.1f GB)\n", argv[2], ok ? "OK" : err.c_str(), disc.files.size(),
                (double)disc.total / (1u << 30));
         int bad = !ok;
-        const char* want[2] = { dod3setup::kEbootElfSha256, dod3setup::kFlashMp3Sha256 };
-        for (int i = 0; i < 2 && argc > 3 + i; i++) {
-            const bool match = dod3setup::sha256_file(std::filesystem::u8path(argv[3 + i])) == want[i];
-            printf("%s %s: %s\n", i ? "flashMP3.pic" : "EBOOT.ELF", argv[3 + i], match ? "OK" : "does not match");
+        if (argc > 3) {
+            const bool match = dod3setup::sha256_file(std::filesystem::u8path(argv[3])) == dod3setup::kEbootElfSha256;
+            printf("EBOOT.ELF %s: %s\n", argv[3], match ? "OK" : "does not match");
             bad |= !match;
         }
         return bad;
     }
-    /* --install <disc> <EBOOT.ELF> <flashMP3.pic>: the setup without a UI,
-     * into the executable's directory. */
-    if (argc >= 5 && !strcmp(argv[1], "--install")) {
+    /* --install <disc> <EBOOT.ELF>: the setup without a UI, into the
+     * executable's directory. */
+    if (argc >= 4 && !strcmp(argv[1], "--install")) {
 #ifdef _WIN32
         wchar_t dir[MAX_PATH] = L"";
         GetModuleFileNameW(NULL, dir, MAX_PATH);
@@ -1350,8 +1349,7 @@ int main(int argc, char** argv)
 #else
         const std::filesystem::path base = std::filesystem::path(argv[0]).parent_path();
 #endif
-        return dod3setup::install_cli(base, std::filesystem::u8path(argv[2]), std::filesystem::u8path(argv[3]),
-                                      std::filesystem::u8path(argv[4]));
+        return dod3setup::install_cli(base, std::filesystem::u8path(argv[2]), std::filesystem::u8path(argv[3]));
     }
     const bool force_setup = argc >= 2 && !strcmp(argv[1], "--setup");
     if (argc < 2 || force_setup) {
@@ -1363,8 +1361,8 @@ int main(int argc, char** argv)
         if (dod3_setup_win(dir, force_setup ? 1 : 0) != 0) return 1;
 #else
         if (!dod3setup::check_installed(".").all()) {
-            printf("usage: %s <PPU ELF>\n(or run it from a folder holding elf/EBOOT.ELF, game/disc and "
-                   "fw/dev_flash; see src/setup_iso.h)\n", argv[0]);
+            printf("usage: %s <PPU ELF>\n(or run it from a folder holding elf/EBOOT.ELF and game/disc; "
+                   "see src/setup_iso.h)\n", argv[0]);
             return 2;
         }
 #endif

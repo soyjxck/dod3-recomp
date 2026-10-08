@@ -72,7 +72,7 @@ bool copy_file_to(const fs::path& from, const fs::path& to, std::wstring* err)
 bool setup_disc(const fs::path& base)
 {
     for (;;) {
-        const int kind = ask(L"Step 1 of 3: the game disc.\n\n"
+        const int kind = ask(L"Step 1 of 2: the game disc.\n\n"
                              L"Is your copy of the disc a decrypted .iso file?\n\n"
                              L"Yes — choose the .iso file\n"
                              L"No — choose the folder that contains PS3_GAME (a disc dumped to a folder)",
@@ -132,9 +132,9 @@ bool setup_disc(const fs::path& base)
     }
 }
 
-/* A single file checked by its hash: the decrypted EBOOT.ELF or flashMP3.pic. */
+/* A single file checked by its hash: the decrypted EBOOT.ELF. */
 bool setup_file(const fs::path& base, const wchar_t* step, const wchar_t* title, const wchar_t* filter_name,
-                const wchar_t* filter, const char* want_sha, const fs::path& dest, bool mismatch_ok)
+                const wchar_t* filter, const char* want_sha, const fs::path& dest)
 {
     for (;;) {
         if (ask(step, MB_OKCANCEL | MB_ICONINFORMATION) == IDCANCEL) return false;
@@ -144,19 +144,11 @@ bool setup_file(const fs::path& base, const wchar_t* step, const wchar_t* title,
         const std::string sha = sha256_file(src);
         SetCursor(old);
         if (sha != want_sha) {
-            if (mismatch_ok) {
-                const int r = ask(L"This file is not the one the game was built against (firmware 4.55's). "
-                                  L"Music and voices that use MP3 may fail with it.\n\nUse it anyway?",
-                                  MB_YESNOCANCEL | MB_ICONWARNING);
-                if (r == IDCANCEL) return false;
-                if (r == IDNO) continue;
-            } else {
-                if (ask(L"That file doesn't match the supported release (Drakengard 3, BLUS31197, version 01.00). "
-                        L"It must be the disc's PS3_GAME\\USRDIR\\EBOOT.BIN decrypted with RPCS3 "
-                        L"(Utilities › Decrypt PS3 Binaries), with no game update applied.",
-                        MB_RETRYCANCEL | MB_ICONWARNING) == IDCANCEL) return false;
-                continue;
-            }
+            if (ask(L"That file doesn't match the supported release (Drakengard 3, BLUS31197, version 01.00). "
+                    L"It must be the disc's PS3_GAME\\USRDIR\\EBOOT.BIN decrypted with RPCS3 "
+                    L"(Utilities › Decrypt PS3 Binaries), with no game update applied.",
+                    MB_RETRYCANCEL | MB_ICONWARNING) == IDCANCEL) return false;
+            continue;
         }
         std::wstring err;
         if (!copy_file_to(src, base / dest, &err)) { ask(err, MB_OK | MB_ICONERROR); return false; }
@@ -175,24 +167,17 @@ extern "C" int dod3_setup_win(const wchar_t* base_dir, int force)
 
     if (ask(L"Drakengard 3 Recompiled needs these files from your own copy of the game:\n\n"
             L"1. The game disc (Drakengard 3, US, BLUS31197): a decrypted .iso, or the disc dumped to a folder.\n"
-            L"2. EBOOT.ELF: the disc's PS3_GAME\\USRDIR\\EBOOT.BIN decrypted with RPCS3 (Utilities › Decrypt PS3 Binaries).\n"
-            L"3. flashMP3.pic: from PS3 firmware installed in RPCS3 (File › Install Firmware), in its "
-            L"dev_flash\\sys\\external folder.\n\n"
+            L"2. EBOOT.ELF: the disc's PS3_GAME\\USRDIR\\EBOOT.BIN decrypted with RPCS3 (Utilities › Decrypt PS3 Binaries).\n\n"
             L"The files are copied into\n" + base.wstring() + L"\n(about 16 GB).",
             MB_OKCANCEL | MB_ICONINFORMATION) == IDCANCEL) { CoUninitialize(); return 1; }
 
     bool ok = true;
     if (ok && (force || !have.disc)) ok = setup_disc(base);
     if (ok && (force || !have.elf))
-        ok = setup_file(base, L"Step 2 of 3: EBOOT.ELF.\n\nChoose the EBOOT.ELF that RPCS3's "
+        ok = setup_file(base, L"Step 2 of 2: EBOOT.ELF.\n\nChoose the EBOOT.ELF that RPCS3's "
                               L"Utilities › Decrypt PS3 Binaries made from the disc's PS3_GAME\\USRDIR\\EBOOT.BIN.",
                         L"Choose the decrypted EBOOT.ELF", L"Decrypted executable (*.elf)", L"*.elf;*.ELF",
-                        kEbootElfSha256, "elf/EBOOT.ELF", false);
-    if (ok && (force || !have.mp3))
-        ok = setup_file(base, L"Step 3 of 3: flashMP3.pic.\n\nChoose flashMP3.pic from the PS3 firmware RPCS3 "
-                              L"installed: <RPCS3 folder>\\dev_flash\\sys\\external\\flashMP3.pic.",
-                        L"Choose flashMP3.pic", L"flashMP3.pic", L"flashMP3.pic",
-                        kFlashMp3Sha256, "fw/dev_flash/sys/external/flashMP3.pic", true);
+                        kEbootElfSha256, "elf/EBOOT.ELF");
     CoUninitialize();
     if (!ok) return 1;
     ask(L"Setup is complete. The game will start now.\n\nTo run setup again: dod3.exe --setup", MB_OK | MB_ICONINFORMATION);

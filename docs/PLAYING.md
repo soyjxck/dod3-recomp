@@ -20,20 +20,17 @@ or Sony.
   decrypted folder. An image ripped directly from the drive is still
   encrypted and will be refused. Other regions (EU, JP) and copies with the game update installed are
   not supported.
-- **[RPCS3](https://rpcs3.net)** (the PS3 emulator, free), for two things only:
-  1. **EBOOT.ELF** — in RPCS3, *Utilities › Decrypt PS3 Binaries*, choose
-     `PS3_GAME\USRDIR\EBOOT.BIN` from your disc. RPCS3 writes `EBOOT.elf` next to it.
-  2. **flashMP3.pic** — in RPCS3, *File › Install Firmware*, and install the
-     firmware from your disc (`PS3_UPDATE\PS3UPDAT.PUP`, version 4.55). The file is
-     then at `<RPCS3 folder>\dev_flash\sys\external\flashMP3.pic`. Newer firmware
-     from Sony's site may work, but the setup will warn that it is untested.
+- **[RPCS3](https://rpcs3.net)** (the PS3 emulator, free), for one thing only:
+  **EBOOT.ELF**. In RPCS3, choose *Utilities › Decrypt PS3 Binaries* and pick
+  `PS3_GAME\USRDIR\EBOOT.BIN` from your disc. RPCS3 writes `EBOOT.elf` next to it.
+  No PS3 firmware is needed.
 
 ## Installing
 
 1. Unzip the release anywhere you like (not inside `Program Files`).
 2. Run **dod3.exe**. The first time, the setup asks for the disc, then
-   EBOOT.ELF, then flashMP3.pic. It checks each one and copies the game's
-   files next to dod3.exe (this takes a few minutes).
+   EBOOT.ELF. It checks both and copies the game's files next to dod3.exe
+   (this takes a few minutes).
 3. The game starts. The first minutes of the first launch stutter while
    graphics shaders are compiled. They are cached in the `cache` folder, so
    later launches are smooth.
@@ -60,8 +57,8 @@ An Xbox-compatible (XInput) controller is recommended.
 
 - Each run writes **dod3.log** next to dod3.exe (the run before is kept as
   `dod3.prev.log`). Please include it when you report a problem.
-- `dod3.exe --check-disc <your .iso or folder> [EBOOT.ELF] [flashMP3.pic]`
-  checks your files without installing anything.
+- `dod3.exe --check-disc <your .iso or folder> [EBOOT.ELF]` checks your
+  files without installing anything.
 
 ## Known issues
 

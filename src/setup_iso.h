@@ -8,10 +8,8 @@
  *                                       from a decrypted ISO or a folder
  *   elf/EBOOT.ELF                       the disc's EBOOT.BIN, decrypted with
  *                                       RPCS3 (Utilities > Decrypt PS3 Binaries)
- *   fw/dev_flash/sys/external/flashMP3.pic
- *                                       from PS3 firmware 4.55 installed in
- *                                       RPCS3 (MultiStream loads it at run time)
- * all relative to the executable's directory. The build is tied to one
+ * both relative to the executable's directory. (No firmware: the MP3 decoder
+ * MultiStream loads from dev_flash is our own stand-in, main.cpp.) The build is tied to one
  * executable -- Drakengard 3, BLUS31197, version 01.00 -- so each file is
  * checked against the hash of the one it was built from.
  *
@@ -31,7 +29,6 @@ namespace fs = std::filesystem;
 /* SHA-256 of the build's inputs, as lowercase hex. */
 extern const char* const kEbootElfSha256;      /* elf/EBOOT.ELF (decrypted) */
 extern const char* const kEbootBinSha256;      /* the disc's PS3_GAME/USRDIR/EBOOT.BIN */
-extern const char* const kFlashMp3Sha256;      /* firmware 4.55's flashMP3.pic */
 extern const char* const kTitleId;             /* BLUS31197 */
 extern const char* const kAppVer;              /* 01.00 */
 extern const uint64_t kDiscBytes;              /* about what game/disc takes */
@@ -42,7 +39,7 @@ std::string sha256_file(const fs::path& p);    /* "" if unreadable */
 bool param_sfo(const std::vector<uint8_t>& sfo, std::string* title_id, std::string* app_ver);
 
 /* What is in place under `base` (the executable's directory). */
-struct Installed { bool disc = false, elf = false, mp3 = false; bool all() const { return disc && elf && mp3; } };
+struct Installed { bool disc = false, elf = false; bool all() const { return disc && elf; } };
 Installed check_installed(const fs::path& base);
 
 /* A disc to install from: an ISO 9660 image or a folder holding PS3_GAME. */
@@ -67,9 +64,8 @@ bool read_disc_file(const Disc& disc, const std::string& path, std::vector<uint8
 bool copy_disc(const Disc& disc, const fs::path& dest, const std::function<bool(uint64_t, uint64_t)>& progress,
                std::string* err);
 
-/* The whole install without a UI (dod3 --install <disc> <EBOOT.ELF>
- * <flashMP3.pic>): checks, then copies into `base`, reporting on stdout.
- * Returns 0 on success. */
-int install_cli(const fs::path& base, const fs::path& disc, const fs::path& elf, const fs::path& mp3);
+/* The whole install without a UI (dod3 --install <disc> <EBOOT.ELF>):
+ * checks, then copies into `base`, reporting on stdout. Returns 0 on success. */
+int install_cli(const fs::path& base, const fs::path& disc, const fs::path& elf);
 
 }  // namespace dod3setup
