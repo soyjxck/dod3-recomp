@@ -4,6 +4,10 @@ project(dod3
     LANGUAGES C CXX
     DESCRIPTION "Drakengard 3 (PS3) recompiled for Windows and macOS"
 )
+# The port's own version, apart from the game's (the 1.01 update): the
+# numbers above go into the Windows version block, and this label is what
+# people see -- the installer, the log's first line, the release name.
+set(DOD3_VERSION_LABEL "0.1 alpha")
 if(APPLE)
     enable_language(OBJCXX)   # src/setup_mac.mm
 endif()
@@ -370,18 +374,21 @@ if(NOT EXISTS "${CMAKE_BINARY_DIR}/dod3.ini")
     file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/dod3.ini" DESTINATION "${CMAKE_BINARY_DIR}")
 endif()
 
-# app.rc carries the icon and the version block (from the project version,
-# through a generated header), and needs a resource compiler. Listing it as
-# a source on a host that has none is not a link error, it is a "no rule to
-# make" for a file nothing can consume.
-if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
-    file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/gen/app_version.h" CONTENT
-"/* Generated from CMakeLists.txt's project version. */
+# The port's version as a header (gen/app_version.h), for the installer,
+# main.cpp's banner and app.rc's version block.
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/gen/app_version.h" CONTENT
+"/* Generated from CMakeLists.txt: the port's own version. */
 #define DOD3_VER_MAJOR ${PROJECT_VERSION_MAJOR}
 #define DOD3_VER_MINOR ${PROJECT_VERSION_MINOR}
 #define DOD3_VER_PATCH ${PROJECT_VERSION_PATCH}
-#define DOD3_VERSION_STRING \"${PROJECT_VERSION}\"
+#define DOD3_VERSION_STRING \"${DOD3_VERSION_LABEL}\"
 ")
+target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/gen")
+
+# app.rc carries the icon and the version block, and needs a resource
+# compiler. Listing it as a source on a host that has none is not a link
+# error, it is a "no rule to make" for a file nothing can consume.
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
     set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/app.rc"
         PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/gen")
     target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")

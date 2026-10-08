@@ -44,6 +44,7 @@
 #include "src/dod3_mp3_standin.h"        /* our flashMP3.pic (tools/make_spu_overlays.py standin) */
 #include "src/dod3_sysset.h"             /* the engine's graphics switches */
 #include "src/dod3_util.h"
+#include "app_version.h"              /* generated: the port's version label */
 #include "src/setup_crypto.h"
 #include "src/setup_install.h"           /* the release layout (the installer) */
 
@@ -1616,7 +1617,7 @@ int main(int argc, char** argv)
     setvbuf(stdout, NULL, _IONBF, 0);   /* unbuffered: do not lose prints on a kill */
 #endif
 
-    printf("=== Drakengard 3 Recompiled (BLUS31197 %s) ===\n", DOD3_EBOOT_NAME);
+    printf("=== Drakengard 3 Recompiled %s (BLUS31197 %s) ===\n", DOD3_VERSION_STRING, DOD3_EBOOT_NAME);
 
     /* Drakengard 3's RHI appends commands behind a JUMP-to-self park and patches
      * the park shortly after. The toolkit's FIFO resyncs skip past such a park

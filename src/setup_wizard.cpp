@@ -15,6 +15,7 @@
 #include "setup_crypto.h"
 #include "dod3_eboot.h"
 #include "dod3_util.h"
+#include "app_version.h"   /* generated: the port's version label */
 
 #include "imgui.h"
 
@@ -707,7 +708,7 @@ struct Wizard {
         }
         ImGui::EndGroup();
         ImGui::SetCursorPos(ImVec2(pad, io.DisplaySize.y - pad - ImGui::GetTextLineHeight()));
-        ImGui::TextDisabled("Game version %s", DOD3_EBOOT_NAME);
+        ImGui::TextDisabled("Version %s", DOD3_VERSION_STRING);
 
         /* the page */
         ImGui::SetCursorPos(ImVec2(side + pad, pad));
