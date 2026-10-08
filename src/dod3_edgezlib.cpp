@@ -51,17 +51,21 @@ std::atomic<unsigned long long> s_native, s_to_task, s_bad, s_bytes_in, s_bytes_
 bool enabled()
 {
     static int on = -1;
-    if (on < 0) { const char* e = getenv("DOD3_ZLIB_NATIVE"); on = !(e && e[0] == '0'); }
+    if (on < 0) {
+        const char* e = getenv("DOD3_ZLIB_NATIVE");
+        on = !(e && e[0] == '0');
+    }
     return on;
 }
 
 void report()
 {
     const double ms = (double)s_ns.load() / 1e6;
-    fprintf(stderr, "[edgezlib] %llu chunks inflated natively (%.1f MB -> %.1f MB in %.0f ms), "
-                    "%llu left to the SPU task, %llu that failed to inflate or check\n",
-            s_native.load(), (double)s_bytes_in.load() / 1048576.0,
-            (double)s_bytes_out.load() / 1048576.0, ms, s_to_task.load(), s_bad.load());
+    fprintf(stderr,
+            "[edgezlib] %llu chunks inflated natively (%.1f MB -> %.1f MB in %.0f ms), "
+            "%llu left to the SPU task, %llu that failed to inflate or check\n",
+            s_native.load(), (double)s_bytes_in.load() / 1048576.0, (double)s_bytes_out.load() / 1048576.0, ms,
+            s_to_task.load(), s_bad.load());
 }
 
 /* Inflate the raw deflate stream at `in` into `out` (exactly `total` bytes);
@@ -71,8 +75,10 @@ bool inflate_exact(const uint8_t* in, uint32_t in_size, uint8_t* out, uint32_t t
     z_stream z;
     memset(&z, 0, sizeof z);
     if (inflateInit2(&z, -15) != Z_OK) return false;
-    z.next_in = const_cast<Bytef*>(in); z.avail_in = in_size;
-    z.next_out = out; z.avail_out = total;
+    z.next_in = const_cast<Bytef*>(in);
+    z.avail_in = in_size;
+    z.next_out = out;
+    z.avail_out = total;
     const int rc = inflate(&z, Z_FINISH);
     const bool ended = rc == Z_STREAM_END && z.total_out == total;
     const uint32_t left = z.avail_in;
@@ -96,7 +102,10 @@ extern "C" int dod3_edgezlib_push(uint32_t lr, uint32_t req[8])
 
     const uint32_t in_ea = req[0], out_ea = req[1], in_size = req[2], out_size = req[3];
     const uint32_t skip_begin = req[6] & 0xFFFFu, skip_end = req[7] >> 16;
-    if (!(req[4] & 1u) || !out_size || !in_size) { s_to_task++; return 0; }
+    if (!(req[4] & 1u) || !out_size || !in_size) {
+        s_to_task++;
+        return 0;
+    }
 
     const auto t0 = std::chrono::steady_clock::now();
     const uint32_t total = skip_begin + out_size + skip_end;
@@ -111,22 +120,30 @@ extern "C" int dod3_edgezlib_push(uint32_t lr, uint32_t req[8])
     if (!ok) {
         /* The task inflates it again and writes every output byte. */
         if (s_bad++ < 8)
-            fprintf(stderr, "[edgezlib] chunk in=0x%08X (%u B) out=0x%08X (%u B, skip %u/%u) "
-                            "did not inflate cleanly here; left to the SPU task\n",
+            fprintf(stderr,
+                    "[edgezlib] chunk in=0x%08X (%u B) out=0x%08X (%u B, skip %u/%u) "
+                    "did not inflate cleanly here; left to the SPU task\n",
                     in_ea, in_size, out_ea, out_size, skip_begin, skip_end);
         return 0;
     }
-    s_ns += (unsigned long long)std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - t0).count();
-    s_bytes_in += in_size; s_bytes_out += out_size;
+    s_ns +=
+        (unsigned long long)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0)
+            .count();
+    s_bytes_in += in_size;
+    s_bytes_out += out_size;
     if (++s_native % 2000 == 0) report();   /* runs are often killed, not exited */
 
     /* The copy the task is left: 16 bytes of the output onto themselves, from
      * a 16-byte-aligned spot when the output has one. */
     uint32_t at = (out_ea + 15u) & ~15u, n = 16;
-    if (at + n > out_ea + out_size) { at = out_ea; n = out_size < 16 ? out_size : 16; }
-    req[0] = at; req[1] = at;
-    req[2] = n;  req[3] = n;
+    if (at + n > out_ea + out_size) {
+        at = out_ea;
+        n = out_size < 16 ? out_size : 16;
+    }
+    req[0] = at;
+    req[1] = at;
+    req[2] = n;
+    req[3] = n;
     req[4] &= ~1u;                          /* copy */
     req[6] &= 0xFFFF0000u;                  /* event flag bits stay; no skips */
     req[7] = 0;

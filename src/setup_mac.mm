@@ -29,12 +29,12 @@ void no_window(const dod3setup::fs::path& base)
     NSString* exe = NSBundle.mainBundle.executablePath ?: @"dod3";
     NSAlert* a = [[NSAlert alloc] init];
     a.messageText = kTitle;
-    a.informativeText = [NSString stringWithFormat:
-        @"Setup could not open its window.\n\n"
-        @"The game can be installed from Terminal instead:\n\n"
-        @"\"%@\" --install <disc .iso or folder> <update .pkg> [DLC .pkg ...]\n\n"
-        @"Details are in %s/dod3.log.",
-        exe, base.string().c_str()];
+    a.informativeText =
+        [NSString stringWithFormat:@"Setup could not open its window.\n\n"
+                                   @"The game can be installed from Terminal instead:\n\n"
+                                   @"\"%@\" --install <disc .iso or folder> <update .pkg> [DLC .pkg ...]\n\n"
+                                   @"Details are in %s/dod3.log.",
+                                   exe, base.string().c_str()];
     a.alertStyle = NSAlertStyleCritical;
     [a addButtonWithTitle:@"Quit"];
     [NSApp activateIgnoringOtherApps:YES];
@@ -57,8 +57,10 @@ extern "C" const char* dod3_mac_data_dir(void)
                                                                  error:nil];
             if (!sup) return NULL;
             NSURL* d = [sup URLByAppendingPathComponent:kTitle isDirectory:YES];
-            if (![NSFileManager.defaultManager createDirectoryAtURL:d withIntermediateDirectories:YES
-                                                         attributes:nil error:nil])
+            if (![NSFileManager.defaultManager createDirectoryAtURL:d
+                                        withIntermediateDirectories:YES
+                                                         attributes:nil
+                                                              error:nil])
                 return NULL;
             dir = d.fileSystemRepresentation;
         }
@@ -99,7 +101,4 @@ extern "C" int dod3_setup_mac(const char* base_dir, int force)
 }
 
 /* Option held at launch: run setup again (the --setup of a double-click). */
-extern "C" int dod3_mac_option_held(void)
-{
-    return ([NSEvent modifierFlags] & NSEventModifierFlagOption) != 0;
-}
+extern "C" int dod3_mac_option_held(void) { return ([NSEvent modifierFlags] & NSEventModifierFlagOption) != 0; }

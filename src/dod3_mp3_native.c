@@ -88,7 +88,10 @@ static inline uint32_t ls_rd32(const uint8_t* ls, uint32_t a)
 static inline void ls_wr32(uint8_t* ls, uint32_t a, uint32_t v)
 {
     uint8_t* p = ls + (a & SPU_LS_MASK & ~3u);
-    p[0] = (uint8_t)(v >> 24); p[1] = (uint8_t)(v >> 16); p[2] = (uint8_t)(v >> 8); p[3] = (uint8_t)v;
+    p[0] = (uint8_t)(v >> 24);
+    p[1] = (uint8_t)(v >> 16);
+    p[2] = (uint8_t)(v >> 8);
+    p[3] = (uint8_t)v;
 }
 static inline int ls_ok(uint32_t a, uint32_t n) { return a <= SPU_LS_SIZE && n <= SPU_LS_SIZE - a; }
 
@@ -113,8 +116,8 @@ static void get_args(const spu_context* ctx, args_t* a)
 static int args_ok(const args_t* a)
 {
     return ls_ok(a->in, 4) && ls_ok(a->cons, 4) && ls_ok(a->prod, 4) && ls_ok(a->work, WORK_BYTES) &&
-           ls_ok(a->l_syn, 0x880) && ls_ok(a->l_ov, 0x900) && ls_ok(a->reserv, 0x200) &&
-           ls_ok(a->r_syn, 0x880) && ls_ok(a->r_ov, 0x900) && ls_ok(a->word, 4);
+           ls_ok(a->l_syn, 0x880) && ls_ok(a->l_ov, 0x900) && ls_ok(a->reserv, 0x200) && ls_ok(a->r_syn, 0x880) &&
+           ls_ok(a->r_ov, 0x900) && ls_ok(a->word, 4);
 }
 
 /* ---- our state in the stream's regions -------------------------------------- */
@@ -170,14 +173,21 @@ typedef struct {
 static void decode_frame(uint8_t* ls, const args_t* a, dod3_mp3* d, result_t* r)
 {
     const uint8_t* f = ls + a->in;
-    r->ret = 0; r->cons = 0; r->prod = 0; r->samples = 0; r->nch = 0;
+    r->ret = 0;
+    r->cons = 0;
+    r->prod = 0;
+    r->samples = 0;
+    r->nch = 0;
     if (f[0] == 'I' && f[1] == 'D' && f[2] == '3') {
         r->cons = f[3] == 1 ? 128u
                             : 10u + ((uint32_t)(f[6] & 0x7F) << 21 | (uint32_t)(f[7] & 0x7F) << 14 |
                                      (uint32_t)(f[8] & 0x7F) << 7 | (f[9] & 0x7F));
         return;
     }
-    if (f[0] == 'T' && f[1] == 'A' && f[2] == 'G') { r->cons = 128; return; }
+    if (f[0] == 'T' && f[1] == 'A' && f[2] == 'G') {
+        r->cons = 128;
+        return;
+    }
     dod3_mp3_info info;
     const int bytes = dod3_mp3_frame_bytes(f, &info);
     int16_t* out[2] = { r->pcm[0], r->pcm[1] };
@@ -219,7 +229,10 @@ static void write_result(uint8_t* ls, const args_t* a, const result_t* r)
 static int native_on(void)
 {
     static int on = -1;
-    if (on < 0) { const char* e = getenv("DOD3_MP3_NATIVE"); on = !(e && e[0] == '0'); }
+    if (on < 0) {
+        const char* e = getenv("DOD3_MP3_NATIVE");
+        on = !(e && e[0] == '0');
+    }
     return on;
 }
 
@@ -269,7 +282,11 @@ static int check_on(void)
 /* A stream is followed through Sony's state: the hash of its left-channel
  * regions and word after one call is the key the next call of the same
  * stream arrives with. */
-typedef struct { uint64_t key; uint64_t used; dod3_mp3 d; } shadow_t;
+typedef struct {
+    uint64_t key;
+    uint64_t used;
+    dod3_mp3 d;
+} shadow_t;
 static shadow_t s_shadow[256];
 static uint64_t s_clock;
 static volatile int s_lock;
@@ -296,24 +313,29 @@ static struct {
 
 static void check_report(void)
 {
-    fprintf(stderr, "[mp3-check] %llu frames: %llu contract mismatches; PCM vs Sony: max %d LSB, %.1f dB, "
+    fprintf(stderr,
+            "[mp3-check] %llu frames: %llu contract mismatches; PCM vs Sony: max %d LSB, %.1f dB, "
             "%llu frames > 2 LSB, %llu > 64 LSB; %llu stream starts\n",
             (unsigned long long)s_st.frames, (unsigned long long)s_st.contract_bad, s_st.maxdiff,
-            s_st.err > 0 ? 10.0 * log10(s_st.sig / s_st.err) : 999.0,
-            (unsigned long long)s_st.off2, (unsigned long long)s_st.off64, (unsigned long long)s_st.new_streams);
+            s_st.err > 0 ? 10.0 * log10(s_st.sig / s_st.err) : 999.0, (unsigned long long)s_st.off2,
+            (unsigned long long)s_st.off64, (unsigned long long)s_st.new_streams);
 }
 
 static int decode_check(spu_context* ctx, const args_t* a)
 {
     uint8_t* ls = ctx->ls;
-    while (__atomic_exchange_n(&s_lock, 1, __ATOMIC_ACQUIRE)) { }
+    while (__atomic_exchange_n(&s_lock, 1, __ATOMIC_ACQUIRE)) {}
     const uint64_t k0 = sony_key(ls, a);
     shadow_t* sh = NULL;
     for (int i = 0; i < 256; i++)
-        if (s_shadow[i].used && s_shadow[i].key == k0) { sh = &s_shadow[i]; break; }
+        if (s_shadow[i].used && s_shadow[i].key == k0) {
+            sh = &s_shadow[i];
+            break;
+        }
     if (!sh) {
         sh = &s_shadow[0];
-        for (int i = 1; i < 256; i++) if (s_shadow[i].used < sh->used) sh = &s_shadow[i];
+        for (int i = 1; i < 256; i++)
+            if (s_shadow[i].used < sh->used) sh = &s_shadow[i];
         memset(&sh->d, 0, sizeof sh->d);
         s_st.new_streams++;
     }
@@ -327,7 +349,9 @@ static int decode_check(spu_context* ctx, const args_t* a)
     s_st.frames++;
     if (ret != r.ret || cons != r.cons || prod != want_prod) {
         if (++s_st.contract_bad <= 16)
-            fprintf(stderr, "[mp3-check] call %llu: Sony ret 0x%X consumed %u produced 0x%X; ours ret 0x%X consumed %u produced 0x%X\n",
+            fprintf(stderr,
+                    "[mp3-check] call %llu: Sony ret 0x%X consumed %u produced 0x%X; ours ret 0x%X consumed %u "
+                    "produced 0x%X\n",
                     (unsigned long long)s_st.frames, ret, cons, prod, r.ret, r.cons, want_prod);
     } else if (r.samples && prod != 0xFFFFFFFFu) {
         int md = 0;
@@ -368,9 +392,15 @@ static void dump_open(void)
     snprintf(path, sizeof path, "%s", e);
     char* comma = strchr(path, ',');
     int n = 400;
-    if (comma) { *comma = 0; n = atoi(comma + 1); }
+    if (comma) {
+        *comma = 0;
+        n = atoi(comma + 1);
+    }
     s_dump = fopen(path, "wb");
-    if (!s_dump) { fprintf(stderr, "[mp3] DOD3_MP3_DUMP: cannot write %s\n", path); return; }
+    if (!s_dump) {
+        fprintf(stderr, "[mp3] DOD3_MP3_DUMP: cannot write %s\n", path);
+        return;
+    }
     s_dump_left = n;
     fprintf(stderr, "[mp3] recording %d decodeFrame calls to %s\n", n, path);
 }
@@ -382,13 +412,19 @@ static int dump_call(spu_context* ctx, const args_t* a)
     for (int r = 0; r < 16; r++) regs[r] = ctx->gpr[r]._u32[0];
     memcpy(before, ctx->ls + DUMP_LO, sizeof before);
     run_lifted(ctx);
-    const uint32_t hdr[8] = { 0x4433504Du /* "MP3D" */, DUMP_LO, DUMP_HI, ctx->gpr[3]._u32[0],
-                              ls_rd32(ctx->ls, a->cons), ls_rd32(ctx->ls, a->prod), 0, 0 };
+    const uint32_t hdr[8] = {
+        0x4433504Du /* "MP3D" */,  DUMP_LO, DUMP_HI, ctx->gpr[3]._u32[0], ls_rd32(ctx->ls, a->cons),
+        ls_rd32(ctx->ls, a->prod), 0,       0
+    };
     fwrite(hdr, 4, 8, s_dump);
     fwrite(regs, 4, 16, s_dump);
     fwrite(before, 1, sizeof before, s_dump);
     fwrite(ctx->ls + DUMP_LO, 1, sizeof before, s_dump);
-    if (--s_dump_left == 0) { fclose(s_dump); s_dump = NULL; fprintf(stderr, "[mp3] recording done\n"); }
+    if (--s_dump_left == 0) {
+        fclose(s_dump);
+        s_dump = NULL;
+        fprintf(stderr, "[mp3] recording done\n");
+    }
     return 1;
 }
 
@@ -409,7 +445,7 @@ static int trace_on(void)
 static int trace_call(spu_context* ctx, const args_t* a)
 {
     uint8_t* ls = ctx->ls;
-    while (__atomic_exchange_n(&s_lock, 1, __ATOMIC_ACQUIRE)) { }
+    while (__atomic_exchange_n(&s_lock, 1, __ATOMIC_ACQUIRE)) {}
     const uint64_t k0 = sony_key(ls, a);
     static uint8_t frame[2048];
     memcpy(frame, ls + a->in, ls_ok(a->in, sizeof frame) ? sizeof frame : 16);
@@ -442,8 +478,10 @@ static int decode_timed(spu_context* ctx, const args_t* a, int ours)
     static uint64_t s_ns, s_calls;
     struct timespec t0, t1;
     timespec_get(&t0, TIME_UTC);
-    if (ours) decode_native(ctx, a);
-    else run_lifted(ctx);
+    if (ours)
+        decode_native(ctx, a);
+    else
+        run_lifted(ctx);
     timespec_get(&t1, TIME_UTC);
     s_ns += (uint64_t)((t1.tv_sec - t0.tv_sec) * 1000000000LL + (t1.tv_nsec - t0.tv_nsec));
     if (++s_calls % 5000 == 0)

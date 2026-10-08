@@ -16,13 +16,19 @@
 #include <stdlib.h>
 
 namespace {
-struct HotStat { const char* name; uint64_t calls, cycles; };
+struct HotStat {
+    const char* name;
+    uint64_t calls, cycles;
+};
 HotStat s_hot[] = { { "collision test", 0, 0 } };
 
 int hot_log(void)
 {
     static int on = -1;
-    if (on < 0) { const char* e = getenv("DOD3_HOT_LOG"); on = (e && *e != '0') ? 1 : 0; }
+    if (on < 0) {
+        const char* e = getenv("DOD3_HOT_LOG");
+        on = (e && *e != '0') ? 1 : 0;
+    }
     return on;
 }
 
@@ -30,22 +36,29 @@ void hot_report(void)
 {
     static uint64_t last = 0;
     const uint64_t now = dod3_now_us();
-    if (!last) { last = now; return; }
+    if (!last) {
+        last = now;
+        return;
+    }
     if (now - last < 5000000) return;
     const double secs = (now - last) / 1e6;
     last = now;
     for (HotStat& h : s_hot) {
         if (!h.calls) continue;
-        fprintf(stderr, "[hot] %s: %.0f calls/s, %.0f cycles each, %.1f Mcycles/s\n",
-                h.name, h.calls / secs, (double)h.cycles / (double)h.calls, h.cycles / secs / 1e6);
-        h.calls = 0; h.cycles = 0;
+        fprintf(stderr, "[hot] %s: %.0f calls/s, %.0f cycles each, %.1f Mcycles/s\n", h.name, h.calls / secs,
+                (double)h.cycles / (double)h.calls, h.cycles / secs / 1e6);
+        h.calls = 0;
+        h.cycles = 0;
     }
 }
 }  // namespace
 
 void DOD3_FN_COLLISION_TEST(ppu_context* ctx)
 {
-    if (!hot_log()) { DOD3_FN_COLLISION_TEST_LIFTED(ctx); return; }
+    if (!hot_log()) {
+        DOD3_FN_COLLISION_TEST_LIFTED(ctx);
+        return;
+    }
     const uint64_t c0 = dod3_cycles();
     DOD3_FN_COLLISION_TEST_LIFTED(ctx);
     dod3_drain(ctx);

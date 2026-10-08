@@ -59,103 +59,107 @@ const uint32_t kTexGroups = kData + 0xA4u;
 const uint32_t kGEngine = DOD3_A_GENGINE;
 
 enum Kind { B, I, F };
-struct Field { const char* name; uint32_t off; Kind kind; };
+struct Field {
+    const char* name;
+    uint32_t off;
+    Kind kind;
+};
 const Field kFields[] = {
-    {"DetailMode", 0x000, I},
-    {"MaxDrawDistanceScale", 0x004, F},
-    {"bUseMaxQualityMode", 0x008, B},
-    {"SpeedTreeLeaves", 0x00C, B},
-    {"SpeedTreeFronds", 0x010, B},
-    {"StaticDecals", 0x014, B},
-    {"DynamicDecals", 0x018, B},
-    {"UnbatchedDecals", 0x01C, B},
-    {"DecalCullDistanceScale", 0x020, F},
-    {"DynamicLights", 0x024, B},
-    {"CompositeDynamicLights", 0x028, B},
-    {"SHSecondaryLighting", 0x02C, B},
-    {"DirectionalLightmaps", 0x030, B},
-    {"MotionBlur", 0x034, B},
-    {"MotionBlurPause", 0x038, B},
-    {"DepthOfField", 0x03C, B},
-    {"AmbientOcclusion", 0x040, B},
-    {"Bloom", 0x044, B},
-    {"bAllowLightShafts", 0x048, B},
-    {"Distortion", 0x04C, B},
-    {"FilteredDistortion", 0x050, B},
-    {"DropParticleDistortion", 0x054, B},
-    {"bAllowDownsampledTranslucency", 0x058, B},
-    {"LensFlares", 0x05C, B},
-    {"FogVolumes", 0x060, B},
-    {"FloatingPointRenderTargets", 0x064, B},
-    {"OneFrameThreadLag", 0x068, B},
-    {"SkeletalMeshLODBias", 0x06C, I},
-    {"ParticleLODBias", 0x070, I},
-    {"AllowD3D11", 0x074, B},
-    {"AllowOpenGL", 0x078, B},
-    {"AllowRadialBlur", 0x07C, B},
-    {"AllowSubsurfaceScattering", 0x080, B},
-    {"AllowImageReflections", 0x084, B},
-    {"AllowImageReflectionShadowing", 0x088, B},
-    {"MotionBlurSkinning", 0x08C, I},
-    {"TessellationAdaptivePixelsPerTriangle", 0x090, F},
-    {"HighPrecisionGBuffers", 0x094, B},
-    {"bAllowSeparateTranslucency", 0x098, B},
-    {"bAllowPostprocessMLAA", 0x09C, B},
-    {"bAllowHighQualityMaterials", 0x0A0, B},
-    {"OnlyStreamInTextures", 0x344, B},
-    {"MaxAnisotropy", 0x348, I},
-    {"SceneCaptureStreamingMultiplier", 0x34C, F},
-    {"UseVsync", 0x350, B},
-    {"ScreenPercentage", 0x354, F},
-    {"UpscaleScreenPercentage", 0x358, B},
-    {"ResX", 0x35C, I},
-    {"ResY", 0x360, I},
-    {"Fullscreen", 0x364, B},
-    {"MaxMultiSamples", 0x368, I},
-    {"bAllowD3D9MSAA", 0x36C, B},
-    {"bAllowTemporalAA", 0x370, B},
-    {"TemporalAA_MinDepth", 0x374, F},
-    {"TemporalAA_StartDepthVelocityScale", 0x378, F},
-    {"DynamicShadows", 0x37C, B},
-    {"LightEnvironmentShadows", 0x380, B},
-    {"ShadowFilterQualityBias", 0x384, I},
-    {"MinShadowResolution", 0x388, I},
-    {"MinPreShadowResolution", 0x38C, I},
-    {"MaxShadowResolution", 0x390, I},
-    {"MaxWholeSceneDominantShadowResolution", 0x394, I},
-    {"ShadowTexelsPerPixel", 0x398, F},
-    {"PreShadowResolutionFactor", 0x39C, F},
-    {"bEnableBranchingPCFShadows", 0x3A0, B},
-    {"bAllowHardwareShadowFiltering", 0x3A4, B},
-    {"bEnableForegroundShadowsOnWorld", 0x3A8, B},
-    {"bEnableForegroundSelfShadowing", 0x3AC, B},
-    {"bAllowWholeSceneDominantShadows", 0x3B0, B},
-    {"bUseConservativeShadowBounds", 0x3B4, B},
-    {"ShadowFilterRadius", 0x3B8, F},
-    {"ShadowDepthBias", 0x3BC, F},
-    {"PerObjectShadowTransition", 0x3C0, F},
-    {"PerSceneShadowTransition", 0x3C4, F},
-    {"CSMSplitPenumbraScale", 0x3C8, F},
-    {"CSMSplitSoftTransitionDistanceScale", 0x3CC, F},
-    {"CSMSplitDepthBiasScale", 0x3D0, F},
-    {"CSMMinimumFOV", 0x3D4, F},
-    {"CSMFOVRoundFactor", 0x3D8, F},
-    {"UnbuiltWholeSceneDynamicShadowRadius", 0x3DC, F},
-    {"UnbuiltNumWholeSceneDynamicShadowCascades", 0x3E0, I},
-    {"WholeSceneShadowUnbuiltInteractionThreshold", 0x3E4, I},
-    {"ShadowFadeResolution", 0x3E8, I},
-    {"PreShadowFadeResolution", 0x3EC, I},
-    {"ShadowFadeExponent", 0x3F0, F},
-    {"bAllowFracturedDamage", 0x3F4, B},
-    {"NumFracturedPartsScale", 0x3F8, F},
-    {"FractureDirectSpawnChanceScale", 0x3FC, F},
-    {"FractureRadialSpawnChanceScale", 0x400, F},
-    {"FractureCullDistanceScale", 0x404, F},
-    {"bForceCPUAccessToGPUSkinVerts", 0x408, B},
-    {"bDisableSkeletalInstanceWeights", 0x40C, B},
-    {"AllowSecondaryDisplays", 0x410, B},
-    {"SecondaryDisplayMaximumWidth", 0x414, I},
-    {"SecondaryDisplayMaximumHeight", 0x418, I},
+    { "DetailMode", 0x000, I },
+    { "MaxDrawDistanceScale", 0x004, F },
+    { "bUseMaxQualityMode", 0x008, B },
+    { "SpeedTreeLeaves", 0x00C, B },
+    { "SpeedTreeFronds", 0x010, B },
+    { "StaticDecals", 0x014, B },
+    { "DynamicDecals", 0x018, B },
+    { "UnbatchedDecals", 0x01C, B },
+    { "DecalCullDistanceScale", 0x020, F },
+    { "DynamicLights", 0x024, B },
+    { "CompositeDynamicLights", 0x028, B },
+    { "SHSecondaryLighting", 0x02C, B },
+    { "DirectionalLightmaps", 0x030, B },
+    { "MotionBlur", 0x034, B },
+    { "MotionBlurPause", 0x038, B },
+    { "DepthOfField", 0x03C, B },
+    { "AmbientOcclusion", 0x040, B },
+    { "Bloom", 0x044, B },
+    { "bAllowLightShafts", 0x048, B },
+    { "Distortion", 0x04C, B },
+    { "FilteredDistortion", 0x050, B },
+    { "DropParticleDistortion", 0x054, B },
+    { "bAllowDownsampledTranslucency", 0x058, B },
+    { "LensFlares", 0x05C, B },
+    { "FogVolumes", 0x060, B },
+    { "FloatingPointRenderTargets", 0x064, B },
+    { "OneFrameThreadLag", 0x068, B },
+    { "SkeletalMeshLODBias", 0x06C, I },
+    { "ParticleLODBias", 0x070, I },
+    { "AllowD3D11", 0x074, B },
+    { "AllowOpenGL", 0x078, B },
+    { "AllowRadialBlur", 0x07C, B },
+    { "AllowSubsurfaceScattering", 0x080, B },
+    { "AllowImageReflections", 0x084, B },
+    { "AllowImageReflectionShadowing", 0x088, B },
+    { "MotionBlurSkinning", 0x08C, I },
+    { "TessellationAdaptivePixelsPerTriangle", 0x090, F },
+    { "HighPrecisionGBuffers", 0x094, B },
+    { "bAllowSeparateTranslucency", 0x098, B },
+    { "bAllowPostprocessMLAA", 0x09C, B },
+    { "bAllowHighQualityMaterials", 0x0A0, B },
+    { "OnlyStreamInTextures", 0x344, B },
+    { "MaxAnisotropy", 0x348, I },
+    { "SceneCaptureStreamingMultiplier", 0x34C, F },
+    { "UseVsync", 0x350, B },
+    { "ScreenPercentage", 0x354, F },
+    { "UpscaleScreenPercentage", 0x358, B },
+    { "ResX", 0x35C, I },
+    { "ResY", 0x360, I },
+    { "Fullscreen", 0x364, B },
+    { "MaxMultiSamples", 0x368, I },
+    { "bAllowD3D9MSAA", 0x36C, B },
+    { "bAllowTemporalAA", 0x370, B },
+    { "TemporalAA_MinDepth", 0x374, F },
+    { "TemporalAA_StartDepthVelocityScale", 0x378, F },
+    { "DynamicShadows", 0x37C, B },
+    { "LightEnvironmentShadows", 0x380, B },
+    { "ShadowFilterQualityBias", 0x384, I },
+    { "MinShadowResolution", 0x388, I },
+    { "MinPreShadowResolution", 0x38C, I },
+    { "MaxShadowResolution", 0x390, I },
+    { "MaxWholeSceneDominantShadowResolution", 0x394, I },
+    { "ShadowTexelsPerPixel", 0x398, F },
+    { "PreShadowResolutionFactor", 0x39C, F },
+    { "bEnableBranchingPCFShadows", 0x3A0, B },
+    { "bAllowHardwareShadowFiltering", 0x3A4, B },
+    { "bEnableForegroundShadowsOnWorld", 0x3A8, B },
+    { "bEnableForegroundSelfShadowing", 0x3AC, B },
+    { "bAllowWholeSceneDominantShadows", 0x3B0, B },
+    { "bUseConservativeShadowBounds", 0x3B4, B },
+    { "ShadowFilterRadius", 0x3B8, F },
+    { "ShadowDepthBias", 0x3BC, F },
+    { "PerObjectShadowTransition", 0x3C0, F },
+    { "PerSceneShadowTransition", 0x3C4, F },
+    { "CSMSplitPenumbraScale", 0x3C8, F },
+    { "CSMSplitSoftTransitionDistanceScale", 0x3CC, F },
+    { "CSMSplitDepthBiasScale", 0x3D0, F },
+    { "CSMMinimumFOV", 0x3D4, F },
+    { "CSMFOVRoundFactor", 0x3D8, F },
+    { "UnbuiltWholeSceneDynamicShadowRadius", 0x3DC, F },
+    { "UnbuiltNumWholeSceneDynamicShadowCascades", 0x3E0, I },
+    { "WholeSceneShadowUnbuiltInteractionThreshold", 0x3E4, I },
+    { "ShadowFadeResolution", 0x3E8, I },
+    { "PreShadowFadeResolution", 0x3EC, I },
+    { "ShadowFadeExponent", 0x3F0, F },
+    { "bAllowFracturedDamage", 0x3F4, B },
+    { "NumFracturedPartsScale", 0x3F8, F },
+    { "FractureDirectSpawnChanceScale", 0x3FC, F },
+    { "FractureRadialSpawnChanceScale", 0x400, F },
+    { "FractureCullDistanceScale", 0x404, F },
+    { "bForceCPUAccessToGPUSkinVerts", 0x408, B },
+    { "bDisableSkeletalInstanceWeights", 0x40C, B },
+    { "AllowSecondaryDisplays", 0x410, B },
+    { "SecondaryDisplayMaximumWidth", 0x414, I },
+    { "SecondaryDisplayMaximumHeight", 0x418, I },
 };
 
 const char* const kGroups[] = {
@@ -188,16 +192,21 @@ const char* const kGroups[] = {
     "ImageBasedReflection",
     "Bokeh",
 };
-const char* const kGroupFields[] = {"MinLODMipCount", "MaxLODMipCount", "LODBias", "Filter", "NumStreamedMips",
-                                    "MipGenSettings"};
+const char* const kGroupFields[] = { "MinLODMipCount", "MaxLODMipCount",  "LODBias",
+                                     "Filter",         "NumStreamedMips", "MipGenSettings" };
 
 std::string show(const Field& f)
 {
     char b[48];
     const uint32_t v = vm_read32(kData + f.off);
-    if (f.kind == F) { float x; memcpy(&x, &v, 4); snprintf(b, sizeof b, "%g", x); }
-    else if (f.kind == B) snprintf(b, sizeof b, "%s", v ? "True" : "False");
-    else snprintf(b, sizeof b, "%d", (int)v);
+    if (f.kind == F) {
+        float x;
+        memcpy(&x, &v, 4);
+        snprintf(b, sizeof b, "%g", x);
+    } else if (f.kind == B)
+        snprintf(b, sizeof b, "%s", v ? "True" : "False");
+    else
+        snprintf(b, sizeof b, "%d", (int)v);
     return b;
 }
 
@@ -231,9 +240,13 @@ bool apply_one(const std::string& item)
         if (strcasecmp(name.c_str(), f.name)) continue;
         const std::string old = show(f);
         uint32_t v;
-        if (f.kind == F) { const float x = (float)atof(val.c_str()); memcpy(&v, &x, 4); }
-        else if (f.kind == B) v = (!strcasecmp(val.c_str(), "true") || atoi(val.c_str()) != 0) ? 1u : 0u;
-        else v = (uint32_t)atoi(val.c_str());
+        if (f.kind == F) {
+            const float x = (float)atof(val.c_str());
+            memcpy(&v, &x, 4);
+        } else if (f.kind == B)
+            v = (!strcasecmp(val.c_str(), "true") || atoi(val.c_str()) != 0) ? 1u : 0u;
+        else
+            v = (uint32_t)atoi(val.c_str());
         vm_write32(kData + f.off, v);
         fprintf(stderr, "[sysset] %s: %s -> %s\n", f.name, old.c_str(), show(f).c_str());
         return true;
@@ -260,25 +273,31 @@ void dump()
     for (uint32_t gi = 0; gi < sizeof kGroups / sizeof *kGroups; gi++) {
         const uint32_t a = kTexGroups + gi * 24u;
         fprintf(stderr, "[sysset] TEXTUREGROUP_%-28s Min %d Max %d LODBias %d Filter %d Streamed %d MipGen %d\n",
-                kGroups[gi], (int)vm_read32(a), (int)vm_read32(a + 4), (int)vm_read32(a + 8),
-                (int)vm_read32(a + 12), (int)vm_read32(a + 16), (int)vm_read32(a + 20));
+                kGroups[gi], (int)vm_read32(a), (int)vm_read32(a + 4), (int)vm_read32(a + 8), (int)vm_read32(a + 12),
+                (int)vm_read32(a + 16), (int)vm_read32(a + 20));
     }
 }
 
 /* ---- the Advanced Graphics page ------------------------------------------ */
 
 const char* const kShadows[][2] = {
-    {"high",  "MaxShadowResolution=1536,MaxWholeSceneDominantShadowResolution=2048,ShadowTexelsPerPixel=2,"
-              "MinShadowResolution=48,ShadowFadeResolution=64,PreShadowFadeResolution=12"},
-    {"ultra", "MaxShadowResolution=2048,MaxWholeSceneDominantShadowResolution=2048,ShadowTexelsPerPixel=2.5,"
-              "ShadowFilterQualityBias=1,MinShadowResolution=32,ShadowFadeResolution=32,PreShadowFadeResolution=8"},
+    { "high", "MaxShadowResolution=1536,MaxWholeSceneDominantShadowResolution=2048,ShadowTexelsPerPixel=2,"
+              "MinShadowResolution=48,ShadowFadeResolution=64,PreShadowFadeResolution=12" },
+    { "ultra", "MaxShadowResolution=2048,MaxWholeSceneDominantShadowResolution=2048,ShadowTexelsPerPixel=2.5,"
+               "ShadowFilterQualityBias=1,MinShadowResolution=32,ShadowFadeResolution=32,PreShadowFadeResolution=8" },
 };
 
 bool s_loaded = false;   /* the INI is in: writes stick */
 
 bool off(const char* v) { return v && v[0] == '0'; }
-void set_motion_blur(const char* v) { if (s_loaded) apply_one(std::string("MotionBlur=") + (off(v) ? "0" : "1")); }
-void set_postfx(const char* v) { if (s_loaded) apply_one(std::string("DepthOfField=") + (off(v) ? "0" : "1")); }
+void set_motion_blur(const char* v)
+{
+    if (s_loaded) apply_one(std::string("MotionBlur=") + (off(v) ? "0" : "1"));
+}
+void set_postfx(const char* v)
+{
+    if (s_loaded) apply_one(std::string("DepthOfField=") + (off(v) ? "0" : "1"));
+}
 
 void apply_player_settings()
 {
@@ -293,12 +312,27 @@ void apply_player_settings()
 
 void dod3_sysset_rows(std::vector<Dod3RowSpec>& rows)
 {
-    rows.push_back({"DOD3_SHADOWS", "Shadow Quality", "Sharper, more defined shadows.",
-                    {{nullptr, "Original"}, {"high", "High"}, {"ultra", "Ultra"}}, 0, false, nullptr});
-    rows.push_back({"DOD3_MOTION_BLUR", "Motion Blur", "Blur on fast movement of the camera and characters.",
-                    {{nullptr, "On"}, {"0", "Off"}}, 0, true, set_motion_blur});
-    rows.push_back({"DOD3_POSTFX", "Post-Processing", "Depth of field, bloom and the game's colour grading.",
-                    {{nullptr, "On"}, {"0", "Off"}}, 0, true, set_postfx});
+    rows.push_back({ "DOD3_SHADOWS",
+                     "Shadow Quality",
+                     "Sharper, more defined shadows.",
+                     { { nullptr, "Original" }, { "high", "High" }, { "ultra", "Ultra" } },
+                     0,
+                     false,
+                     nullptr });
+    rows.push_back({ "DOD3_MOTION_BLUR",
+                     "Motion Blur",
+                     "Blur on fast movement of the camera and characters.",
+                     { { nullptr, "On" }, { "0", "Off" } },
+                     0,
+                     true,
+                     set_motion_blur });
+    rows.push_back({ "DOD3_POSTFX",
+                     "Post-Processing",
+                     "Depth of field, bloom and the game's colour grading.",
+                     { { nullptr, "On" }, { "0", "Off" } },
+                     0,
+                     true,
+                     set_postfx });
 }
 
 /* From the vblank loop (main.cpp), often. */

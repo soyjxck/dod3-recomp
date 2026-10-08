@@ -44,8 +44,8 @@ static inline dod3_spu_scratch* dod3_spu_check_scratch(void)
  * (the hooks active), then with *mode = `plain` (the lifted code alone).
  * Leaves the second run's state; 1 when the two differ in any register, the
  * local store, the pc or the next transfer. */
-static inline int dod3_spu_check_both(spu_context* ctx, void (*body)(spu_context*), uint32_t stop, int* mode,
-                                      int with, int plain)
+static inline int dod3_spu_check_both(spu_context* ctx, void (*body)(spu_context*), uint32_t stop, int* mode, int with,
+                                      int plain)
 {
     dod3_spu_scratch* c = dod3_spu_check_scratch();
     memcpy(c->g0, ctx->gpr, sizeof c->g0);
@@ -64,6 +64,6 @@ static inline int dod3_spu_check_both(spu_context* ctx, void (*body)(spu_context
     *mode = plain;
     dod3_spu_run_to(ctx, body, stop);
     *mode = 0;
-    return memcmp(c->ga, ctx->gpr, sizeof c->ga) || memcmp(c->la, ctx->ls, SPU_LS_SIZE) ||
-           pca != (uint32_t)ctx->pc || tfa != g_spu_trampoline_fn;
+    return memcmp(c->ga, ctx->gpr, sizeof c->ga) || memcmp(c->la, ctx->ls, SPU_LS_SIZE) || pca != (uint32_t)ctx->pc ||
+           tfa != g_spu_trampoline_fn;
 }

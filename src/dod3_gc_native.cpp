@@ -46,7 +46,10 @@
 static int gc_prefetch_on(void)
 {
     static int on = -1;
-    if (on < 0) { const char* e = getenv("DOD3_GC_PREFETCH"); on = !(e && e[0] == '0'); }
+    if (on < 0) {
+        const char* e = getenv("DOD3_GC_PREFETCH");
+        on = !(e && e[0] == '0');
+    }
     return on;
 }
 static inline void gc_prefetch_obj(uint32_t array_data, uint32_t index, uint32_t limit)
@@ -62,16 +65,24 @@ static uint64_t s_cyc[2], s_calls[2];
 static std::map<uint32_t, uint32_t> s_targets[2];
 static void stats_report(uint64_t total)
 {
-    fprintf(stderr, "[gc-stats] %.1f Mcycles in all; keep-test (vtable+0x30) %llu calls %.1f Mcycles; AddReferencedObjects (vtable+0xFC) %llu calls %.1f Mcycles\n",
-            total / 1e6, (unsigned long long)s_calls[0], s_cyc[0] / 1e6, (unsigned long long)s_calls[1], s_cyc[1] / 1e6);
+    fprintf(stderr,
+            "[gc-stats] %.1f Mcycles in all; keep-test (vtable+0x30) %llu calls %.1f Mcycles; AddReferencedObjects "
+            "(vtable+0xFC) %llu calls %.1f Mcycles\n",
+            total / 1e6, (unsigned long long)s_calls[0], s_cyc[0] / 1e6, (unsigned long long)s_calls[1],
+            s_cyc[1] / 1e6);
     for (int k = 0; k < 2; k++) {
         std::multimap<uint32_t, uint32_t, std::greater<uint32_t>> by;
         for (auto& t : s_targets[k]) by.insert({ t.second, t.first });
         int n = 0;
         fprintf(stderr, "[gc-stats]   %s targets:", k ? "0xFC" : "0x30");
-        for (auto& b : by) { if (n++ == 6) break; fprintf(stderr, " %08X x%u", b.second, b.first); }
+        for (auto& b : by) {
+            if (n++ == 6) break;
+            fprintf(stderr, " %08X x%u", b.second, b.first);
+        }
         fprintf(stderr, " (%zu distinct)\n", s_targets[k].size());
-        s_targets[k].clear(); s_cyc[k] = 0; s_calls[k] = 0;
+        s_targets[k].clear();
+        s_cyc[k] = 0;
+        s_calls[k] = 0;
     }
 }
 
@@ -79,16 +90,15 @@ extern "C" void ps3_indirect_call(ppu_context* ctx);
 
 namespace {
 
-const uint32_t GOBJ          = DOD3_A_GOBJOBJECTS;
-const uint32_t GOBJ_FIRST    = DOD3_A_GOBJ_FIRST_GC_INDEX;
+const uint32_t GOBJ = DOD3_A_GOBJOBJECTS;
+const uint32_t GOBJ_FIRST = DOD3_A_GOBJ_FIRST_GC_INDEX;
 const uint32_t VISIT_COUNTER = DOD3_A_GC_VISIT_COUNTER;
-const uint32_t PERM_START    = DOD3_A_PERM_OBJ_START;
-const uint32_t PERM_END      = DOD3_A_PERM_OBJ_END;
-const uint32_t GMALLOC       = DOD3_A_GMALLOC;
-const uint32_t MASKS         = DOD3_GC_PC(0x00EE6528u);
+const uint32_t PERM_START = DOD3_A_PERM_OBJ_START;
+const uint32_t PERM_END = DOD3_A_PERM_OBJ_END;
+const uint32_t GMALLOC = DOD3_A_GMALLOC;
+const uint32_t MASKS = DOD3_GC_PC(0x00EE6528u);
 const uint64_t BIT_PENDING_KILL = 1ull << 61;
-const uint64_t BIT_UNREACHABLE  = 1ull << 33;
-
+const uint64_t BIT_UNREACHABLE = 1ull << 33;
 
 /* A guest virtual: the OPD at vtable+slot, its first word the code. */
 inline uint32_t vcall(ppu_context* ctx, uint32_t obj_vtable_holder, uint32_t slot, uint32_t ret_lr)
@@ -115,7 +125,11 @@ inline uint32_t vcall(ppu_context* ctx, uint32_t obj_vtable_holder, uint32_t slo
     const uint64_t c0 = (s_stats > 0 && k >= 0) ? dod3_cycles() : 0;
     ps3_indirect_call(ctx);
     dod3_drain(ctx);
-    if (c0) { s_cyc[k] += dod3_cycles() - c0; s_calls[k]++; s_targets[k][code]++; }
+    if (c0) {
+        s_cyc[k] += dod3_cycles() - c0;
+        s_calls[k]++;
+        s_targets[k][code]++;
+    }
     return (uint32_t)ctx->gpr[3];
 }
 
@@ -124,7 +138,8 @@ inline uint32_t gmalloc(ppu_context* ctx, uint32_t ret_lr_init)
     uint32_t m = vm_read32(GMALLOC);
     if (m == 0) {
         ctx->lr = ret_lr_init;
-        DOD3_FN_GMALLOC_CREATE(ctx); dod3_drain(ctx);
+        DOD3_FN_GMALLOC_CREATE(ctx);
+        dod3_drain(ctx);
         m = vm_read32(GMALLOC);
     }
     return m;
@@ -164,7 +179,10 @@ struct Pass {
             vm_write32(list + 8, (uint32_t)max);
             if ((data | (uint32_t)max) != 0) {
                 const uint32_t m = gmalloc(ctx, ret_init);
-                ctx->gpr[3] = m; ctx->gpr[4] = data; ctx->gpr[5] = (uint32_t)max * 4u; ctx->gpr[6] = 8;
+                ctx->gpr[3] = m;
+                ctx->gpr[4] = data;
+                ctx->gpr[5] = (uint32_t)max * 4u;
+                ctx->gpr[6] = 8;
                 data = vcall(ctx, m, 0xC, ret_realloc);
                 vm_write32(list + 0, data);
             }
@@ -184,7 +202,10 @@ struct Pass {
         if (obj == 0) return 0;
         if (!(obj < perm_start) && obj < perm_end) return 1;
         uint64_t flags = vm_read64(obj + 8);
-        if (null_pending && (flags & BIT_PENDING_KILL)) { vm_write32(ref, 0); return 1; }
+        if (null_pending && (flags & BIT_PENDING_KILL)) {
+            vm_write32(ref, 0);
+            return 1;
+        }
         if (!(flags & BIT_UNREACHABLE)) return 1;
         flags &= ~BIT_UNREACHABLE;
         vm_write64(obj + 8, flags);
@@ -239,13 +260,19 @@ struct ParShared {
     int mode = 0;
     uint32_t p1_data = 0, p1_first = 0, p1_num = 0, p1_nchunks = 0, p1_outer = 0;
     uint64_t p1_keep = 0;
-    std::atomic<uint32_t> p1_next{0};
-    struct P1Event { uint32_t kind, v; };   /* 0: the whole body for index v; 1: the class check for object v */
-    struct P1Chunk { std::vector<uint32_t> queued; std::vector<P1Event> ev; uint32_t visits = 0; };
+    std::atomic<uint32_t> p1_next{ 0 };
+    struct P1Event {
+        uint32_t kind, v;
+    };   /* 0: the whole body for index v; 1: the class check for object v */
+    struct P1Chunk {
+        std::vector<uint32_t> queued;
+        std::vector<P1Event> ev;
+        uint32_t visits = 0;
+    };
     std::vector<P1Chunk> p1;
     int nthreads = 0;
     bool quit = false;
-    std::atomic<int> bad_token{0};
+    std::atomic<int> bad_token{ 0 };
 };
 ParShared* s_par;
 
@@ -266,9 +293,13 @@ void p1_chunk(uint32_t c)
     ParShared& S = *s_par;
     ParShared::P1Chunk& r = S.p1[c];
     const uint32_t i0 = S.p1_first + c * P1_CHUNK;
-    uint32_t i1 = i0 + P1_CHUNK; if (i1 > S.p1_num) i1 = S.p1_num;
+    uint32_t i1 = i0 + P1_CHUNK;
+    if (i1 > S.p1_num) i1 = S.p1_num;
     for (uint32_t i = i0; i < i1; i++) {
-        if (i + 16u < i1) { const uint32_t a = g32(S.p1_data + (i + 16u) * 4u); if (a) __builtin_prefetch(vm_base + a, 1, 3); }
+        if (i + 16u < i1) {
+            const uint32_t a = g32(S.p1_data + (i + 16u) * 4u);
+            if (a) __builtin_prefetch(vm_base + a, 1, 3);
+        }
         const uint32_t obj = g32(S.p1_data + i * 4u);
         if (obj == 0) continue;
         r.visits++;
@@ -276,13 +307,16 @@ void p1_chunk(uint32_t c)
         if (flags & 0x4000u) {
             r.queued.push_back(obj);
         } else {
-            if (g32(g32(g32(obj) + 0x30)) != UOBJ_KEEP_TEST) { r.ev.push_back({0, i}); continue; }
+            if (g32(g32(g32(obj) + 0x30)) != UOBJ_KEEP_TEST) {
+                r.ev.push_back({ 0, i });
+                continue;
+            }
             if (((flags & S.p1_keep) == 0 && S.p1_keep != ~0ull) || (flags & BIT_PENDING_KILL))
                 p64(obj + 8, flags | BIT_UNREACHABLE);
             else
                 r.queued.push_back(obj);
         }
-        if (g32(obj + 0x34) == S.p1_outer) r.ev.push_back({1, obj});
+        if (g32(obj + 0x34) == S.p1_outer) r.ev.push_back({ 1, obj });
     }
 }
 
@@ -291,15 +325,20 @@ void par_phase1(uint32_t data, uint32_t first, uint32_t num, uint64_t keep, uint
 {
     ParShared& S = *s_par;
     std::unique_lock<std::mutex> lk(S.mu);
-    S.p1_data = data; S.p1_first = first; S.p1_num = num; S.p1_outer = outer; S.p1_keep = keep;
+    S.p1_data = data;
+    S.p1_first = first;
+    S.p1_num = num;
+    S.p1_outer = outer;
+    S.p1_keep = keep;
     S.p1_nchunks = num > first ? (num - first + P1_CHUNK - 1) / P1_CHUNK : 0;
-    S.p1.clear(); S.p1.resize(S.p1_nchunks);
+    S.p1.clear();
+    S.p1.resize(S.p1_nchunks);
     S.p1_next = 0;
     S.mode = 1;
     S.generation++;
     S.cv_work.notify_all();
     lk.unlock();
-    for (uint32_t c; (c = S.p1_next.fetch_add(1)) < S.p1_nchunks; ) p1_chunk(c);
+    for (uint32_t c; (c = S.p1_next.fetch_add(1)) < S.p1_nchunks;) p1_chunk(c);
     lk.lock();
     S.cv_idle.wait(lk, [&] { return S.busy == 0; });
     S.mode = 0;
@@ -317,11 +356,17 @@ struct Worker {
         if (obj == 0) return 0;
         if (!(obj < s_par->perm_start) && obj < s_par->perm_end) return 1;
         const uint64_t flags = g64(obj + 8);
-        if (null_pending && (flags & BIT_PENDING_KILL)) { p32(ref, 0); return 1; }
+        if (null_pending && (flags & BIT_PENDING_KILL)) {
+            p32(ref, 0);
+            return 1;
+        }
         if (!(flags & BIT_UNREACHABLE)) return 1;
         /* Bit 33 of the big-endian flags: byte +11, mask 0x02. */
         const uint8_t old = __atomic_fetch_and(vm_base + obj + 11, (uint8_t)~0x02u, __ATOMIC_ACQ_REL);
-        if (old & 0x02u) { local.push_back(obj); reached.push_back(obj); }
+        if (old & 0x02u) {
+            local.push_back(obj);
+            reached.push_back(obj);
+        }
         return 1;
     }
 
@@ -339,10 +384,13 @@ struct Worker {
         uint32_t ti = 0;
         int32_t ret = 0;
         int sp = 0;
-        st[0][0] = data; st[0][1] = 0; st[0][2] = 0xFFFFFFFFu; st[0][3] = 0xFFFFFFFFu;
+        st[0][0] = data;
+        st[0][1] = 0;
+        st[0][2] = 0xFFFFFFFFu;
+        st[0][3] = 0xFFFFFFFFu;
         for (;;) {
             if (ret > 0) {
-                for (int32_t k = 0; ; ) {
+                for (int32_t k = 0;;) {
                     const int e = sp;
                     const int32_t cnt = (int32_t)st[e][2] - 1;
                     st[e][2] = (uint32_t)cnt;
@@ -354,7 +402,10 @@ struct Worker {
                     }
                     k++;
                     sp--;
-                    if (sp < 0) { s_par->bad_token = 2; return; }
+                    if (sp < 0) {
+                        s_par->bad_token = 2;
+                        return;
+                    }
                     data = st[sp][0];
                     if (!(k < ret)) break;
                 }
@@ -367,15 +418,23 @@ struct Worker {
             const uint32_t off = tok & 0xFFFFFu;
             const int32_t rc = (int32_t)(tok >> 24);
             const int entry = sp;
-            if ((type == 4 || type == 5 || type == 8) && sp >= 255) { s_par->bad_token = 3; return; }
+            if ((type == 4 || type == 5 || type == 8) && sp >= 255) {
+                s_par->bad_token = 3;
+                return;
+            }
             switch (type) {
-            case 1: ret = rc; handle(data + off, 1); break;
-            case 2: ret = rc; handle(data + off, 0); break;
+            case 1:
+                ret = rc;
+                handle(data + off, 1);
+                break;
+            case 2:
+                ret = rc;
+                handle(data + off, 0);
+                break;
             case 3: {
                 const uint32_t arr = data + off;
                 ret = rc;
-                for (int32_t j = 0; j < (int32_t)g32(arr + 4); j++)
-                    handle(g32(arr + 0) + (uint32_t)j * 4u, 1);
+                for (int32_t j = 0; j < (int32_t)g32(arr + 4); j++) handle(g32(arr + 0) + (uint32_t)j * 4u, 1);
                 break;
             }
             case 4: {
@@ -391,7 +450,10 @@ struct Worker {
                 const uint32_t skip = g32(g32(cls + 0x150) + i2 * 4u);
                 st[entry + 1][3] = ti;
                 const uint32_t si = (skip & 0xFF000000u) | (((skip & 0xFFFFFFu) + i2) & 0xFFFFFFu);
-                if (count != 0) { ret = 0; break; }
+                if (count != 0) {
+                    ret = 0;
+                    break;
+                }
                 ti = si & 0xFFFFFFu;
                 const uint32_t prev = g32(g32(cls + 0x150) + (ti - 1u) * 4u);
                 ret = (int32_t)(prev >> 24) - (int32_t)(si >> 24);
@@ -408,13 +470,15 @@ struct Worker {
                 st[entry + 1][2] = g32(g32(cls + 0x150) + i2 * 4u);
                 break;
             }
-            case 6:
-                return;
+            case 6: return;
             case 7: {
                 const uint32_t ref = data + off;
                 ret = rc;
                 if (!handle(ref, 1)) break;
-                if (g32(ref) == 0) { p32(ref + 4, 0); p32(ref + 8, 0); }
+                if (g32(ref) == 0) {
+                    p32(ref + 4, 0);
+                    p32(ref + 8, 0);
+                }
                 break;
             }
             case 8: {
@@ -423,11 +487,18 @@ struct Worker {
                 const uint32_t si = (skip & 0xFF000000u) | (((skip & 0xFFFFFFu) + ti) & 0xFFFFFFu);
                 ti = cur_i + 2;
                 if (g4 != 0) g4 = g32(g4 + 0x1C);
-                if (g4 == 0) { ti = si & 0xFFFFFFu; ret = 0; break; }
+                if (g4 == 0) {
+                    ti = si & 0xFFFFFFu;
+                    ret = 0;
+                    break;
+                }
                 data = g4;
                 sp++;
                 ret = 0;
-                st[entry + 1][0] = data; st[entry + 1][1] = 0; st[entry + 1][2] = 0; st[entry + 1][3] = 0xFFFFFFFFu;
+                st[entry + 1][0] = data;
+                st[entry + 1][1] = 0;
+                st[entry + 1][2] = 0;
+                st[entry + 1][3] = 0xFFFFFFFFu;
                 break;
             }
             default:
@@ -449,7 +520,7 @@ struct Worker {
             if (S.mode == 1) {
                 S.busy++;
                 lk.unlock();
-                for (uint32_t c; (c = S.p1_next.fetch_add(1)) < S.p1_nchunks; ) p1_chunk(c);
+                for (uint32_t c; (c = S.p1_next.fetch_add(1)) < S.p1_nchunks;) p1_chunk(c);
                 lk.lock();
                 if (--S.busy == 0) S.cv_idle.notify_all();
                 continue;
@@ -457,11 +528,15 @@ struct Worker {
             while (!S.queue.empty()) {
                 /* A batch: enough to amortise the lock, few enough to share. */
                 const size_t take = S.queue.size() > 64 ? 32 : 1;
-                for (size_t i = 0; i < take; i++) { local.push_back(S.queue.back()); S.queue.pop_back(); }
+                for (size_t i = 0; i < take; i++) {
+                    local.push_back(S.queue.back());
+                    S.queue.pop_back();
+                }
                 S.busy++;
                 lk.unlock();
                 while (!local.empty()) {
-                    const uint32_t o = local.back(); local.pop_back();
+                    const uint32_t o = local.back();
+                    local.pop_back();
                     traverse(o);
                     /* Share when there is plenty and someone may be idle. */
                     if (local.size() > 256) {
@@ -473,8 +548,10 @@ struct Worker {
                 }
                 lk.lock();
                 S.busy--;
-                S.reached.insert(S.reached.end(), reached.begin(), reached.end()); reached.clear();
-                S.deferred.insert(S.deferred.end(), deferred.begin(), deferred.end()); deferred.clear();
+                S.reached.insert(S.reached.end(), reached.begin(), reached.end());
+                reached.clear();
+                S.deferred.insert(S.deferred.end(), deferred.begin(), deferred.end());
+                deferred.clear();
                 if (S.queue.empty() && S.busy == 0) S.cv_idle.notify_all();
             }
         }
@@ -487,7 +564,10 @@ void par_start(int n)
     s_par = new ParShared;
     s_par->nthreads = n;
     for (int i = 0; i < n; i++)
-        std::thread([] { Worker* w = new Worker; w->run(); }).detach();
+        std::thread([] {
+            Worker* w = new Worker;
+            w->run();
+        }).detach();
 }
 
 /* Traverse `seed` and everything it reaches; returns when the workers are
@@ -508,12 +588,18 @@ void par_round(const std::vector<uint32_t>& seed)
 int gc_par_threads(void)
 {
     static int n = -1;
-    if (n < 0) { const char* e = getenv("DOD3_GC_PAR"); n = e ? atoi(e) : 8; if (n < 0) n = 0; if (n > 32) n = 32; }
+    if (n < 0) {
+        const char* e = getenv("DOD3_GC_PAR");
+        n = e ? atoi(e) : 8;
+        if (n < 0) n = 0;
+        if (n > 32) n = 32;
+    }
     return n;
 }
 
 /* ObjectsToSerialize.Append(v): one growth for all of them. */
-void list_append(ppu_context* ctx, uint32_t list, const std::vector<uint32_t>& v, uint32_t ret_init, uint32_t ret_realloc)
+void list_append(ppu_context* ctx, uint32_t list, const std::vector<uint32_t>& v, uint32_t ret_init,
+                 uint32_t ret_realloc)
 {
     if (v.empty()) return;
     const uint32_t k = (uint32_t)v.size();
@@ -526,11 +612,15 @@ void list_append(ppu_context* ctx, uint32_t list, const std::vector<uint32_t>& v
         max = grow_max(n, max);
         vm_write32(list + 8, (uint32_t)max);
         const uint32_t m = gmalloc(ctx, ret_init);
-        ctx->gpr[3] = m; ctx->gpr[4] = data; ctx->gpr[5] = (uint32_t)max * 4u; ctx->gpr[6] = 8;
+        ctx->gpr[3] = m;
+        ctx->gpr[4] = data;
+        ctx->gpr[5] = (uint32_t)max * 4u;
+        ctx->gpr[6] = 8;
         data = vcall(ctx, m, 0xC, ret_realloc);
         vm_write32(list + 0, data);
     }
-    if (data) for (uint32_t i = 0; i < k; i++) p32(data + ((uint32_t)old + i) * 4u, v[i]);
+    if (data)
+        for (uint32_t i = 0; i < k; i++) p32(data + ((uint32_t)old + i) * 4u, v[i]);
 }
 
 /* Phase 2 on the workers; the guest calls and the guest list on this thread.
@@ -539,7 +629,8 @@ uint32_t phase2_parallel(ppu_context* ctx, Pass& p, uint32_t list)
 {
     par_start(gc_par_threads());
     ParShared& S = *s_par;
-    S.reached.clear(); S.deferred.clear();
+    S.reached.clear();
+    S.deferred.clear();
     std::vector<uint32_t> seed;
     uint32_t done = 0;                                  /* guest-list entries already handed out */
     uint32_t last = 0;
@@ -551,13 +642,18 @@ uint32_t phase2_parallel(ppu_context* ctx, Pass& p, uint32_t list)
         for (uint32_t i = done; i < num; i++) seed.push_back(vm_read32(data + i * 4u));
         done = num;
         if (seed.empty() && S.deferred.empty()) break;
-        if (!seed.empty()) { last = seed.back(); par_round(seed); }
+        if (!seed.empty()) {
+            last = seed.back();
+            par_round(seed);
+        }
         /* The guest AddReferencedObjects calls, in the order the workers
          * met their objects; what they queue lands in the guest list. */
-        std::vector<uint32_t> calls; calls.swap(S.deferred);
+        std::vector<uint32_t> calls;
+        calls.swap(S.deferred);
         for (uint32_t cur : calls) {
             vm_write32(list + 0xC, cur);
-            ctx->gpr[3] = cur; ctx->gpr[4] = list;
+            ctx->gpr[3] = cur;
+            ctx->gpr[4] = list;
             vcall(ctx, cur, 0xFC, DOD3_GC_PC(0x00EE6940));
         }
     }
@@ -569,7 +665,8 @@ uint32_t phase2_parallel(ppu_context* ctx, Pass& p, uint32_t list)
     }
     (void)p;
     if (S.bad_token.load()) {
-        fprintf(stderr, "[gc-par] a token stream did not parse (%d): the collection's marks may be short\n", S.bad_token.load());
+        fprintf(stderr, "[gc-par] a token stream did not parse (%d): the collection's marks may be short\n",
+                S.bad_token.load());
         S.bad_token = 0;
     }
     if (last) vm_write32(list + 0xC, last);
@@ -591,7 +688,9 @@ inline void phase1_class(ppu_context* ctx, uint32_t o, uint32_t outer_match)
     uint32_t arg = 0;
     if (o != 0 && (vm_read32(outer + 0xC0) & 0x20u)) arg = o;
     ctx->gpr[3] = arg;
-    ctx->lr = DOD3_GC_PC(0x00EE6878); DOD3_FN_GC_PREPARE(ctx); dod3_drain(ctx);
+    ctx->lr = DOD3_GC_PC(0x00EE6878);
+    DOD3_FN_GC_PREPARE(ctx);
+    dod3_drain(ctx);
 }
 
 /* Phase 1 for the object at index i, as the lifted loop body; the visit
@@ -604,8 +703,11 @@ void phase1_one(ppu_context* ctx, Pass& p, uint32_t list, uint32_t i, uint64_t o
     if (obj == 0) return;
     if (visit) vm_write32(VISIT_COUNTER, vm_read32(VISIT_COUNTER) + 1);
     if (vm_read64(obj + 8) & 0x4000u) {
-        ctx->gpr[3] = list; ctx->gpr[4] = p.slot70;
-        ctx->lr = DOD3_GC_PC(0x00EE6674); DOD3_FN_TARRAY_ADDITEM(ctx); dod3_drain(ctx);
+        ctx->gpr[3] = list;
+        ctx->gpr[4] = p.slot70;
+        ctx->lr = DOD3_GC_PC(0x00EE6674);
+        DOD3_FN_TARRAY_ADDITEM(ctx);
+        dod3_drain(ctx);
     } else {
         ctx->gpr[3] = obj;
         const uint32_t keep_it = vcall(ctx, obj, 0x30, DOD3_GC_PC(0x00EE6690));
@@ -629,7 +731,10 @@ void phase1_one(ppu_context* ctx, Pass& p, uint32_t list, uint32_t i, uint64_t o
 /* The native func_00EE6538 (r3 = ObjectsToSerialize, r4 = KeepFlags). */
 extern "C" void dod3_gc_reach_native(ppu_context* ctx)
 {
-    if (s_stats < 0) { const char* e = getenv("DOD3_GC_STATS"); s_stats = (e && *e != '0') ? 1 : 0; }
+    if (s_stats < 0) {
+        const char* e = getenv("DOD3_GC_STATS");
+        s_stats = (e && *e != '0') ? 1 : 0;
+    }
     const uint64_t t_all = s_stats > 0 ? dod3_cycles() : 0;
     const uint32_t list = (uint32_t)ctx->gpr[3];
     const uint64_t keep = ctx->gpr[4];
@@ -638,9 +743,11 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
     ctx->gpr[1] = sp0 - 0x110;
     vm_write64(ctx->gpr[1], sp0);                        /* back chain, as the prologue */
     Pass p;
-    p.ctx = ctx; p.list = list; p.slot70 = (uint32_t)ctx->gpr[1] + 0x70;
+    p.ctx = ctx;
+    p.list = list;
+    p.slot70 = (uint32_t)ctx->gpr[1] + 0x70;
 
-    const uint64_t or_mask  = vm_read64(MASKS + 0);       /* r25 */
+    const uint64_t or_mask = vm_read64(MASKS + 0);       /* r25 */
     const uint64_t mark_bit = vm_read64(MASKS + 8);       /* r23 */
 
     /* Reserve the list for the objects past the first GC index. */
@@ -650,8 +757,12 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
         vm_write32(VISIT_COUNTER, 0);
         ctx->gpr[3] = list;
         ctx->gpr[4] = (uint64_t)(int64_t)(int32_t)(num - first + 2);
-        ctx->lr = DOD3_GC_PC(0x00EE65D4); DOD3_FN_GC_REACH_A(ctx); dod3_drain(ctx);
-        ctx->lr = DOD3_GC_PC(0x00EE65D8); DOD3_FN_GC_REACH_B(ctx); dod3_drain(ctx);
+        ctx->lr = DOD3_GC_PC(0x00EE65D4);
+        DOD3_FN_GC_REACH_A(ctx);
+        dod3_drain(ctx);
+        ctx->lr = DOD3_GC_PC(0x00EE65D8);
+        DOD3_FN_GC_REACH_B(ctx);
+        dod3_drain(ctx);
     }
     const uint32_t outer_match = (uint32_t)ctx->gpr[3];  /* r31: what func_00EE6408 returned */
 
@@ -666,8 +777,10 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
         ParShared& S = *s_par;
         const uint32_t num = vm_read32(GOBJ + 4);
         if (or_mask != BIT_PENDING_KILL || mark_bit != BIT_UNREACHABLE) {
-            static int once; if (!once++) fprintf(stderr, "[gc-par] unexpected masks %llx %llx: phase 1 serial\n",
-                                                  (unsigned long long)or_mask, (unsigned long long)mark_bit);
+            static int once;
+            if (!once++)
+                fprintf(stderr, "[gc-par] unexpected masks %llx %llx: phase 1 serial\n", (unsigned long long)or_mask,
+                        (unsigned long long)mark_bit);
         } else {
             par_phase1(vm_read32(GOBJ), i_start, num, keep, outer_match);
             uint32_t visits = 0;
@@ -675,8 +788,11 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
             vm_write32(VISIT_COUNTER, vm_read32(VISIT_COUNTER) + visits);
             for (auto& c : S.p1)
                 for (const auto& e : c.ev) {
-                    if (e.kind == 1) { vm_write32(p.slot70, e.v); phase1_class(ctx, e.v, outer_match); }
-                    else phase1_one(ctx, p, list, e.v, or_mask, mark_bit, keep, outer_match, 0);
+                    if (e.kind == 1) {
+                        vm_write32(p.slot70, e.v);
+                        phase1_class(ctx, e.v, outer_match);
+                    } else
+                        phase1_one(ctx, p, list, e.v, or_mask, mark_bit, keep, outer_match, 0);
                 }
             std::vector<uint32_t> q;
             for (auto& c : S.p1) q.insert(q.end(), c.queued.begin(), c.queued.end());
@@ -695,7 +811,10 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
     uint32_t stack_buf;
     {
         const uint32_t m = gmalloc(ctx, DOD3_GC_PC(0x00EE68A0));
-        ctx->gpr[3] = m; ctx->gpr[4] = 0; ctx->gpr[5] = 0xC00; ctx->gpr[6] = 8;
+        ctx->gpr[3] = m;
+        ctx->gpr[4] = 0;
+        ctx->gpr[5] = 0xC00;
+        ctx->gpr[6] = 8;
         stack_buf = vcall(ctx, m, 0xC, DOD3_GC_PC(0x00EE68C4));
     }
     p.perm_start = vm_read32(PERM_START);
@@ -705,14 +824,15 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
         last_num = phase2_parallel(ctx, p, list);
         goto phase2_done;
     }
-    for (int32_t idx = 0; ; ) {
+    for (int32_t idx = 0;;) {
         last_num = vm_read32(list + 4);
         if (!(idx < (int32_t)last_num)) break;
         if (pf) gc_prefetch_obj(vm_read32(list + 0), (uint32_t)idx + 8u, last_num);
         const uint32_t cur = vm_read32(vm_read32(list + 0) + (uint32_t)idx * 4u);
         idx++;
         vm_write32(list + 0xC, cur);
-        ctx->gpr[3] = cur; ctx->gpr[4] = list;
+        ctx->gpr[3] = cur;
+        ctx->gpr[4] = list;
         vcall(ctx, cur, 0xFC, DOD3_GC_PC(0x00EE6940));              /* AddReferencedObjects */
 
         /* The permanent range is re-read per reference in the lifted code;
@@ -733,7 +853,7 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
         for (;;) {
             /* loc_00EE6960: unwind TokenReturnCount levels. */
             if (ret > 0) {
-                for (int32_t k = 0; ; ) {
+                for (int32_t k = 0;;) {
                     const uint32_t e = sp;
                     const int32_t cnt = (int32_t)vm_read32(e + 8) - 1;
                     vm_write32(e + 8, (uint32_t)cnt);
@@ -787,7 +907,10 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
                 const uint32_t skip = vm_read32(vm_read32(cls + 0x150) + i2 * 4u);
                 vm_write32(entry + 0x1C, ti);
                 const uint32_t si = (skip & 0xFF000000u) | (((skip & 0xFFFFFFu) + i2) & 0xFFFFFFu);
-                if (count != 0) { ret = 0; break; }
+                if (count != 0) {
+                    ret = 0;
+                    break;
+                }
                 ti = si & 0xFFFFFFu;
                 const uint32_t prev = vm_read32(vm_read32(cls + 0x150) + (ti - 1u) * 4u);
                 ret = (int32_t)(prev >> 24) - (int32_t)(si >> 24);
@@ -804,13 +927,15 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
                 vm_write32(entry + 0x18, vm_read32(vm_read32(cls + 0x150) + i2 * 4u));
                 break;
             }
-            case 6:                                      /* end of stream */
-                goto next_object;
+            case 6: /* end of stream */ goto next_object;
             case 7: {                                    /* delegate: object, then its name */
                 const uint32_t ref = data + off;
                 ret = rc;
                 if (!p.handle(ref, 1, DOD3_GC_PC(0x00EE7204), DOD3_GC_PC(0x00EE7224))) break;
-                if (vm_read32(ref) == 0) { vm_write32(ref + 4, 0); vm_write32(ref + 8, 0); }
+                if (vm_read32(ref) == 0) {
+                    vm_write32(ref + 4, 0);
+                    vm_write32(ref + 8, 0);
+                }
                 break;
             }
             case 8: {                                    /* conditional: the current object's +0x14 chain */
@@ -819,7 +944,11 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
                 const uint32_t si = (skip & 0xFF000000u) | (((skip & 0xFFFFFFu) + ti) & 0xFFFFFFu);
                 ti = cur_i + 2;
                 if (g4 != 0) g4 = vm_read32(g4 + 0x1C);
-                if (g4 == 0) { ti = si & 0xFFFFFFu; ret = 0; break; }
+                if (g4 == 0) {
+                    ti = si & 0xFFFFFFu;
+                    ret = 0;
+                    break;
+                }
                 data = g4;
                 sp += 0x10;
                 ret = 0;
@@ -832,7 +961,9 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
             default:                                     /* appErrorf: unknown token */
                 ctx->gpr[3] = vm_read32(DOD3_A_GERROR);
                 ctx->gpr[4] = DOD3_A_GC_ERROR_FMT;      /* 1.00: 0x01640000 - 31028 */
-                ctx->lr = DOD3_GC_PC(0x00EE72FC); DOD3_FN_APP_ERRORF(ctx); dod3_drain(ctx);
+                ctx->lr = DOD3_GC_PC(0x00EE72FC);
+                DOD3_FN_APP_ERRORF(ctx);
+                dod3_drain(ctx);
                 break;
             }
         }
@@ -842,12 +973,16 @@ phase2_done:
     ctx->gpr[3] = last_num;
     if (stack_buf != 0) {
         const uint32_t m = gmalloc(ctx, DOD3_GC_PC(0x00EE731C));
-        ctx->gpr[3] = m; ctx->gpr[4] = stack_buf;
+        ctx->gpr[3] = m;
+        ctx->gpr[4] = stack_buf;
         vcall(ctx, m, 0x10, DOD3_GC_PC(0x00EE7338));                 /* Free */
     }
     ctx->gpr[1] = sp0;
     ctx->lr = lr0;
-    if (t_all) { const uint64_t t_end = dod3_cycles();
-        fprintf(stderr, "[gc-stats] phase 1 %.1f Mcycles, phase 2 %.1f Mcycles\n", (t_p2 - t_all) / 1e6, (t_end - t_p2) / 1e6);
-        stats_report(t_end - t_all); }
+    if (t_all) {
+        const uint64_t t_end = dod3_cycles();
+        fprintf(stderr, "[gc-stats] phase 1 %.1f Mcycles, phase 2 %.1f Mcycles\n", (t_p2 - t_all) / 1e6,
+                (t_end - t_p2) / 1e6);
+        stats_report(t_end - t_all);
+    }
 }

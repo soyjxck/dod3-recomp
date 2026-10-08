@@ -77,10 +77,24 @@ static inline uint32_t rd32(const uint8_t* ls, uint32_t a)
 static inline void wr32(uint8_t* ls, uint32_t a, uint32_t w)
 {
     uint8_t* p = ls + (a & ~3u & SPU_LS_MASK);
-    p[0] = (uint8_t)(w >> 24); p[1] = (uint8_t)(w >> 16); p[2] = (uint8_t)(w >> 8); p[3] = (uint8_t)w;
+    p[0] = (uint8_t)(w >> 24);
+    p[1] = (uint8_t)(w >> 16);
+    p[2] = (uint8_t)(w >> 8);
+    p[3] = (uint8_t)w;
 }
-static inline float rdf(const uint8_t* ls, uint32_t a) { const uint32_t w = rd32(ls, a); float f; memcpy(&f, &w, 4); return f; }
-static inline void  wrf(uint8_t* ls, uint32_t a, float f) { uint32_t w; memcpy(&w, &f, 4); wr32(ls, a, w); }
+static inline float rdf(const uint8_t* ls, uint32_t a)
+{
+    const uint32_t w = rd32(ls, a);
+    float f;
+    memcpy(&f, &w, 4);
+    return f;
+}
+static inline void wrf(uint8_t* ls, uint32_t a, float f)
+{
+    uint32_t w;
+    memcpy(&w, &f, 4);
+    wr32(ls, a, w);
+}
 
 /* 0x39350: state in the array at sp+0x70. Every sample before the last. */
 static void biquad_a_forward(spu_context* ctx)
@@ -95,10 +109,14 @@ static void biquad_a_forward(spu_context* ctx)
     for (; i < 511; i++) {
         float t, y;
         y = rdf(ls, c) * rdf(ls, in);
-        t = rdf(ls, c + 4) * rdf(ls, s);          y = y + t;
-        t = rdf(ls, c + 8) * rdf(ls, s + 4);      y = y + t;
-        t = rdf(ls, c + 12) * rdf(ls, s + 8);     y = y + t;
-        t = rdf(ls, c + 16) * rdf(ls, s + 12);    y = y + t;
+        t = rdf(ls, c + 4) * rdf(ls, s);
+        y = y + t;
+        t = rdf(ls, c + 8) * rdf(ls, s + 4);
+        y = y + t;
+        t = rdf(ls, c + 12) * rdf(ls, s + 8);
+        y = y + t;
+        t = rdf(ls, c + 16) * rdf(ls, s + 12);
+        y = y + t;
         wrf(ls, out, y);
         wr32(ls, s + 4, rd32(ls, s));             /* x2 = x1 */
         wr32(ls, s, rd32(ls, in));                /* x1 = x (re-read: out may be in) */
@@ -125,10 +143,14 @@ static void biquad_b_forward(spu_context* ctx)
     for (; j < 511; j++) {
         float t, y;
         y = rdf(ls, c) * rdf(ls, in);
-        t = rdf(ls, c + 4) * rdf(ls, st);         y = y + t;
-        t = rdf(ls, c + 8) * rdf(ls, st + 4);     y = y + t;
-        t = rdf(ls, c + 12) * rdf(ls, st + 8);    y = y + t;
-        t = rdf(ls, c + 16) * rdf(ls, st + 12);   y = y + t;
+        t = rdf(ls, c + 4) * rdf(ls, st);
+        y = y + t;
+        t = rdf(ls, c + 8) * rdf(ls, st + 4);
+        y = y + t;
+        t = rdf(ls, c + 12) * rdf(ls, st + 8);
+        y = y + t;
+        t = rdf(ls, c + 16) * rdf(ls, st + 12);
+        y = y + t;
         wrf(ls, out, y);
         wr32(ls, st + 4, rd32(ls, st));
         wr32(ls, st, rd32(ls, in));
@@ -149,8 +171,8 @@ static int check(spu_context* ctx, void (*body)(spu_context*), uint32_t stop)
     const int bad = dod3_spu_check_both(ctx, body, stop, &t_mode, 1, 2);
     s_checked++;
     if ((s_checked % 4000) == 0 || (bad && s_bad < 8))
-        fprintf(stderr, "[spu-native-check] msdsp biquads: %llu compared, %llu mismatched%s\n",
-                s_checked, s_bad + (bad ? 1 : 0), bad ? " -- MISMATCH" : "");
+        fprintf(stderr, "[spu-native-check] msdsp biquads: %llu compared, %llu mismatched%s\n", s_checked,
+                s_bad + (bad ? 1 : 0), bad ? " -- MISMATCH" : "");
     if (bad) s_bad++;
     return 1;   /* the lifted result stands; the trampoline is set */
 }
@@ -158,8 +180,7 @@ static int check(spu_context* ctx, void (*body)(spu_context*), uint32_t stop)
 int dod3_msdsp_biquad_a_hook(spu_context* ctx)
 {
     if (t_mode == 2 || !msdsp_on()) return 0;
-    if (t_mode == 0 && msdsp_checking())
-        return check(ctx, spu_ovl_msdsp_37000_spu_func_00039350, 0x397D8u);
+    if (t_mode == 0 && msdsp_checking()) return check(ctx, spu_ovl_msdsp_37000_spu_func_00039350, 0x397D8u);
     biquad_a_forward(ctx);
     return 0;   /* the lifted body runs the last sample */
 }
@@ -167,8 +188,7 @@ int dod3_msdsp_biquad_a_hook(spu_context* ctx)
 int dod3_msdsp_biquad_b_hook(spu_context* ctx)
 {
     if (t_mode == 2 || !msdsp_on()) return 0;
-    if (t_mode == 0 && msdsp_checking())
-        return check(ctx, spu_ovl_msdsp_37000_spu_func_00039630, 0x397ECu);
+    if (t_mode == 0 && msdsp_checking()) return check(ctx, spu_ovl_msdsp_37000_spu_func_00039630, 0x397ECu);
     biquad_b_forward(ctx);
     return 0;
 }

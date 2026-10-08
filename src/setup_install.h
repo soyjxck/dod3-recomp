@@ -50,7 +50,10 @@ struct Source {
     bool set() const { return kind != SourceKind::Unknown; }
 };
 
-struct DlcInfo { const char* id; const char* name; };
+struct DlcInfo {
+    const char* id;
+    const char* name;
+};
 const std::vector<DlcInfo>& known_dlc();            /* the 20 packs: voice, story, music, costumes */
 
 /* Does this build need the update (1.01)? */

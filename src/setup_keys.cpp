@@ -16,15 +16,15 @@ const std::vector<KeyField>& needed_keys()
 {
 #if DOD3_EBOOT == 101
     static const std::vector<KeyField> k = {
-        {"npdrm_erk", "NPDRM ERK (key revision 0x1C)", 32},
-        {"npdrm_riv", "NPDRM RIV (key revision 0x1C)", 16},
-        {"klic_free", "NP klic free", 16},
-        {"klic_key", "NP klic key", 16},
+        { "npdrm_erk", "NPDRM ERK (key revision 0x1C)", 32 },
+        { "npdrm_riv", "NPDRM RIV (key revision 0x1C)", 16 },
+        { "klic_free", "NP klic free", 16 },
+        { "klic_key", "NP klic key", 16 },
     };
 #else
     static const std::vector<KeyField> k = {
-        {"app_erk", "APP ERK (key revision 0x1C)", 32},
-        {"app_riv", "APP RIV (key revision 0x1C)", 16},
+        { "app_erk", "APP ERK (key revision 0x1C)", 32 },
+        { "app_riv", "APP RIV (key revision 0x1C)", 16 },
     };
 #endif
     return k;
@@ -63,8 +63,8 @@ std::string key_problem(const KeyField& f, const std::string& text, std::vector<
     std::vector<uint8_t> b;
     if (!from_hex(text, &b)) return "not hex";
     if (b.size() != f.bytes) {
-        return std::to_string(b.size()) + " bytes; this key is " + std::to_string(f.bytes) +
-               " (" + std::to_string(f.bytes * 2) + " hex digits)";
+        return std::to_string(b.size()) + " bytes; this key is " + std::to_string(f.bytes) + " (" +
+               std::to_string(f.bytes * 2) + " hex digits)";
     }
     if (bytes) *bytes = b;
     return "";
@@ -85,13 +85,19 @@ bool keys_parse(const std::string& text, Keys* k, std::string* err)
             return a == std::string::npos ? std::string() : s.substr(a, b - a + 1);
         };
         if (trim(line).empty()) continue;
-        if (eq == std::string::npos) { *err = "line " + std::to_string(n) + " is not name=hex"; return false; }
+        if (eq == std::string::npos) {
+            *err = "line " + std::to_string(n) + " is not name=hex";
+            return false;
+        }
         const std::string name = trim(line.substr(0, eq)), value = trim(line.substr(eq + 1));
         for (const KeyField& f : needed_keys()) {
             if (name != f.id) continue;
             std::vector<uint8_t> b;
             const std::string p = key_problem(f, value, &b);
-            if (!p.empty()) { *err = name + ": " + p; return false; }
+            if (!p.empty()) {
+                *err = name + ": " + p;
+                return false;
+            }
             k->v[f.id] = b;
         }
     }
@@ -101,7 +107,10 @@ bool keys_parse(const std::string& text, Keys* k, std::string* err)
 bool keys_load(const fs::path& file, Keys* k, std::string* err)
 {
     std::ifstream f(file, std::ios::binary);
-    if (!f) { *err = "cannot read the key file"; return false; }
+    if (!f) {
+        *err = "cannot read the key file";
+        return false;
+    }
     std::stringstream ss;
     ss << f.rdbuf();
     return keys_parse(ss.str(), k, err);

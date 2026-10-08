@@ -46,7 +46,11 @@
 extern "C" uint32_t g_rsx_engine_frame;
 
 /* func_entry in the generated ppu_recomp.h. */
-struct prof_fentry { uint64_t addr; void* func; const char* name; };
+struct prof_fentry {
+    uint64_t addr;
+    void* func;
+    const char* name;
+};
 extern "C" const struct prof_fentry function_table[];
 extern "C" const uint64_t function_table_count;
 
@@ -62,16 +66,23 @@ struct ThreadStat {
     std::map<std::string, uint64_t> wait_chain;    /* DOD3_PROF_TREE: "wait <- caller <- ..." -> samples */
     /* DOD3_PROF_TREE threads keep their last samples with a time stamp, so a
      * slow frame can be explained after the fact (win_prof_slow_frame). */
-    struct Sample { uint64_t t_us; int n; uint64_t fr[6]; };
-    std::vector<Sample> ring; size_t ring_pos = 0;
+    struct Sample {
+        uint64_t t_us;
+        int n;
+        uint64_t fr[6];
+    };
+    std::vector<Sample> ring;
+    size_t ring_pos = 0;
 };
 
-struct Sym { std::string name; uint64_t base; };
+struct Sym {
+    std::string name;
+    uint64_t base;
+};
 
 static std::unordered_map<uint64_t, Sym> s_syms;   /* address -> symbol (cached per 16-byte bucket) */
 static std::vector<std::pair<uint64_t, const char*>> s_ppu;   /* host func -> lifted name, sorted */
 static SRWLOCK s_dbg = SRWLOCK_INIT;
-
 
 static void ppu_table_init()
 {
@@ -87,7 +98,8 @@ static const char* ppu_name(uint64_t addr, uint64_t* base)
 {
     if (s_ppu.empty()) return NULL;
     auto it = std::upper_bound(s_ppu.begin(), s_ppu.end(), std::make_pair(addr, (const char*)NULL),
-                               [](const std::pair<uint64_t, const char*>& a, const std::pair<uint64_t, const char*>& b) { return a.first < b.first; });
+                               [](const std::pair<uint64_t, const char*>& a,
+                                  const std::pair<uint64_t, const char*>& b) { return a.first < b.first; });
     if (it == s_ppu.begin()) return NULL;
     --it;
     if (addr - it->first > 0x100000) return NULL;   /* a lifted function is never 1 MB */
@@ -99,29 +111,39 @@ static const Sym& symbolize(uint64_t addr)
 {
     auto it = s_syms.find(addr);
     if (it != s_syms.end()) return it->second;
-    Sym s; s.base = addr;
+    Sym s;
+    s.base = addr;
     uint64_t pb = 0;
     /* dbghelp first: the runtime and the SPU code have symbols, the lifted
      * PPU TUs do not, so a hit is right and a miss falls back to the lifted
      * function table (the table alone would name SPU code after the last
      * PPU function before it in memory). */
-    char buf[sizeof(SYMBOL_INFO) + 256] = {0};
+    char buf[sizeof(SYMBOL_INFO) + 256] = { 0 };
     SYMBOL_INFO* si = (SYMBOL_INFO*)buf;
-    si->SizeOfStruct = sizeof(SYMBOL_INFO); si->MaxNameLen = 255;
+    si->SizeOfStruct = sizeof(SYMBOL_INFO);
+    si->MaxNameLen = 255;
     DWORD64 disp = 0;
     if (SymFromAddr(GetCurrentProcess(), addr, &disp, si) && si->Address <= addr && addr - si->Address < 0x40000) {
-        s.name = si->Name; s.base = si->Address;
+        s.name = si->Name;
+        s.base = si->Address;
     } else if (const char* pn = ppu_name(addr, &pb)) {
-        s.name = std::string("ppu:") + (pn ? pn : "?"); s.base = pb;
+        s.name = std::string("ppu:") + (pn ? pn : "?");
+        s.base = pb;
     } else {
         {
-            HMODULE m = NULL; char mod[MAX_PATH] = "?";
-            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)addr, &m)) {
+            HMODULE m = NULL;
+            char mod[MAX_PATH] = "?";
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   (LPCSTR)addr, &m)) {
                 GetModuleFileNameA(m, mod, sizeof mod);
-                const char* b = strrchr(mod, '\\'); if (b) memmove(mod, b + 1, strlen(b));
+                const char* b = strrchr(mod, '\\');
+                if (b) memmove(mod, b + 1, strlen(b));
             }
-            char t[300]; snprintf(t, sizeof t, "%s+0x%llx", mod, (unsigned long long)(addr - (uint64_t)m));
-            s.name = t; s.base = (uint64_t)m;
+            char t[300];
+            snprintf(t, sizeof t, "%s+0x%llx", mod, (unsigned long long)(addr - (uint64_t)m));
+            s.name = t;
+            s.base = (uint64_t)m;
         }
     }
     return s_syms.emplace(addr, s).first->second;
@@ -132,9 +154,9 @@ static bool is_wait_leaf(const Sym& s)
 {
     const char* n = s.name.c_str();
     if (strncmp(n, "Nt", 2) && strncmp(n, "Zw", 2)) return false;
-    return strstr(n, "Wait") || strstr(n, "Delay") || strstr(n, "RemoveIoCompletion") ||
-           strstr(n, "SignalAndWait") || strstr(n, "WorkerFactory") || strstr(n, "YieldExecution") ||
-           strstr(n, "ReadFile") || strstr(n, "DeviceIoControl") || strstr(n, "ReplyWaitReceivePort");
+    return strstr(n, "Wait") || strstr(n, "Delay") || strstr(n, "RemoveIoCompletion") || strstr(n, "SignalAndWait") ||
+           strstr(n, "WorkerFactory") || strstr(n, "YieldExecution") || strstr(n, "ReadFile") ||
+           strstr(n, "DeviceIoControl") || strstr(n, "ReplyWaitReceivePort");
 }
 
 static std::string thread_name(HANDLE h, DWORD tid)
@@ -142,10 +164,16 @@ static std::string thread_name(HANDLE h, DWORD tid)
     PWSTR d = NULL;
     std::string n;
     if (SUCCEEDED(GetThreadDescription(h, &d)) && d) {
-        char buf[128]; WideCharToMultiByte(CP_UTF8, 0, d, -1, buf, sizeof buf, NULL, NULL);
-        n = buf; LocalFree(d);
+        char buf[128];
+        WideCharToMultiByte(CP_UTF8, 0, d, -1, buf, sizeof buf, NULL, NULL);
+        n = buf;
+        LocalFree(d);
     }
-    if (n.empty()) { char b[32]; snprintf(b, sizeof b, "tid %lu", (unsigned long)tid); n = b; }
+    if (n.empty()) {
+        char b[32];
+        snprintf(b, sizeof b, "tid %lu", (unsigned long)tid);
+        n = b;
+    }
     return n;
 }
 
@@ -174,9 +202,11 @@ static bool unwind_step(CONTEXT* ctx)
              * on top of the stack. */
             uint64_t ret = 0;
             if (!safe_read64(ctx->Rsp, &ret)) return false;
-            ctx->Rip = ret; ctx->Rsp += 8;
+            ctx->Rip = ret;
+            ctx->Rsp += 8;
         } else {
-            PVOID handler = NULL; DWORD64 est = 0;
+            PVOID handler = NULL;
+            DWORD64 est = 0;
             RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, ctx->Rip, rf, ctx, &handler, &est, NULL);
         }
         return true;
@@ -186,7 +216,8 @@ static bool unwind_step(CONTEXT* ctx)
 }
 static int walk(HANDLE th, uint64_t* out, int cap)
 {
-    CONTEXT ctx; memset(&ctx, 0, sizeof ctx);
+    CONTEXT ctx;
+    memset(&ctx, 0, sizeof ctx);
     ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
     if (SuspendThread(th) == (DWORD)-1) return 0;
     int n = 0;
@@ -204,8 +235,12 @@ static int walk(HANDLE th, uint64_t* out, int cap)
     return n;
 }
 
-struct Thr { DWORD tid; HANDLE h; };
-static std::vector<Thr> s_threads; static ULONGLONG s_threads_at;
+struct Thr {
+    DWORD tid;
+    HANDLE h;
+};
+static std::vector<Thr> s_threads;
+static ULONGLONG s_threads_at;
 
 static void refresh_threads()
 {
@@ -215,17 +250,26 @@ static void refresh_threads()
     std::vector<Thr> fresh;
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
     if (snap == INVALID_HANDLE_VALUE) return;
-    THREADENTRY32 te; te.dwSize = sizeof te;
+    THREADENTRY32 te;
+    te.dwSize = sizeof te;
     const DWORD pid = GetCurrentProcessId(), self = GetCurrentThreadId();
     for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
         if (te.th32OwnerProcessID != pid || te.th32ThreadID == self) continue;
         HANDLE h = NULL;
-        for (auto& t : s_threads) if (t.tid == te.th32ThreadID) { h = t.h; t.h = NULL; break; }
-        if (!h) h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
+        for (auto& t : s_threads)
+            if (t.tid == te.th32ThreadID) {
+                h = t.h;
+                t.h = NULL;
+                break;
+            }
+        if (!h)
+            h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE,
+                           te.th32ThreadID);
         if (h) fresh.push_back({ te.th32ThreadID, h });
     }
     CloseHandle(snap);
-    for (auto& t : s_threads) if (t.h) CloseHandle(t.h);   /* gone */
+    for (auto& t : s_threads)
+        if (t.h) CloseHandle(t.h);   /* gone */
     s_threads.swap(fresh);
 }
 
@@ -265,7 +309,8 @@ static void report(double secs, long interval_ms)
      * samples over passes. (Scaling by the nominal interval understated them:
      * a pass takes longer than the sleep between passes.) */
     const double per = s_passes ? secs / (double)s_passes : interval_ms / 1000.0;
-    fprintf(stderr, "[prof] %.1f s window, %llu passes (%.1f ms apart, asked %ld), %llu on-CPU samples; threads by CPU:", secs,
+    fprintf(stderr,
+            "[prof] %.1f s window, %llu passes (%.1f ms apart, asked %ld), %llu on-CPU samples; threads by CPU:", secs,
             (unsigned long long)s_passes, s_passes ? secs * 1000.0 / (double)s_passes : 0.0, interval_ms,
             (unsigned long long)s_total_samples);
     int shown = 0;
@@ -310,7 +355,8 @@ static void report(double secs, long interval_ms)
                 for (auto& kv : t.wait_chain) wc.push_back({ kv.second, kv.first });
                 std::sort(wc.rbegin(), wc.rend());
                 for (size_t i = 0; i < wc.size() && i < 8; i++)
-                    fprintf(stderr, "[prof]       %.0f%% of its waits: %s\n", 100.0 * wc[i].first / t.waits, wc[i].second.c_str());
+                    fprintf(stderr, "[prof]       %.0f%% of its waits: %s\n", 100.0 * wc[i].first / t.waits,
+                            wc[i].second.c_str());
             }
         }
     }
@@ -319,7 +365,8 @@ static void report(double secs, long interval_ms)
         std::sort(top.begin(), top.end(), [](auto& a, auto& c) { return a.second > c.second; });
         fprintf(stderr, "[prof]   %s:", what);
         for (size_t i = 0; i < top.size() && i < (size_t)n; i++)
-            fprintf(stderr, " %.1f%% %s;", 100.0 * top[i].second / (s_total_samples ? s_total_samples : 1), symbolize(top[i].first).name.c_str());
+            fprintf(stderr, " %.1f%% %s;", 100.0 * top[i].second / (s_total_samples ? s_total_samples : 1),
+                    symbolize(top[i].first).name.c_str());
         fputc('\n', stderr);
     };
     if (s_callers_of && !s_caller_chains.empty()) {
@@ -327,14 +374,25 @@ static void report(double secs, long interval_ms)
         for (auto& kv : s_caller_chains) cc.push_back({ kv.second, kv.first });
         std::sort(cc.rbegin(), cc.rend());
         fprintf(stderr, "[prof]   callers of %s:", s_callers_of);
-        for (size_t i = 0; i < cc.size() && i < 6; i++) fprintf(stderr, " %llu x [%s];", (unsigned long long)cc[i].first, cc[i].second.c_str());
+        for (size_t i = 0; i < cc.size() && i < 6; i++)
+            fprintf(stderr, " %llu x [%s];", (unsigned long long)cc[i].first, cc[i].second.c_str());
         fputc('\n', stderr);
         s_caller_chains.clear();
     }
     dump("hottest functions (self)", s_self_all, 14);
     dump("hottest functions (inclusive)", s_incl_all, 14);
-    for (auto& kv : s_stats) { kv.second.samples = 0; kv.second.waits = 0; kv.second.self.clear(); kv.second.wait_site.clear(); kv.second.incl.clear(); kv.second.wait_chain.clear(); }
-    s_self_all.clear(); s_incl_all.clear(); s_total_samples = 0; s_passes = 0;
+    for (auto& kv : s_stats) {
+        kv.second.samples = 0;
+        kv.second.waits = 0;
+        kv.second.self.clear();
+        kv.second.wait_site.clear();
+        kv.second.incl.clear();
+        kv.second.wait_chain.clear();
+    }
+    s_self_all.clear();
+    s_incl_all.clear();
+    s_total_samples = 0;
+    s_passes = 0;
 }
 
 static void dump_all_stacks(FILE* out, const char* why)
@@ -359,12 +417,15 @@ static void dump_all_stacks(FILE* out, const char* why)
  * waited for the symbol lock, and the boot hung that way once. One at a
  * time; a request while one is pending is dropped. */
 static volatile LONG s_sf_pending;
-static uint64_t s_sf_start, s_sf_end; static double s_sf_ms;
+static uint64_t s_sf_start, s_sf_end;
+static double s_sf_ms;
 extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double frame_ms);
 extern "C" void win_prof_slow_frame_async(uint64_t start_us, uint64_t end_us, double frame_ms)
 {
     if (s_sf_pending) return;
-    s_sf_start = start_us; s_sf_end = end_us; s_sf_ms = frame_ms;
+    s_sf_start = start_us;
+    s_sf_end = end_us;
+    s_sf_ms = frame_ms;
     InterlockedExchange(&s_sf_pending, 1);
 }
 
@@ -379,10 +440,15 @@ static DWORD WINAPI prof_thread(LPVOID arg)
      * D3D12 device and window are being created can deadlock the boot (a
      * thread suspended holding the loader lock, which the walk here needs). */
     while (g_rsx_engine_frame == 0) Sleep(50);
-    LARGE_INTEGER qf, t0; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&t0);
+    LARGE_INTEGER qf, t0;
+    QueryPerformanceFrequency(&qf);
+    QueryPerformanceCounter(&t0);
     for (;;) {
         Sleep((DWORD)interval);
-        if (s_sf_pending) { win_prof_slow_frame(s_sf_start, s_sf_end, s_sf_ms); InterlockedExchange(&s_sf_pending, 0); }
+        if (s_sf_pending) {
+            win_prof_slow_frame(s_sf_start, s_sf_end, s_sf_ms);
+            InterlockedExchange(&s_sf_pending, 0);
+        }
         refresh_threads();
         AcquireSRWLockExclusive(&s_dbg);
         s_passes++;
@@ -397,7 +463,8 @@ static DWORD WINAPI prof_thread(LPVOID arg)
             if (deep) {
                 if (st.ring.empty()) st.ring.resize(4096);
                 ThreadStat::Sample& smp = st.ring[st.ring_pos++ % st.ring.size()];
-                smp.t_us = pass_us; smp.n = n < 6 ? n : 6;
+                smp.t_us = pass_us;
+                smp.n = n < 6 ? n : 6;
                 for (int i = 0; i < smp.n; i++) smp.fr[i] = fr[i];
             }
             /* Leaf attributed to its function start, so one function is one key. */
@@ -418,7 +485,10 @@ static DWORD WINAPI prof_thread(LPVOID arg)
                     if (deep) {
                         /* Who is waiting: the wait and the seven frames above it. */
                         std::string chain;
-                        for (int k = i; k < n && k < i + 8; k++) { if (k > i) chain += " <- "; chain += symbolize(fr[k]).name; }
+                        for (int k = i; k < n && k < i + 8; k++) {
+                            if (k > i) chain += " <- ";
+                            chain += symbolize(fr[k]).name;
+                        }
                         st.wait_chain[chain]++;
                     }
                     break;
@@ -428,21 +498,28 @@ static DWORD WINAPI prof_thread(LPVOID arg)
             const uint64_t leaf = ls.base;
             if (s_callers_of && ls.name == s_callers_of) {
                 std::string chain;
-                for (int i = 1; i < n && i <= 3; i++) { if (i > 1) chain += " <- "; chain += symbolize(fr[i]).name; }
+                for (int i = 1; i < n && i <= 3; i++) {
+                    if (i > 1) chain += " <- ";
+                    chain += symbolize(fr[i]).name;
+                }
                 s_caller_chains[chain]++;
             }
-            st.samples++; s_total_samples++;
-            st.self[leaf]++; s_self_all[leaf]++;
+            st.samples++;
+            s_total_samples++;
+            st.self[leaf]++;
+            s_self_all[leaf]++;
             std::vector<uint64_t> seen;
             for (int i = 0; i < n; i++) {
                 const uint64_t b = symbolize(fr[i]).base;
                 if (std::find(seen.begin(), seen.end(), b) != seen.end()) continue;
-                seen.push_back(b); s_incl_all[b]++;
+                seen.push_back(b);
+                s_incl_all[b]++;
                 if (deep) st.incl[b]++;
             }
         }
         ReleaseSRWLockExclusive(&s_dbg);
-        LARGE_INTEGER now; QueryPerformanceCounter(&now);
+        LARGE_INTEGER now;
+        QueryPerformanceCounter(&now);
         const double secs = (double)(now.QuadPart - t0.QuadPart) / qf.QuadPart;
         if (secs >= report_s) {
             AcquireSRWLockExclusive(&s_dbg);
@@ -462,26 +539,40 @@ static DWORD WINAPI stall_thread(LPVOID arg)
     if (const char* e = getenv("DOD3_STALL_MAX")) max_n = atol(e);
     /* DOD3_STALL_FROM=<s>: arm only after that many seconds, so a run's slow
      * boot does not spend every dump before the part under study. */
-    if (const char* e = getenv("DOD3_STALL_FROM")) { long s = atol(e); if (s > 0) Sleep((DWORD)s * 1000u); }
+    if (const char* e = getenv("DOD3_STALL_FROM")) {
+        long s = atol(e);
+        if (s > 0) Sleep((DWORD)s * 1000u);
+    }
     uint32_t last = g_rsx_engine_frame;
     ULONGLONG last_t = 0, last_sample = 0, stall_from = 0;
-    { LARGE_INTEGER qf, qc; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&qc); last_t = (ULONGLONG)(qc.QuadPart * 1000 / qf.QuadPart); }
+    {
+        LARGE_INTEGER qf, qc;
+        QueryPerformanceFrequency(&qf);
+        QueryPerformanceCounter(&qc);
+        last_t = (ULONGLONG)(qc.QuadPart * 1000 / qf.QuadPart);
+    }
     long n = 0;
     for (;;) {
         Sleep(thr_ms < 100 ? 5 : 20);
         const uint32_t f = g_rsx_engine_frame;
-        LARGE_INTEGER qf, qc; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&qc);
+        LARGE_INTEGER qf, qc;
+        QueryPerformanceFrequency(&qf);
+        QueryPerformanceCounter(&qc);
         const ULONGLONG t = (ULONGLONG)(qc.QuadPart * 1000 / qf.QuadPart);   /* ms, fine-grained */
         if (f != last) {
-            if (stall_from) fprintf(stderr, "[stall] frame %u came after %llu ms\n", f, (unsigned long long)(t - last_t));
-            last = f; last_t = t; stall_from = 0;
+            if (stall_from)
+                fprintf(stderr, "[stall] frame %u came after %llu ms\n", f, (unsigned long long)(t - last_t));
+            last = f;
+            last_t = t;
+            stall_from = 0;
             continue;
         }
         if (!f || t - last_t < (ULONGLONG)thr_ms) continue;
         if (!stall_from) stall_from = t;
         if (n < max_n && t - last_sample > 2000 && stall_from == t) {
             char why[160];
-            snprintf(why, sizeof why, "[stall] no present for %ld ms after frame %u -- every thread's stack:", thr_ms, f);
+            snprintf(why, sizeof why, "[stall] no present for %ld ms after frame %u -- every thread's stack:", thr_ms,
+                     f);
             FILE* out = stderr;
             char path[512] = "";
             if (dir && *dir) {
@@ -492,8 +583,12 @@ static DWORD WINAPI stall_thread(LPVOID arg)
             AcquireSRWLockExclusive(&s_dbg);
             dump_all_stacks(out, why);
             ReleaseSRWLockExclusive(&s_dbg);
-            if (out != stderr) { fclose(out); fprintf(stderr, "%s -> %s\n", why, path); }
-            n++; last_sample = t;
+            if (out != stderr) {
+                fclose(out);
+                fprintf(stderr, "%s -> %s\n", why, path);
+            }
+            n++;
+            last_sample = t;
         }
     }
 }
@@ -503,13 +598,19 @@ static DWORD WINAPI stall_thread(LPVOID arg)
 static LONG WINAPI crash_filter(EXCEPTION_POINTERS* ep)
 {
     static volatile LONG once = 0;
-    if (InterlockedCompareExchange(&once, 1, 0) != 0) { Sleep(5000); return EXCEPTION_EXECUTE_HANDLER; }
+    if (InterlockedCompareExchange(&once, 1, 0) != 0) {
+        Sleep(5000);
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
     const EXCEPTION_RECORD* er = ep->ExceptionRecord;
     fprintf(stderr, "\n[crash] exception 0x%08lX at %p on thread %lu \"%s\"", (unsigned long)er->ExceptionCode,
             er->ExceptionAddress, (unsigned long)GetCurrentThreadId(),
             thread_name(GetCurrentThread(), GetCurrentThreadId()).c_str());
     if (er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2)
-        fprintf(stderr, " -- %s of %p", er->ExceptionInformation[0] == 0 ? "read" : er->ExceptionInformation[0] == 1 ? "write" : "execute",
+        fprintf(stderr, " -- %s of %p",
+                er->ExceptionInformation[0] == 0   ? "read"
+                : er->ExceptionInformation[0] == 1 ? "write"
+                                                   : "execute",
                 (void*)er->ExceptionInformation[1]);
     fputc('\n', stderr);
     /* Unwind from the faulting context: the same walk as the sampler, on a
@@ -521,8 +622,16 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS* ep)
         fprintf(stderr, "[crash]   %2d  %s +0x%llx\n", n, sy.name.c_str(), (unsigned long long)(ctx.Rip - sy.base));
         DWORD64 base = 0;
         PRUNTIME_FUNCTION rf = RtlLookupFunctionEntry(ctx.Rip, &base, NULL);
-        if (!rf) { uint64_t ret = 0; if (!safe_read64(ctx.Rsp, &ret)) break; ctx.Rip = ret; ctx.Rsp += 8; }
-        else { PVOID h = NULL; DWORD64 est = 0; RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, ctx.Rip, rf, &ctx, &h, &est, NULL); }
+        if (!rf) {
+            uint64_t ret = 0;
+            if (!safe_read64(ctx.Rsp, &ret)) break;
+            ctx.Rip = ret;
+            ctx.Rsp += 8;
+        } else {
+            PVOID h = NULL;
+            DWORD64 est = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, ctx.Rip, rf, &ctx, &h, &est, NULL);
+        }
     }
     ReleaseSRWLockExclusive(&s_dbg);
     fflush(stderr);
@@ -540,7 +649,8 @@ extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double f
     for (auto& kv : s_stats) {
         ThreadStat& st = kv.second;
         if (st.ring.empty()) continue;
-        std::map<std::string, int> hist; int total = 0, waits = 0;
+        std::map<std::string, int> hist;
+        int total = 0, waits = 0;
         for (const auto& smp : st.ring) {
             if (!smp.n || smp.t_us < start_us || smp.t_us > end_us) continue;
             total++;
@@ -551,16 +661,25 @@ extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double f
                 key = "wait";
                 for (int i = 1; i < smp.n; i++) {
                     const char* nm = symbolize(smp.fr[i]).name.c_str();
-                    if (!strncmp(nm, "Nt", 2) || !strncmp(nm, "Zw", 2) || !strncmp(nm, "Rtl", 3) || strstr(nm, "ntdll") ||
-                        strstr(nm, "KERNELBASE") || !strncmp(nm, "Sleep", 5) || !strncmp(nm, "WaitFor", 7)) continue;
-                    key += " in "; key += nm;
+                    if (!strncmp(nm, "Nt", 2) || !strncmp(nm, "Zw", 2) || !strncmp(nm, "Rtl", 3) ||
+                        strstr(nm, "ntdll") || strstr(nm, "KERNELBASE") || !strncmp(nm, "Sleep", 5) ||
+                        !strncmp(nm, "WaitFor", 7))
+                        continue;
+                    key += " in ";
+                    key += nm;
                     /* The waiter's callers (the guest function polling). */
-                    for (int j = i + 1; j < smp.n && j < i + 9; j++) { key += " <- "; key += symbolize(smp.fr[j]).name; }
+                    for (int j = i + 1; j < smp.n && j < i + 9; j++) {
+                        key += " <- ";
+                        key += symbolize(smp.fr[j]).name;
+                    }
                     break;
                 }
             } else {
                 key = ls.name;
-                for (int i = 1; i < smp.n && i < 4; i++) { key += " <- "; key += symbolize(smp.fr[i]).name; }
+                for (int i = 1; i < smp.n && i < 4; i++) {
+                    key += " <- ";
+                    key += symbolize(smp.fr[i]).name;
+                }
             }
             hist[key]++;
         }
@@ -593,7 +712,9 @@ extern "C" void win_prof_start(void)
     s_callers_of = getenv("DOD3_PROF_CALLERS");
     s_tree_of = getenv("DOD3_PROF_TREE");
     if (prof) {
-        long ms = atol(prof); if (ms < 1) ms = 2; if (ms > 50) ms = 50;
+        long ms = atol(prof);
+        if (ms < 1) ms = 2;
+        if (ms > 50) ms = 50;
         CreateThread(NULL, 1u << 20, prof_thread, (LPVOID)(intptr_t)ms, 0, NULL);
         fprintf(stderr, "[prof] sampling every %ld ms\n", ms);
     }

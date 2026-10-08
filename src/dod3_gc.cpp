@@ -37,7 +37,10 @@ static double now_ms(void)
 static int gc_log(void)
 {
     static int on = -1;
-    if (on < 0) { const char* e = getenv("DOD3_GC_LOG"); on = e ? atoi(e) : 0; }
+    if (on < 0) {
+        const char* e = getenv("DOD3_GC_LOG");
+        on = e ? atoi(e) : 0;
+    }
     return on;
 }
 
@@ -45,7 +48,7 @@ static double s_reach_ms;       /* reachability time inside the current collecti
 static unsigned s_reach_calls;
 
 extern "C" void dod3_gc_reach_native(ppu_context* ctx);   /* src/dod3_gc_native.cpp */
-extern "C" int  dod3_gc_par_threads(void);                /* src/dod3_gc_native.cpp: DOD3_GC_PAR */
+extern "C" int dod3_gc_par_threads(void);                /* src/dod3_gc_native.cpp: DOD3_GC_PAR */
 
 /* DOD3_GC_NATIVE: 1 (default) the native pass, 0 the lifted one, "check"
  * both on the same heap (lifted first, then native over the same input)
@@ -86,15 +89,18 @@ static void reach_check(ppu_context* ctx)
     const uint32_t list = (uint32_t)ctx->gpr[3];
     const uint32_t num0 = be32(list + 4), cur0 = be32(list + 0xC);
     ppu_context saved = *ctx;
-    DOD3_FN_GC_REACH_LIFTED(ctx); dod3_drain(ctx);
-    ReachResult a; reach_snapshot(list, &a);
+    DOD3_FN_GC_REACH_LIFTED(ctx);
+    dod3_drain(ctx);
+    ReachResult a;
+    reach_snapshot(list, &a);
     const ppu_context after_lifted = *ctx;
     /* Same input for the native pass: the list as it came in. */
     *(uint32_t*)(vm_base + list + 4) = __builtin_bswap32(num0);
     *(uint32_t*)(vm_base + list + 0xC) = __builtin_bswap32(cur0);
     *ctx = saved;
     dod3_gc_reach_native(ctx);
-    ReachResult b; reach_snapshot(list, &b);
+    ReachResult b;
+    reach_snapshot(list, &b);
     /* DOD3_GC_PAR: the parallel phase 2 queues the same objects in another
      * order; compare them as sets. */
     if (dod3_gc_par_threads() > 0) {
@@ -103,12 +109,23 @@ static void reach_check(ppu_context* ctx)
     }
     size_t qdiff = 0, udiff = 0, first_q = (size_t)-1, first_u = (size_t)-1;
     const size_t nq = a.queued.size() < b.queued.size() ? a.queued.size() : b.queued.size();
-    for (size_t i = 0; i < nq; i++) if (a.queued[i] != b.queued[i]) { if (!qdiff) first_q = i; qdiff++; }
+    for (size_t i = 0; i < nq; i++)
+        if (a.queued[i] != b.queued[i]) {
+            if (!qdiff) first_q = i;
+            qdiff++;
+        }
     const size_t nu = a.unreachable.size() < b.unreachable.size() ? a.unreachable.size() : b.unreachable.size();
-    for (size_t i = 0; i < nu; i++) if (a.unreachable[i] != b.unreachable[i]) { if (!udiff) first_u = i; udiff++; }
+    for (size_t i = 0; i < nu; i++)
+        if (a.unreachable[i] != b.unreachable[i]) {
+            if (!udiff) first_u = i;
+            udiff++;
+        }
     int regs = 0;
-    for (int i = 1; i < 32; i++) if (i != 3 && i >= 14 && after_lifted.gpr[i] != ctx->gpr[i]) regs++;
-    fprintf(stderr, "[gc-check] queued %zu lifted / %zu native, %zu differ (first at %zd); unreachable bits differ for %zu of %zu (first at %zd); r1 %s, non-volatile regs differing %d\n",
+    for (int i = 1; i < 32; i++)
+        if (i != 3 && i >= 14 && after_lifted.gpr[i] != ctx->gpr[i]) regs++;
+    fprintf(stderr,
+            "[gc-check] queued %zu lifted / %zu native, %zu differ (first at %zd); unreachable bits differ for %zu of "
+            "%zu (first at %zd); r1 %s, non-volatile regs differing %d\n",
             a.queued.size(), b.queued.size(), qdiff, (ptrdiff_t)first_q, udiff, nu, (ptrdiff_t)first_u,
             after_lifted.gpr[1] == ctx->gpr[1] ? "same" : "DIFFERENT", regs);
 }
@@ -117,9 +134,12 @@ void DOD3_FN_GC_REACH(ppu_context* ctx)
 {
     const double t0 = now_ms();
     switch (gc_native()) {
-    case 1:  dod3_gc_reach_native(ctx); break;
-    case 2:  reach_check(ctx); break;
-    default: DOD3_FN_GC_REACH_LIFTED(ctx); dod3_drain(ctx); break;
+    case 1: dod3_gc_reach_native(ctx); break;
+    case 2: reach_check(ctx); break;
+    default:
+        DOD3_FN_GC_REACH_LIFTED(ctx);
+        dod3_drain(ctx);
+        break;
     }
     s_reach_ms += now_ms() - t0;
     s_reach_calls++;
@@ -162,7 +182,10 @@ extern "C" void (*g_lv2_usleep_pre)(ppu_context* ctx, uint64_t* usec);
 static int gc_defer(void)
 {
     static int on = -1;
-    if (on < 0) { const char* e = getenv("DOD3_GC_DEFER"); on = e ? atoi(e) : 1; }
+    if (on < 0) {
+        const char* e = getenv("DOD3_GC_DEFER");
+        on = e ? atoi(e) : 1;
+    }
     return on;
 }
 
@@ -175,7 +198,8 @@ static void gc_usleep_pre(ppu_context* ctx, uint64_t* usec)
     s_def_world = 0;
     if (be32(GWORLD) != world) {
         s_def_dropped = 1;
-        if (gc_log()) fprintf(stderr, "[gc] deferred purge dropped: the world changed (%08X -> %08X)\n", world, be32(GWORLD));
+        if (gc_log())
+            fprintf(stderr, "[gc] deferred purge dropped: the world changed (%08X -> %08X)\n", world, be32(GWORLD));
         return;
     }
     const double t0 = now_ms();
@@ -212,7 +236,8 @@ void DOD3_FN_COLLECT_GARBAGE(ppu_context* ctx)
         s_def_world = 0;                                 /* this one collects instead */
         s_def_dropped = 0;
     }
-    s_reach_ms = 0; s_reach_calls = 0;
+    s_reach_ms = 0;
+    s_reach_calls = 0;
     const uint64_t u0 = dod3_now_us();
     const double t0 = now_ms();
     DOD3_FN_COLLECT_GARBAGE_LIFTED(ctx);
@@ -222,8 +247,11 @@ void DOD3_FN_COLLECT_GARBAGE(ppu_context* ctx)
         static unsigned n = 0;
         const uint32_t nobj = be32(DOD3_A_GOBJOBJECTS + 4);   /* GObjObjects: a TArray (data, num, max) */
 
-        fprintf(stderr, "[gc] #%u collection %.2f ms, reachability %.2f ms (%u passes), %u objects, %.0f ns each, frame %u, from %08X\n",
-                ++n, ms, s_reach_ms, s_reach_calls, nobj, nobj ? s_reach_ms * 1e6 / nobj : 0.0, g_rsx_engine_frame, caller);
+        fprintf(stderr,
+                "[gc] #%u collection %.2f ms, reachability %.2f ms (%u passes), %u objects, %.0f ns each, frame %u, "
+                "from %08X\n",
+                ++n, ms, s_reach_ms, s_reach_calls, nobj, nobj ? s_reach_ms * 1e6 / nobj : 0.0, g_rsx_engine_frame,
+                caller);
 #ifdef _WIN32
         /* DOD3_GC_LOG=2 with DOD3_PROF / DOD3_PROF_TREE: the sampled stacks
          * of the collection, as [slow-frame] lines. */

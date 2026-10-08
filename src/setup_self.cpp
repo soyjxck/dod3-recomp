@@ -20,12 +20,16 @@ constexpr uint32_t kNpdMagic = 0x4E504400;    /* "NPD\0" */
 struct Reader {
     const std::vector<uint8_t>& d;
     bool ok = true;
-    bool has(uint64_t off, uint64_t n) { if (off > d.size() || n > d.size() - off) ok = false; return ok; }
+    bool has(uint64_t off, uint64_t n)
+    {
+        if (off > d.size() || n > d.size() - off) ok = false;
+        return ok;
+    }
     uint16_t u16(uint64_t o) { return has(o, 2) ? (uint16_t)(d[o] << 8 | d[o + 1]) : 0; }
-    uint32_t u32(uint64_t o) { return has(o, 4) ? (uint32_t)d[o] << 24 | (uint32_t)d[o + 1] << 16 | (uint32_t)d[o + 2] << 8 | d[o + 3] : 0; }
+    uint32_t u32(uint64_t o)
+    { return has(o, 4) ? (uint32_t)d[o] << 24 | (uint32_t)d[o + 1] << 16 | (uint32_t)d[o + 2] << 8 | d[o + 3] : 0; }
     uint64_t u64(uint64_t o) { return has(o, 8) ? (uint64_t)u32(o) << 32 | u32(o + 4) : 0; }
 };
-
 
 struct Header {
     uint16_t key_revision;
@@ -36,8 +40,11 @@ struct Header {
 
 bool header(const std::vector<uint8_t>& self, Header* h, std::string* err)
 {
-    Reader r{self};
-    if (r.u32(0) != kSelfMagic || r.u16(0x0A) != 1) { *err = "not a SELF"; return false; }
+    Reader r{ self };
+    if (r.u32(0) != kSelfMagic || r.u16(0x0A) != 1) {
+        *err = "not a SELF";
+        return false;
+    }
     h->key_revision = r.u16(0x08);
     h->meta_off = r.u32(0x0C);
     h->header_len = r.u64(0x10);
@@ -62,7 +69,7 @@ static bool self_info(const std::vector<uint8_t>& self, SelfInfo* info, std::str
 {
     Header h;
     if (!header(self, &h, err)) return false;
-    Reader r{self};
+    Reader r{ self };
     *info = SelfInfo();
     info->key_revision = h.key_revision;
     info->self_type = r.u32(h.app_info + 0x0C);
@@ -79,17 +86,24 @@ static bool self_info(const std::vector<uint8_t>& self, SelfInfo* info, std::str
     return true;
 }
 
-bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::vector<uint8_t>* elf,
-                  bool* wrong_keys, std::string* err)
+bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::vector<uint8_t>* elf, bool* wrong_keys,
+                  std::string* err)
 {
     *wrong_keys = false;
-    if (!crypto_selftest()) { *err = "internal error: the cryptography self-test failed"; return false; }
+    if (!crypto_selftest()) {
+        *err = "internal error: the cryptography self-test failed";
+        return false;
+    }
     Header h;
     SelfInfo info;
     if (!header(self, &h, err) || !self_info(self, &info, err)) return false;
-    if (info.self_type != 4 && info.self_type != 8) { *err = "not an application SELF (type " + std::to_string(info.self_type) + ")"; return false; }
+    if (info.self_type != 4 && info.self_type != 8) {
+        *err = "not an application SELF (type " + std::to_string(info.self_type) + ")";
+        return false;
+    }
     if (info.self_type == 8 && info.npd_license != 3) {
-        *err = "this NPDRM SELF has a per-console licence (type " + std::to_string(info.npd_license) + "), which the setup cannot open";
+        *err = "this NPDRM SELF has a per-console licence (type " + std::to_string(info.npd_license) +
+               "), which the setup cannot open";
         return false;
     }
 
@@ -112,15 +126,25 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
         aes_cbc_decrypt(aes, iv, meta, sizeof meta);
     }
     for (int i = 0; i < 16; i++)
-        if (meta[0x10 + i] || meta[0x30 + i]) { *wrong_keys = true; *err = "the keys do not open this EBOOT.BIN"; return false; }
+        if (meta[0x10 + i] || meta[0x30 + i]) {
+            *wrong_keys = true;
+            *err = "the keys do not open this EBOOT.BIN";
+            return false;
+        }
 
     /* the metadata headers, the section headers and the keys */
     const uint64_t mh = mi + 0x40;
-    if (h.header_len <= mh) { *err = "the SELF's metadata is damaged"; return false; }
+    if (h.header_len <= mh) {
+        *err = "the SELF's metadata is damaged";
+        return false;
+    }
     std::vector<uint8_t> md(self.begin() + (long)mh, self.begin() + (long)h.header_len);
     aes.set_key(meta, 128);
     aes_ctr(aes, meta + 0x20, 0, md.data(), md.size());
-    if (md.size() < 0x20) { *err = "the SELF's metadata is damaged"; return false; }
+    if (md.size() < 0x20) {
+        *err = "the SELF's metadata is damaged";
+        return false;
+    }
     const uint32_t nsec = dod3_be32(&md[0x0C]), nkeys = dod3_be32(&md[0x10]);
     if (nsec > 256 || nkeys > 1024 || 0x20 + (uint64_t)nsec * 0x30 + (uint64_t)nkeys * 16 > md.size()) {
         *err = "the SELF's metadata is damaged";
@@ -130,11 +154,19 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
     const uint8_t* dkeys = sec + nsec * 0x30;
 
     /* the ELF's own headers (in the clear) */
-    Reader r{self};
+    Reader r{ self };
     const uint8_t* eh = &self[(size_t)h.elf];
-    if (memcmp(eh, "\x7F" "ELF", 4) != 0 || eh[4] != 2 || eh[5] != 2) { *err = "the SELF does not hold a 64-bit big-endian ELF"; return false; }
+    if (memcmp(eh,
+               "\x7F"
+               "ELF",
+               4) != 0 ||
+        eh[4] != 2 || eh[5] != 2) {
+        *err = "the SELF does not hold a 64-bit big-endian ELF";
+        return false;
+    }
     const uint64_t e_phoff = dod3_be64(eh + 0x20), e_shoff = dod3_be64(eh + 0x28);
-    const uint16_t e_phentsize = dod3_be16(eh + 0x36), e_phnum = dod3_be16(eh + 0x38), e_shentsize = dod3_be16(eh + 0x3A), e_shnum = dod3_be16(eh + 0x3C);
+    const uint16_t e_phentsize = dod3_be16(eh + 0x36), e_phnum = dod3_be16(eh + 0x38),
+                   e_shentsize = dod3_be16(eh + 0x3A), e_shnum = dod3_be16(eh + 0x3C);
     if (e_phentsize != 0x38 || e_phnum == 0 || e_phnum > 64 || !r.has(h.phdr, (uint64_t)e_phnum * 0x38) ||
         (e_shnum && (e_shentsize != 0x40 || e_shnum > 4096 || !r.has(h.shdr, (uint64_t)e_shnum * 0x40)))) {
         *err = "the SELF's ELF headers are damaged";
@@ -143,8 +175,12 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
     const uint8_t* ph = &self[(size_t)h.phdr];
     uint64_t end = std::max<uint64_t>(0x40, e_phoff + (uint64_t)e_phnum * 0x38);
     if (e_shnum) end = std::max(end, e_shoff + (uint64_t)e_shnum * 0x40);
-    for (int i = 0; i < e_phnum; i++) end = std::max(end, dod3_be64(ph + i * 0x38 + 0x08) + dod3_be64(ph + i * 0x38 + 0x20));
-    if (end > (1ull << 30)) { *err = "the SELF's ELF headers are damaged"; return false; }
+    for (int i = 0; i < e_phnum; i++)
+        end = std::max(end, dod3_be64(ph + i * 0x38 + 0x08) + dod3_be64(ph + i * 0x38 + 0x20));
+    if (end > (1ull << 30)) {
+        *err = "the SELF's ELF headers are damaged";
+        return false;
+    }
     elf->assign((size_t)end, 0);
     memcpy(elf->data(), eh, 0x40);
     memcpy(elf->data() + e_phoff, ph, (size_t)e_phnum * 0x38);
@@ -157,11 +193,17 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
         const uint32_t type = dod3_be32(s + 0x10), prog = dod3_be32(s + 0x14), encrypted = dod3_be32(s + 0x20);
         const uint32_t key_idx = dod3_be32(s + 0x24), iv_idx = dod3_be32(s + 0x28), compressed = dod3_be32(s + 0x2C);
         if (type != 2) continue;   /* 2: a program segment */
-        if (prog >= e_phnum || !r.has(off, size)) { *err = "the SELF's segment table is damaged"; return false; }
+        if (prog >= e_phnum || !r.has(off, size)) {
+            *err = "the SELF's segment table is damaged";
+            return false;
+        }
         const uint64_t p_offset = dod3_be64(ph + prog * 0x38 + 0x08), p_filesz = dod3_be64(ph + prog * 0x38 + 0x20);
         std::vector<uint8_t> data(self.begin() + (long)off, self.begin() + (long)(off + size));
         if (encrypted == 3) {
-            if (key_idx >= nkeys || iv_idx >= nkeys) { *err = "the SELF's segment table is damaged"; return false; }
+            if (key_idx >= nkeys || iv_idx >= nkeys) {
+                *err = "the SELF's segment table is damaged";
+                return false;
+            }
             aes.set_key(dkeys + key_idx * 16, 128);
             aes_ctr(aes, dkeys + iv_idx * 16, 0, data.data(), data.size());
         }

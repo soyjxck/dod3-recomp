@@ -75,13 +75,12 @@ extern "C" int g_rsx_aa;            /* rsx_draw_engine.c: 1 = FXAA at present */
 namespace {
 
 /* the EBOOT's (src/dod3_eboot.h) */
-const uint32_t GNATIVES          = DOD3_A_GNATIVES;        /* 8 bytes an opcode: function, this-adjust */
-const uint32_t THUNK_GETSTRING   = DOD3_A_EXEC_GETSTRING;  /* USqex03DataMessage::execGetString */
-const uint32_t THUNK_BRIDGE      = DOD3_A_EXEC_BRIDGE;     /* USqex03GameOption::execUpdateDisplayParam */
+const uint32_t GNATIVES = DOD3_A_GNATIVES;        /* 8 bytes an opcode: function, this-adjust */
+const uint32_t THUNK_GETSTRING = DOD3_A_EXEC_GETSTRING;  /* USqex03DataMessage::execGetString */
+const uint32_t THUNK_BRIDGE = DOD3_A_EXEC_BRIDGE;     /* USqex03GameOption::execUpdateDisplayParam */
 const uint32_t FRAME_OBJECT = 0x14, FRAME_CODE = 0x18;
 
 const int MAGIC = 900000;
-
 
 /* One FFrame::Step: the native for the opcode at Code, with the result
  * written to `result` (guest). */
@@ -118,8 +117,11 @@ int32_t eval_int(ppu_context* ctx, uint32_t stack)
 
 uint32_t app_realloc(ppu_context* ctx, uint32_t p, uint32_t size)
 {
-    ctx->gpr[3] = p; ctx->gpr[4] = size; ctx->gpr[5] = 8;
-    DOD3_FN_APP_REALLOC(ctx); dod3_drain(ctx);
+    ctx->gpr[3] = p;
+    ctx->gpr[4] = size;
+    ctx->gpr[5] = 8;
+    DOD3_FN_APP_REALLOC(ctx);
+    dod3_drain(ctx);
     return (uint32_t)ctx->gpr[3];
 }
 
@@ -138,7 +140,10 @@ void set_fstring(ppu_context* ctx, uint32_t fs, const std::string& text)
 
 /* ---- the settings ---------------------------------------------------------- */
 
-struct Choice { const char* value; const char* text; };
+struct Choice {
+    const char* value;
+    const char* text;
+};
 struct Row {
     const char* key;          /* dod3.ini / environment name */
     const char* label;
@@ -182,7 +187,10 @@ int find_choice(const Row& r, const char* v)
 {
     for (size_t i = 0; i < r.choices.size(); i++) {
         const char* c = r.choices[i].value;
-        if (!v || !*v) { if (!c) return (int)i; continue; }
+        if (!v || !*v) {
+            if (!c) return (int)i;
+            continue;
+        }
         if (c && !strcmp(c, v)) return (int)i;
         if (c && r.key == std::string("RSX_SCALE") && atof(c) == atof(v)) return (int)i;
     }
@@ -194,8 +202,10 @@ void read_current(Row& r, int& idx)
     const char* v = getenv(r.key);
     idx = find_choice(r, v);
     if (idx < 0) {
-        if (!v || !*v) idx = r.def;
-        else r.other = v;
+        if (!v || !*v)
+            idx = r.def;
+        else
+            r.other = v;
     }
 }
 
@@ -213,64 +223,100 @@ void init_rows()
     if (s_init) return;
     s_init = true;
     const char* restart = " Applies after a restart.";
-    s_rows.push_back({"RSX_SCALE", "Resolution",
-        "The resolution the game is drawn at.",
-        {{"1", "1280x720"}, {"1.5", "1920x1080"}, {"2", "2560x1440"}, {"3", "3840x2160"}, {"4", "5120x2880"}},
-        0, LIVE_DISPLAY});
-    s_rows.push_back({"RSX_DISPLAY", "Display Mode",
-        "Window, borderless window or fullscreen.",
-        {{"windowed", "Windowed"}, {"borderless", "Borderless"}, {"fullscreen", "Fullscreen"}},
-        0, LIVE_DISPLAY});
-    s_rows.push_back({"DOD3_FPS", "Frame Rate",
-        "The frame rate limit. 60 is recommended.",
-        {{NULL, "30 (Original)"}, {"60", "60"}, {"120", "120"}, {"uncapped", "Unlimited"}},
-        0, true});
-    s_rows.push_back({"RSX_VSYNC", "V-Sync",
-        "Wait for the display's refresh.",
-        {{"1", "On"}, {"0", "Off"}},
-        0, LIVE_DISPLAY});
-    s_rows.push_back({"RSX_AA", "Anti-Aliasing",
-        "Smooths jagged edges. FXAA softens the picture slightly.",
-        {{NULL, "Off"}, {"fxaa", "FXAA"}, {"msaa2", "MSAA 2x"}, {"msaa4", "MSAA 4x"}, {"msaa8", "MSAA 8x"}},
-        0, LIVE_DISPLAY});
-    s_rows.push_back({"RSX_ANISO", "Texture Filtering",
-        "Sharper ground and walls when seen at an angle.",
-        {{"1", "Trilinear"}, {"2", "2x Anisotropic"}, {"4", "4x Anisotropic"}, {"8", "8x Anisotropic"}, {"16", "16x Anisotropic"}},
-        4, true});
-    s_rows.push_back({"DOD3_FOV", "Field of View",
-        "Widens the gameplay camera. Cutscenes keep their framing.",
-        {{NULL, "Default"}, {"5", "+5"}, {"10", "+10"}, {"15", "+15"}, {"20", "+20"}, {"25", "+25"}, {"30", "+30"}},
-        0, true});
+    s_rows.push_back({ "RSX_SCALE",
+                       "Resolution",
+                       "The resolution the game is drawn at.",
+                       { { "1", "1280x720" },
+                         { "1.5", "1920x1080" },
+                         { "2", "2560x1440" },
+                         { "3", "3840x2160" },
+                         { "4", "5120x2880" } },
+                       0,
+                       LIVE_DISPLAY });
+    s_rows.push_back({ "RSX_DISPLAY",
+                       "Display Mode",
+                       "Window, borderless window or fullscreen.",
+                       { { "windowed", "Windowed" }, { "borderless", "Borderless" }, { "fullscreen", "Fullscreen" } },
+                       0,
+                       LIVE_DISPLAY });
+    s_rows.push_back({ "DOD3_FPS",
+                       "Frame Rate",
+                       "The frame rate limit. 60 is recommended.",
+                       { { NULL, "30 (Original)" }, { "60", "60" }, { "120", "120" }, { "uncapped", "Unlimited" } },
+                       0,
+                       true });
+    s_rows.push_back({ "RSX_VSYNC",
+                       "V-Sync",
+                       "Wait for the display's refresh.",
+                       { { "1", "On" }, { "0", "Off" } },
+                       0,
+                       LIVE_DISPLAY });
+    s_rows.push_back({ "RSX_AA",
+                       "Anti-Aliasing",
+                       "Smooths jagged edges. FXAA softens the picture slightly.",
+                       { { NULL, "Off" },
+                         { "fxaa", "FXAA" },
+                         { "msaa2", "MSAA 2x" },
+                         { "msaa4", "MSAA 4x" },
+                         { "msaa8", "MSAA 8x" } },
+                       0,
+                       LIVE_DISPLAY });
+    s_rows.push_back({ "RSX_ANISO",
+                       "Texture Filtering",
+                       "Sharper ground and walls when seen at an angle.",
+                       { { "1", "Trilinear" },
+                         { "2", "2x Anisotropic" },
+                         { "4", "4x Anisotropic" },
+                         { "8", "8x Anisotropic" },
+                         { "16", "16x Anisotropic" } },
+                       4,
+                       true });
+    s_rows.push_back({ "DOD3_FOV",
+                       "Field of View",
+                       "Widens the gameplay camera. Cutscenes keep their framing.",
+                       { { NULL, "Default" },
+                         { "5", "+5" },
+                         { "10", "+10" },
+                         { "15", "+15" },
+                         { "20", "+20" },
+                         { "25", "+25" },
+                         { "30", "+30" } },
+                       0,
+                       true });
     set_fov(getenv("DOD3_FOV"));
     /* System Settings */
-    s_rows.push_back({"DOD3_SKIP_INTRO", "Skip Intro",
-        "Skip the logos and the opening movie.",
-        {{"1", "On"}, {"0", "Off"}},
-        0, false});
+    s_rows.push_back({ "DOD3_SKIP_INTRO",
+                       "Skip Intro",
+                       "Skip the logos and the opening movie.",
+                       { { "1", "On" }, { "0", "Off" } },
+                       0,
+                       false });
     s_rows.back().page = 1;
-    s_rows.push_back({"DOD3_UNFOCUSED", "When Unfocused",
-        "What the game does while its window is in the background.",
-        {{NULL, "Keep Running"}, {"mute", "Mute"}, {"pause", "Pause"}},
-        0, true});
+    s_rows.push_back({ "DOD3_UNFOCUSED",
+                       "When Unfocused",
+                       "What the game does while its window is in the background.",
+                       { { NULL, "Keep Running" }, { "mute", "Mute" }, { "pause", "Pause" } },
+                       0,
+                       true });
     s_rows.back().page = 1;
 #ifdef _WIN32
-    s_rows.push_back({"RSX_BACKEND", "Renderer",
-        "The graphics API the game is drawn with.",
-        {{NULL, "Direct3D 12"}, {"vulkan", "Vulkan"}},
-        0, false});
+    s_rows.push_back({ "RSX_BACKEND",
+                       "Renderer",
+                       "The graphics API the game is drawn with.",
+                       { { NULL, "Direct3D 12" }, { "vulkan", "Vulkan" } },
+                       0,
+                       false });
 #else
-    s_rows.push_back({"RSX_BACKEND", "Renderer",
-        "The graphics API the game is drawn with.",
-        {{NULL, "Metal"}},
-        0, false});
+    s_rows.push_back(
+        { "RSX_BACKEND", "Renderer", "The graphics API the game is drawn with.", { { NULL, "Metal" } }, 0, false });
 #endif
     s_rows.back().page = 1;
     /* Advanced Graphics: the engine's own switches (src/dod3_sysset.cpp) */
     std::vector<Dod3RowSpec> adv;
     dod3_sysset_rows(adv);
     for (const Dod3RowSpec& a : adv) {
-        Row r{a.key, a.label, a.desc, {}, a.def, a.live};
-        for (const auto& c : a.choices) r.choices.push_back({c.first, c.second});
+        Row r{ a.key, a.label, a.desc, {}, a.def, a.live };
+        for (const auto& c : a.choices) r.choices.push_back({ c.first, c.second });
         r.page = 2;
         r.apply_fn = a.apply;
         s_rows.push_back(r);
@@ -297,16 +343,26 @@ bool menu_text(int i, std::string& out)
     init_rows();
     const int k = i - MAGIC;
     const Row* r = row_at(k % 100);
-    if (k == 0) out = "Graphics Settings";
-    else if (k == 1) out = "Adjust settings related to graphics and the display.";
-    else if (k == 2) out = "System Settings";
-    else if (k == 3) out = "Adjust the start-up, the background behaviour and the renderer.";
-    else if (k == 4) out = "Advanced Graphics";
-    else if (k == 5) out = "Adjust the engine's shadows, motion blur and post-processing.";
-    else if (k >= 100 && k < 200) out = r ? r->label : "";
-    else if (k >= 200 && k < 300) out = r ? value_text(*r, r->pending) : "";
-    else if (k >= 300 && k < 400) out = r ? r->desc : "";
-    else out = "";
+    if (k == 0)
+        out = "Graphics Settings";
+    else if (k == 1)
+        out = "Adjust settings related to graphics and the display.";
+    else if (k == 2)
+        out = "System Settings";
+    else if (k == 3)
+        out = "Adjust the start-up, the background behaviour and the renderer.";
+    else if (k == 4)
+        out = "Advanced Graphics";
+    else if (k == 5)
+        out = "Adjust the engine's shadows, motion blur and post-processing.";
+    else if (k >= 100 && k < 200)
+        out = r ? r->label : "";
+    else if (k >= 200 && k < 300)
+        out = r ? value_text(*r, r->pending) : "";
+    else if (k >= 300 && k < 400)
+        out = r ? r->desc : "";
+    else
+        out = "";
     return true;
 }
 
@@ -334,21 +390,31 @@ void write_ini(const std::vector<std::pair<std::string, const char*>>& kv)
             const char* s = lines[i].c_str();
             while (*s == ' ' || *s == '\t') s++;
             const bool c = *s == '#';
-            if (c) { s++; while (*s == ' ' || *s == '\t') s++; }
+            if (c) {
+                s++;
+                while (*s == ' ' || *s == '\t') s++;
+            }
             if (strncmp(s, key.c_str(), key.size())) continue;
             const char* e = s + key.size();
             while (*e == ' ' || *e == '\t') e++;
             if (*e != '=') continue;
-            if (!c) { hit = (int)i; break; }
+            if (!c) {
+                hit = (int)i;
+                break;
+            }
             if (commented < 0) commented = (int)i;
         }
         const std::string line = p.second ? key + " = " + p.second : "#" + key + " = ";
         if (hit >= 0) {
-            if (p.second) lines[hit] = line;
-            else lines[hit] = "#" + lines[hit];
+            if (p.second)
+                lines[hit] = line;
+            else
+                lines[hit] = "#" + lines[hit];
         } else if (p.second) {
-            if (commented >= 0) lines[commented] = line;
-            else lines.push_back(line);
+            if (commented >= 0)
+                lines[commented] = line;
+            else
+                lines.push_back(line);
         }
     }
     if (FILE* f = fopen(path, "wb")) {
@@ -367,19 +433,28 @@ void apply()
     each([&](Row& r) {
         if (r.pending == r.saved) return;
         const char* v = r.pending >= 0 ? r.choices[r.pending].value : r.other.c_str();
-        kv.push_back({r.key, v});
+        kv.push_back({ r.key, v });
         r.saved = r.pending;
         if (r.live) {
-            if (v) dod3_setenv(r.key, v, 1); else dod3_unsetenv(r.key);
+            if (v)
+                dod3_setenv(r.key, v, 1);
+            else
+                dod3_unsetenv(r.key);
             r.running = r.pending;
 #if defined(_WIN32) || defined(__APPLE__)
             if (!strcmp(r.key, "RSX_ANISO")) g_rsx_aniso = v ? atoi(v) : 16;
 #endif
             if (!strcmp(r.key, "RSX_AA")) {
-                g_rsx_aa = !v ? 0 : !strcmp(v, "fxaa") ? 1 : !strcmp(v, "msaa2") ? 2 : !strcmp(v, "msaa4") ? 4 : !strcmp(v, "msaa8") ? 8 : 0;
+                g_rsx_aa = !v                    ? 0
+                           : !strcmp(v, "fxaa")  ? 1
+                           : !strcmp(v, "msaa2") ? 2
+                           : !strcmp(v, "msaa4") ? 4
+                           : !strcmp(v, "msaa8") ? 8
+                                                 : 0;
                 display = true;   /* the renderer makes or drops its MSAA targets at the reload */
             }
-            if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE")) display = true;
+            if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE"))
+                display = true;
             if (!strcmp(r.key, "DOD3_FPS")) fps = true;
             if (!strcmp(r.key, "DOD3_UNFOCUSED")) unfocused = true;
             if (!strcmp(r.key, "DOD3_FOV")) set_fov(v);
@@ -398,9 +473,7 @@ int bridge(int cmd, int a, int b)
 {
     init_rows();
     switch (cmd) {
-    case 0:   /* begin: edit the saved values */
-        each([](Row& r) { r.pending = r.saved; });
-        return 0;
+    case 0: /* begin: edit the saved values */ each([](Row& r) { r.pending = r.saved; }); return 0;
     case 1: { /* change row a by b */
         Row* r = row_at(a);
         if (!r) return 0;
@@ -416,15 +489,13 @@ int bridge(int cmd, int a, int b)
         const Row* r = row_at(a);
         return (r && r->pending == r->def) ? 1 : 0;
     }
-    case 3:   /* reset */
-        each([](Row& r) { r.pending = r.def; });
-        return 0;
-    case 4:
-        apply();
-        return 0;
+    case 3: /* reset */ each([](Row& r) { r.pending = r.def; }); return 0;
+    case 4: apply(); return 0;
     case 5: {
         int changed = 0;
-        each([&](Row& r) { if (r.pending != r.saved) changed = 1; });
+        each([&](Row& r) {
+            if (r.pending != r.saved) changed = 1;
+        });
         return changed;
     }
     case 6: { /* skip the boot logos and the opening movie? DOD3_SKIP_INTRO, on unless 0 */
@@ -432,22 +503,27 @@ int bridge(int cmd, int a, int b)
         return (e && e[0] == '0') ? 0 : 1;
     }
     case 7:   /* the root opens entry a: 3 + page, then Restore Defaults (every page) */
-        if (a >= 3 && a < 3 + NPAGES) s_page = a - 3;
-        else if (a == 3 + NPAGES) s_page = -1;
+        if (a >= 3 && a < 3 + NPAGES)
+            s_page = a - 3;
+        else if (a == 3 + NPAGES)
+            s_page = -1;
         return 0;
     case 10:  /* is the Graphics page on screen? The pause screen's dimming and
                * frost are left out while it is, so changes can be seen. */
         return ((s_page == 0 || s_page == 2) &&     /* Graphics, Advanced Graphics */
-                std::chrono::steady_clock::now() - s_page_drawn < std::chrono::milliseconds(250)) ? 1 : 0;
-    case 8:   /* the open page's rows */
-        return (int)s_page_rows[s_page > 0 ? s_page : 0].size();
+                std::chrono::steady_clock::now() - s_page_drawn < std::chrono::milliseconds(250))
+                   ? 1
+                   : 0;
+    case 8: /* the open page's rows */ return (int)s_page_rows[s_page > 0 ? s_page : 0].size();
     case 9: { /* the camera's field of view (float bits); b: the gameplay camera's */
-        float fov; memcpy(&fov, &a, 4);
+        float fov;
+        memcpy(&fov, &a, 4);
         if (!b || s_fov_k == 1.0f || !(fov > 0.0f && fov < 170.0f)) return a;
         const double rad = 3.14159265358979 / 180.0;
         fov = (float)(2.0 * atan(tan(fov * rad / 2) * s_fov_k) / rad);
         if (fov > 150.0f) fov = 150.0f;
-        int r; memcpy(&r, &fov, 4);
+        int r;
+        memcpy(&r, &fov, 4);
         return r;
     }
     }
@@ -476,9 +552,13 @@ void hook_getstring(ppu_context* ctx)
         vm_write32(s_scratch + 1, (uint32_t)idx);
         vm_write8(s_scratch + 5, 0x16);
         vm_write32(stack + FRAME_CODE, s_scratch);
-        ctx->gpr[2] = r2; ctx->gpr[3] = self; ctx->gpr[4] = stack; ctx->gpr[5] = result;
+        ctx->gpr[2] = r2;
+        ctx->gpr[3] = self;
+        ctx->gpr[4] = stack;
+        ctx->gpr[5] = result;
         ctx->lr = lr;
-        DOD3_FN_EXEC_GETSTRING(ctx); dod3_drain(ctx);
+        DOD3_FN_EXEC_GETSTRING(ctx);
+        dod3_drain(ctx);
         vm_write32(stack + FRAME_CODE, after + 1);
     }
     ctx->gpr[2] = r2;
@@ -490,13 +570,14 @@ void hook_bridge(ppu_context* ctx)
     const uint64_t lr = ctx->lr, r2 = ctx->gpr[2];
     const uint32_t stack = (uint32_t)ctx->gpr[4], result = (uint32_t)ctx->gpr[5];
     if (vm_read8(vm_read32(stack + FRAME_CODE)) == 0x16) {   /* no arguments: the title's call */
-        DOD3_FN_EXEC_BRIDGE(ctx); dod3_drain(ctx);
-        ctx->gpr[2] = r2; ctx->lr = lr;
+        DOD3_FN_EXEC_BRIDGE(ctx);
+        dod3_drain(ctx);
+        ctx->gpr[2] = r2;
+        ctx->lr = lr;
         return;
     }
-    int args[3] = {0, 0, 0};
-    for (int k = 0; k < 3 && vm_read8(vm_read32(stack + FRAME_CODE)) != 0x16; k++)
-        args[k] = eval_int(ctx, stack);
+    int args[3] = { 0, 0, 0 };
+    for (int k = 0; k < 3 && vm_read8(vm_read32(stack + FRAME_CODE)) != 0x16; k++) args[k] = eval_int(ctx, stack);
     while (vm_read8(vm_read32(stack + FRAME_CODE)) != 0x16)   /* extra arguments: evaluate, drop */
         eval_int(ctx, stack);
     vm_write32(stack + FRAME_CODE, vm_read32(stack + FRAME_CODE) + 1);

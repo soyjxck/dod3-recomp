@@ -45,7 +45,10 @@ constexpr int kFrames = 2;          /* frames in flight = back buffers */
 constexpr int kSrvHeapSize = 16;    /* the font atlas, and room to grow */
 const wchar_t kClass[] = L"Dod3Setup";
 
-struct FrameContext { ID3D12CommandAllocator* alloc = nullptr; UINT64 fence = 0; };
+struct FrameContext {
+    ID3D12CommandAllocator* alloc = nullptr;
+    UINT64 fence = 0;
+};
 
 /* the SRV heap's free list (the example's ExampleDescriptorHeapAllocator) */
 struct SrvAlloc {
@@ -71,9 +74,7 @@ struct SrvAlloc {
         g->ptr = gpu0.ptr + (UINT64)i * inc;
     }
     void release(D3D12_CPU_DESCRIPTOR_HANDLE c, D3D12_GPU_DESCRIPTOR_HANDLE)
-    {
-        free_list.push_back((int)((c.ptr - cpu0.ptr) / inc));
-    }
+    { free_list.push_back((int)((c.ptr - cpu0.ptr) / inc)); }
 };
 
 HWND g_hwnd = nullptr;
@@ -129,7 +130,11 @@ void create_targets()
 void release_targets()
 {
     wait_gpu();
-    for (auto& r : g_rt) if (r) { r->Release(); r = nullptr; }
+    for (auto& r : g_rt)
+        if (r) {
+            r->Release();
+            r = nullptr;
+        }
 }
 
 bool create_device()
@@ -143,7 +148,10 @@ bool create_device()
         if (g_dev->CreateDescriptorHeap(&d, IID_PPV_ARGS(&g_rtv_heap)) != S_OK) return false;
         const SIZE_T inc = g_dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
         D3D12_CPU_DESCRIPTOR_HANDLE h = g_rtv_heap->GetCPUDescriptorHandleForHeapStart();
-        for (UINT i = 0; i < kFrames; i++) { g_rtv[i] = h; h.ptr += inc; }
+        for (UINT i = 0; i < kFrames; i++) {
+            g_rtv[i] = h;
+            h.ptr += inc;
+        }
     }
     {
         D3D12_DESCRIPTOR_HEAP_DESC d = {};
@@ -161,7 +169,8 @@ bool create_device()
     }
     for (auto& f : g_frame)
         if (g_dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&f.alloc)) != S_OK) return false;
-    if (g_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frame[0].alloc, nullptr, IID_PPV_ARGS(&g_list)) != S_OK ||
+    if (g_dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frame[0].alloc, nullptr, IID_PPV_ARGS(&g_list)) !=
+            S_OK ||
         g_list->Close() != S_OK)
         return false;
     if (g_dev->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_fence)) != S_OK) return false;
@@ -194,18 +203,54 @@ bool create_device()
 void release_device()
 {
     if (g_queue && g_fence) wait_gpu();
-    for (auto& r : g_rt) if (r) { r->Release(); r = nullptr; }
-    if (g_swap) { g_swap->Release(); g_swap = nullptr; }
-    if (g_swap_wait) { CloseHandle(g_swap_wait); g_swap_wait = nullptr; }
-    for (auto& f : g_frame) if (f.alloc) { f.alloc->Release(); f.alloc = nullptr; f.fence = 0; }
-    if (g_list) { g_list->Release(); g_list = nullptr; }
-    if (g_queue) { g_queue->Release(); g_queue = nullptr; }
-    if (g_rtv_heap) { g_rtv_heap->Release(); g_rtv_heap = nullptr; }
-    if (g_srv_heap) { g_srv_heap->Release(); g_srv_heap = nullptr; }
+    for (auto& r : g_rt)
+        if (r) {
+            r->Release();
+            r = nullptr;
+        }
+    if (g_swap) {
+        g_swap->Release();
+        g_swap = nullptr;
+    }
+    if (g_swap_wait) {
+        CloseHandle(g_swap_wait);
+        g_swap_wait = nullptr;
+    }
+    for (auto& f : g_frame)
+        if (f.alloc) {
+            f.alloc->Release();
+            f.alloc = nullptr;
+            f.fence = 0;
+        }
+    if (g_list) {
+        g_list->Release();
+        g_list = nullptr;
+    }
+    if (g_queue) {
+        g_queue->Release();
+        g_queue = nullptr;
+    }
+    if (g_rtv_heap) {
+        g_rtv_heap->Release();
+        g_rtv_heap = nullptr;
+    }
+    if (g_srv_heap) {
+        g_srv_heap->Release();
+        g_srv_heap = nullptr;
+    }
     g_srv = SrvAlloc();
-    if (g_fence) { g_fence->Release(); g_fence = nullptr; }
-    if (g_fence_event) { CloseHandle(g_fence_event); g_fence_event = nullptr; }
-    if (g_dev) { g_dev->Release(); g_dev = nullptr; }
+    if (g_fence) {
+        g_fence->Release();
+        g_fence = nullptr;
+    }
+    if (g_fence_event) {
+        CloseHandle(g_fence_event);
+        g_fence_event = nullptr;
+    }
+    if (g_dev) {
+        g_dev->Release();
+        g_dev = nullptr;
+    }
 }
 
 FrameContext* next_frame()
@@ -225,7 +270,10 @@ FrameContext* next_frame()
 const char* grab_prefix()
 {
     static const char* p = (const char*)1;
-    if (p == (const char*)1) { p = getenv("DOD3_SETUP_GRAB"); if (p && !*p) p = nullptr; }
+    if (p == (const char*)1) {
+        p = getenv("DOD3_SETUP_GRAB");
+        if (p && !*p) p = nullptr;
+    }
     return p;
 }
 
@@ -261,8 +309,12 @@ void grab(ID3D12Resource* rt)
     b.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
     l->ResourceBarrier(1, &b);
     D3D12_TEXTURE_COPY_LOCATION dst = {}, src = {};
-    dst.pResource = rb; dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT; dst.PlacedFootprint = fp;
-    src.pResource = rt; src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX; src.SubresourceIndex = 0;
+    dst.pResource = rb;
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    dst.PlacedFootprint = fp;
+    src.pResource = rt;
+    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    src.SubresourceIndex = 0;
     l->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
     std::swap(b.Transition.StateBefore, b.Transition.StateAfter);
     l->ResourceBarrier(1, &b);
@@ -279,7 +331,11 @@ void grab(ID3D12Resource* rt)
             std::vector<uint8_t> row((size_t)w * 3);
             for (UINT y = 0; y < h; y++) {
                 const uint8_t* s = p + fp.Offset + (size_t)y * fp.Footprint.RowPitch;
-                for (UINT x = 0; x < w; x++) { row[x * 3] = s[x * 4]; row[x * 3 + 1] = s[x * 4 + 1]; row[x * 3 + 2] = s[x * 4 + 2]; }
+                for (UINT x = 0; x < w; x++) {
+                    row[x * 3] = s[x * 4];
+                    row[x * 3 + 1] = s[x * 4 + 1];
+                    row[x * 3 + 2] = s[x * 4 + 2];
+                }
                 fwrite(row.data(), 1, row.size(), f);
             }
             fclose(f);
@@ -290,7 +346,9 @@ void grab(ID3D12Resource* rt)
         D3D12_RANGE none = { 0, 0 };
         rb->Unmap(0, &none);
     }
-    l->Release(); a->Release(); rb->Release();
+    l->Release();
+    a->Release();
+    rb->Release();
 }
 
 LRESULT WINAPI wnd_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
@@ -304,13 +362,15 @@ LRESULT WINAPI wnd_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             g_swap->GetDesc1(&d);
             g_swap->ResizeBuffers(0, LOWORD(lp), HIWORD(lp), d.Format, d.Flags);
             create_targets();
-            g_width = LOWORD(lp); g_height = HIWORD(lp);
+            g_width = LOWORD(lp);
+            g_height = HIWORD(lp);
         }
         return 0;
     case WM_DPICHANGED: {
         g_dpi = HIWORD(wp) / 96.0f;
         const RECT* r = (const RECT*)lp;
-        SetWindowPos(h, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(h, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
         return 0;
     }
     case WM_SYSCOMMAND:
@@ -355,15 +415,22 @@ bool ui_init(const char* title, int width, int height, const std::string& font_p
     AdjustWindowRectEx(&r, style, FALSE, 0);
     const int ww = r.right - r.left, wh = r.bottom - r.top;
     const RECT& wa = mi.rcWork;
-    g_hwnd = CreateWindowExW(0, kClass, widen(title).c_str(), style,
-                             wa.left + (wa.right - wa.left - ww) / 2, wa.top + (wa.bottom - wa.top - wh) / 2, ww, wh,
-                             nullptr, nullptr, wc.hInstance, nullptr);
-    if (!g_hwnd) { ui_shutdown(); return false; }
+    g_hwnd = CreateWindowExW(0, kClass, widen(title).c_str(), style, wa.left + (wa.right - wa.left - ww) / 2,
+                             wa.top + (wa.bottom - wa.top - wh) / 2, ww, wh, nullptr, nullptr, wc.hInstance, nullptr);
+    if (!g_hwnd) {
+        ui_shutdown();
+        return false;
+    }
     g_closed = false;
-    if (!create_device()) { fprintf(stderr, "[setup] Direct3D 12 is not available\n"); ui_shutdown(); return false; }
+    if (!create_device()) {
+        fprintf(stderr, "[setup] Direct3D 12 is not available\n");
+        ui_shutdown();
+        return false;
+    }
     RECT cr;
     GetClientRect(g_hwnd, &cr);
-    g_width = (UINT)cr.right; g_height = (UINT)cr.bottom;
+    g_width = (UINT)cr.right;
+    g_height = (UINT)cr.bottom;
     ShowWindow(g_hwnd, SW_SHOWDEFAULT);
     UpdateWindow(g_hwnd);
     SetForegroundWindow(g_hwnd);
@@ -383,9 +450,14 @@ bool ui_init(const char* title, int width, int height, const std::string& font_p
     ii.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     ii.DSVFormat = DXGI_FORMAT_UNKNOWN;
     ii.SrvDescriptorHeap = g_srv_heap;
-    ii.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* c, D3D12_GPU_DESCRIPTOR_HANDLE* g) { g_srv.alloc(c, g); };
-    ii.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE c, D3D12_GPU_DESCRIPTOR_HANDLE g) { g_srv.release(c, g); };
-    if (!ImGui_ImplDX12_Init(&ii)) { ui_shutdown(); return false; }
+    ii.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* c,
+                                 D3D12_GPU_DESCRIPTOR_HANDLE* g) { g_srv.alloc(c, g); };
+    ii.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE c,
+                                D3D12_GPU_DESCRIPTOR_HANDLE g) { g_srv.release(c, g); };
+    if (!ImGui_ImplDX12_Init(&ii)) {
+        ui_shutdown();
+        return false;
+    }
     if (!font_path.empty() && !io.Fonts->AddFontFromFileTTF(font_path.c_str(), font_px))
         fprintf(stderr, "[setup] could not load the font %s\n", font_path.c_str());
     if (io.Fonts->Fonts.empty()) io.Fonts->AddFontDefault();
@@ -470,15 +542,24 @@ void ui_shutdown()
         ImGui::DestroyContext();
     }
     release_device();
-    if (g_hwnd) { DestroyWindow(g_hwnd); g_hwnd = nullptr; }
+    if (g_hwnd) {
+        DestroyWindow(g_hwnd);
+        g_hwnd = nullptr;
+    }
     UnregisterClassW(kClass, GetModuleHandleW(nullptr));
     /* WM_DESTROY's leftovers, so the game's loop starts clean */
     MSG m;
     while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
-        if (m.message == WM_QUIT) { PostQuitMessage((int)m.wParam); break; }
+        if (m.message == WM_QUIT) {
+            PostQuitMessage((int)m.wParam);
+            break;
+        }
         DispatchMessageW(&m);
     }
-    if (g_com) { CoUninitialize(); g_com = false; }
+    if (g_com) {
+        CoUninitialize();
+        g_com = false;
+    }
 }
 
 std::vector<std::filesystem::path> ui_pick_files(const char* title,
@@ -492,7 +573,10 @@ std::vector<std::filesystem::path> ui_pick_files(const char* title,
     d->SetOptions(opt | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST);
     d->SetTitle(widen(title).c_str());
     std::vector<std::wstring> names, specs;
-    for (const auto& f : filters) { names.push_back(widen(f.first)); specs.push_back(widen(f.second)); }
+    for (const auto& f : filters) {
+        names.push_back(widen(f.first));
+        specs.push_back(widen(f.second));
+    }
     std::vector<COMDLG_FILTERSPEC> fs;
     for (size_t i = 0; i < names.size(); i++) fs.push_back({ names[i].c_str(), specs[i].c_str() });
     if (!fs.empty()) d->SetFileTypes((UINT)fs.size(), fs.data());
@@ -514,7 +598,10 @@ std::vector<std::filesystem::path> ui_pick_files(const char* title,
         }
     }
     d->Release();
-    if (ImGui::GetCurrentContext()) { ImGui::GetIO().ClearInputKeys(); ImGui::GetIO().ClearInputMouse(); }
+    if (ImGui::GetCurrentContext()) {
+        ImGui::GetIO().ClearInputKeys();
+        ImGui::GetIO().ClearInputMouse();
+    }
     return out;
 }
 
@@ -537,7 +624,10 @@ std::filesystem::path ui_pick_folder(const char* title)
         if (it) it->Release();
     }
     d->Release();
-    if (ImGui::GetCurrentContext()) { ImGui::GetIO().ClearInputKeys(); ImGui::GetIO().ClearInputMouse(); }
+    if (ImGui::GetCurrentContext()) {
+        ImGui::GetIO().ClearInputKeys();
+        ImGui::GetIO().ClearInputMouse();
+    }
     return out;
 }
 

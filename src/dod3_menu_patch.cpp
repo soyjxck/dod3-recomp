@@ -58,7 +58,10 @@ std::string sha1_hex(const std::vector<uint8_t>& d)
     return s.hex();
 }
 
-uint32_t le32(const uint8_t* p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+uint32_t le32(const uint8_t* p)
+{
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
 
 bool read_file(const fs::path& p, std::vector<uint8_t>& out)
 {
@@ -106,7 +109,8 @@ bool inflate_full(const std::vector<uint8_t>& f, std::vector<uint8_t>& u, uint32
         if (src + c > f.size() || dst + b > u.size()) return false;
         uLongf out = b;
         if (uncompress(&u[dst], &out, &f[src], c) != Z_OK || out != b) return false;
-        src += c; dst += b;
+        src += c;
+        dst += b;
     }
     return dst == usz;
 }
@@ -139,7 +143,8 @@ std::vector<uint8_t> deflate_full(const std::vector<uint8_t>& u, uint32_t bs)
 size_t export_entry(const std::vector<uint8_t>& u, uint32_t idx)
 {
     size_t p = 12;
-    const int32_t fl = (int32_t)dod3_be32(&u[p]); p += 4;
+    const int32_t fl = (int32_t)dod3_be32(&u[p]);
+    p += 4;
     p += fl >= 0 ? (size_t)fl : (size_t)(-fl) * 2;
     p += 4 + 8;                             /* package flags, names */
     const uint32_t n = dod3_be32(&u[p]), off = dod3_be32(&u[p + 4]);
@@ -210,9 +215,11 @@ bool toc_rewrite(const std::vector<uint8_t>& in, std::string& out, uint32_t csiz
         const char* side = "\\sqex03game.xxx.uncompressed_size 0";
         const size_t sp1 = line.find(' '), sp2 = sp1 == std::string::npos ? sp1 : line.find(' ', sp1 + 1);
         std::string repl;
-        if (sp2 != std::string::npos && low.size() > strlen(pkg) && !low.compare(low.size() - strlen(pkg), strlen(pkg), pkg))
+        if (sp2 != std::string::npos && low.size() > strlen(pkg) &&
+            !low.compare(low.size() - strlen(pkg), strlen(pkg), pkg))
             repl = std::to_string(csize) + " " + std::to_string(usize) + line.substr(sp2);
-        else if (sp2 != std::string::npos && low.size() > strlen(side) && !low.compare(low.size() - strlen(side), strlen(side), side))
+        else if (sp2 != std::string::npos && low.size() > strlen(side) &&
+                 !low.compare(low.size() - strlen(side), strlen(side), side))
             repl = std::to_string(std::to_string(usize).size() + 2) + line.substr(sp1);
         if (!repl.empty()) {
             t.replace(p, line.size(), repl);
@@ -235,10 +242,14 @@ bool patched_package(const fs::path& pkg, std::vector<uint8_t>* z, uint32_t* usi
         fprintf(stderr, "[menu] the script package is missing: %s\n", utf8(pkg).c_str());
         return false;
     }
-    if (!inflate_full(f, u, bs)) { fprintf(stderr, "[menu] SQEX03GAME.XXX: not a compressed package\n"); return false; }
+    if (!inflate_full(f, u, bs)) {
+        fprintf(stderr, "[menu] SQEX03GAME.XXX: not a compressed package\n");
+        return false;
+    }
     f.clear();
     if (sha1_hex(u) != k_menu_patch_orig_sha1) {
-        fprintf(stderr, "[menu] SQEX03GAME.XXX is not the BLUS31197 %s one; the settings menu stays as shipped\n", k_menu_patch_eboot);
+        fprintf(stderr, "[menu] SQEX03GAME.XXX is not the BLUS31197 %s one; the settings menu stays as shipped\n",
+                k_menu_patch_eboot);
         return false;
     }
     if (!apply_patch(u) || u.size() != k_menu_patch_size || sha1_hex(u) != k_menu_patch_sha1) {
@@ -300,7 +311,9 @@ bool generated(const fs::path& ov)
 {
     std::error_code ec;
     return fs::exists(ov / "PS3_GAME" / "USRDIR" / "SQEX03GAME" / "COOKEDPS3" / "SQEX03GAME.XXX", ec) &&
-           fs::exists(ov / "game" / "BLES00000DATA" / "USRDIR" / "FIOS-UNREALENGINE3" / "SQEX03GAME" / "COOKEDPS3" / "SQEX03GAME.XXX", ec);
+           fs::exists(ov / "game" / "BLES00000DATA" / "USRDIR" / "FIOS-UNREALENGINE3" / "SQEX03GAME" / "COOKEDPS3" /
+                          "SQEX03GAME.XXX",
+                      ec);
 }
 #endif
 
@@ -328,7 +341,8 @@ bool dod3_menu_patch_prepare()
         if (!generate(root, ov) || !write_file(stamp, want.data(), want.size())) return false;
     }
     std::vector<uint8_t> sha;
-    if (!dod3setup::from_hex(k_menu_patch_sha1, &sha) || sha.size() != 20 || !dod3_sha_override("sqex03game.xxx", sha.data()))
+    if (!dod3setup::from_hex(k_menu_patch_sha1, &sha) || sha.size() != 20 ||
+        !dod3_sha_override("sqex03game.xxx", sha.data()))
         return false;
     const std::string ovs = utf8(ov);
     dod3_setenv("PS3_VFS_OVERLAY", ovs.c_str(), 1);

@@ -20,6 +20,7 @@ public:
     bool set_key(const uint8_t* key, int bits);   /* 128 or 256 */
     void encrypt(const uint8_t in[16], uint8_t out[16]) const;
     void decrypt(const uint8_t in[16], uint8_t out[16]) const;
+
 private:
     uint32_t ek_[60] = {}, dk_[60] = {};
     int nr_ = 0;
@@ -37,9 +38,10 @@ struct Sha1 {
     void update(const void* p, size_t n);
     void digest(uint8_t out[20]);
     std::string hex();
+
 private:
     void block(const uint8_t* p);
-    uint32_t h_[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
+    uint32_t h_[5] = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0 };
     uint8_t buf_[64] = {};
     size_t n_ = 0;
     uint64_t len_ = 0;
@@ -49,9 +51,10 @@ struct Sha256 {
     void update(const void* p, size_t n);
     void digest(uint8_t out[32]);
     std::string hex();
+
 private:
     void block(const uint8_t* p);
-    uint32_t h_[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
+    uint32_t h_[8] = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 };
     uint8_t buf_[64] = {};
     size_t n_ = 0;
     uint64_t len_ = 0;

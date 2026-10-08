@@ -37,8 +37,17 @@
 - (void)quit:(id)sender;
 @end
 @implementation Dod3SetupWindowDelegate
-- (BOOL)windowShouldClose:(NSWindow*)sender { (void)sender; self.closed = YES; return NO; }
-- (void)quit:(id)sender { (void)sender; self.closed = YES; }
+- (BOOL)windowShouldClose:(NSWindow*)sender
+{
+    (void)sender;
+    self.closed = YES;
+    return NO;
+}
+- (void)quit:(id)sender
+{
+    (void)sender;
+    self.closed = YES;
+}
 @end
 
 namespace dod3setup {
@@ -70,7 +79,9 @@ MTLRenderPassDescriptor* hidden_pass()
 {
     if (!s_ui.hidden_pass) {
         MTLTextureDescriptor* td = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:s_ui.view.colorPixelFormat
-                                                                                       width:1 height:1 mipmapped:NO];
+                                                                                      width:1
+                                                                                     height:1
+                                                                                  mipmapped:NO];
         td.usage = MTLTextureUsageRenderTarget;
         td.storageMode = MTLStorageModePrivate;
         s_ui.hidden_pass = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -100,8 +111,10 @@ void install_menu()
 void pump_events()
 {
     for (;;) {
-        NSEvent* e = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate distantPast]
-                                           inMode:NSDefaultRunLoopMode dequeue:YES];
+        NSEvent* e = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                        untilDate:[NSDate distantPast]
+                                           inMode:NSDefaultRunLoopMode
+                                          dequeue:YES];
         if (!e) break;
         [NSApp sendEvent:e];
     }
@@ -119,26 +132,32 @@ void grab_if_asked(id<MTLCommandBuffer> cb, id<MTLTexture> tex)
     const NSUInteger w = tex.width, h = tex.height;
     id<MTLBuffer> buf = [s_ui.device newBufferWithLength:w * h * 4 options:MTLResourceStorageModeShared];
     id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
-    [blit copyFromTexture:tex sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
-               sourceSize:MTLSizeMake(w, h, 1) toBuffer:buf destinationOffset:0
-      destinationBytesPerRow:w * 4 destinationBytesPerImage:w * h * 4];
+    [blit copyFromTexture:tex
+                     sourceSlice:0
+                     sourceLevel:0
+                    sourceOrigin:MTLOriginMake(0, 0, 0)
+                      sourceSize:MTLSizeMake(w, h, 1)
+                        toBuffer:buf
+               destinationOffset:0
+          destinationBytesPerRow:w * 4
+        destinationBytesPerImage:w * h * 4];
     [blit endEncoding];
     [cb addCompletedHandler:^(id<MTLCommandBuffer>) {
-        FILE* f = fopen((out + ".tmp").c_str(), "wb");
-        if (!f) return;
-        fprintf(f, "P6\n%lu %lu\n255\n", (unsigned long)w, (unsigned long)h);
-        const uint8_t* p = (const uint8_t*)buf.contents;   /* BGRA */
-        std::vector<uint8_t> row(w * 3);
-        for (NSUInteger y = 0; y < h; y++) {
-            for (NSUInteger x = 0; x < w; x++) {
-                row[x * 3] = p[(y * w + x) * 4 + 2];
-                row[x * 3 + 1] = p[(y * w + x) * 4 + 1];
-                row[x * 3 + 2] = p[(y * w + x) * 4];
-            }
-            fwrite(row.data(), 1, row.size(), f);
-        }
-        fclose(f);
-        rename((out + ".tmp").c_str(), out.c_str());
+      FILE* f = fopen((out + ".tmp").c_str(), "wb");
+      if (!f) return;
+      fprintf(f, "P6\n%lu %lu\n255\n", (unsigned long)w, (unsigned long)h);
+      const uint8_t* p = (const uint8_t*)buf.contents;   /* BGRA */
+      std::vector<uint8_t> row(w * 3);
+      for (NSUInteger y = 0; y < h; y++) {
+          for (NSUInteger x = 0; x < w; x++) {
+              row[x * 3] = p[(y * w + x) * 4 + 2];
+              row[x * 3 + 1] = p[(y * w + x) * 4 + 1];
+              row[x * 3 + 2] = p[(y * w + x) * 4];
+          }
+          fwrite(row.data(), 1, row.size(), f);
+      }
+      fclose(f);
+      rename((out + ".tmp").c_str(), out.c_str());
     }];
 }
 
@@ -163,14 +182,17 @@ bool ui_init(const char* title, int width, int height, const std::string& font_p
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         static bool launched = false;
-        if (!launched) { [NSApp finishLaunching]; launched = true; }
+        if (!launched) {
+            [NSApp finishLaunching];
+            launched = true;
+        }
 
         s_ui.delegate = [[Dod3SetupWindowDelegate alloc] init];
-        s_ui.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, width, height)
-                                                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                                            NSWindowStyleMaskMiniaturizable
-                                                    backing:NSBackingStoreBuffered
-                                                      defer:NO];
+        s_ui.window = [[NSWindow alloc]
+            initWithContentRect:NSMakeRect(0, 0, width, height)
+                      styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
+                        backing:NSBackingStoreBuffered
+                          defer:NO];
         s_ui.window.title = [NSString stringWithUTF8String:title ? title : ""];
         s_ui.window.releasedWhenClosed = NO;
         s_ui.window.delegate = s_ui.delegate;
@@ -297,7 +319,10 @@ std::vector<std::filesystem::path> ui_pick_files(const char* title,
                 while (!e.empty() && e.front() == ' ') e.erase(0, 1);
                 if (e.rfind("*.", 0) == 0) e = e.substr(2);
                 if (e.empty()) continue;
-                if (e == "*") { any = true; continue; }
+                if (e == "*") {
+                    any = true;
+                    continue;
+                }
                 if (UTType* t = [UTType typeWithFilenameExtension:[NSString stringWithUTF8String:e.c_str()]])
                     [types addObject:t];
             }
@@ -323,8 +348,7 @@ std::filesystem::path ui_pick_folder(const char* title)
         p.allowsMultipleSelection = NO;
         p.canCreateDirectories = NO;
         [NSApp activateIgnoringOtherApps:YES];
-        if ([p runModal] == NSModalResponseOK && p.URL.fileSystemRepresentation)
-            out = p.URL.fileSystemRepresentation;
+        if ([p runModal] == NSModalResponseOK && p.URL.fileSystemRepresentation) out = p.URL.fileSystemRepresentation;
         if (s_ui.live) after_panel();
     }
     return out;

@@ -45,8 +45,10 @@ using dod3::utf8;
 std::string gb(uint64_t b)
 {
     char s[32];
-    if (b >= (1ull << 30)) snprintf(s, sizeof s, "%.1f GB", b / 1073741824.0);
-    else snprintf(s, sizeof s, "%.0f MB", b / 1048576.0 + 0.5);
+    if (b >= (1ull << 30))
+        snprintf(s, sizeof s, "%.1f GB", b / 1073741824.0);
+    else
+        snprintf(s, sizeof s, "%.0f MB", b / 1048576.0 + 0.5);
     return s;
 }
 
@@ -87,14 +89,19 @@ void path_line(const char* prefix, const fs::path& p)
     auto width = [](const std::string& t) { return ImGui::CalcTextSize(t.c_str()).x; };
     std::string out = pre + s;
     if (width(out) > avail) {
-        auto lead = [&](size_t i) { while (i > 0 && i < s.size() && ((unsigned char)s[i] & 0xC0) == 0x80) i--; return i; };
+        auto lead = [&](size_t i) {
+            while (i > 0 && i < s.size() && ((unsigned char)s[i] & 0xC0) == 0x80) i--;
+            return i;
+        };
         /* keep [0, head) and [tail, end), taking from the longer side */
         size_t head = s.size() / 2, tail = s.size() / 2;
         for (;;) {
             out = pre + s.substr(0, lead(head)) + "..." + s.substr(lead(tail));
             if (width(out) <= avail || (head == 0 && tail == s.size())) break;
-            if (head > 0 && head >= s.size() - tail) head--;
-            else tail++;
+            if (head > 0 && head >= s.size() - tail)
+                head--;
+            else
+                tail++;
         }
     }
     ImGui::TextDisabled("%s", out.c_str());
@@ -116,8 +123,10 @@ void light(ImU32 col, bool filled)
     const ImVec2 p = ImGui::GetCursorScreenPos();
     const ImVec2 c(p.x + h * 0.5f, p.y + h * 0.5f);
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    if (filled) dl->AddCircleFilled(c, r, col);
-    else dl->AddCircle(c, r, col, 0, h * 0.09f);
+    if (filled)
+        dl->AddCircleFilled(c, r, col);
+    else
+        dl->AddCircle(c, r, col, 0, h * 0.09f);
     ImGui::Dummy(ImVec2(h, h));
     ImGui::SameLine();
 }
@@ -136,13 +145,16 @@ struct Wizard {
     Status have;
     Plan plan;
     std::vector<std::string> notes;           /* what the last files added came to */
-    struct Check { fs::path path; std::future<std::pair<Source, std::string>> fut; };
+    struct Check {
+        fs::path path;
+        std::future<std::pair<Source, std::string>> fut;
+    };
     std::vector<Check> checks;                /* files being recognised */
 
     /* the install, on its own thread */
     std::thread worker;
-    std::atomic<bool> cancel{false}, finished{false};
-    std::atomic<uint64_t> done{0}, total{1};
+    std::atomic<bool> cancel{ false }, finished{ false };
+    std::atomic<uint64_t> done{ 0 }, total{ 1 };
     std::mutex what_mu;
     std::string what, error;
     bool ok = false;
@@ -150,7 +162,9 @@ struct Wizard {
 
     /* the Keys page: a field per key; a check (decrypting the executable)
      * runs whenever all of them are well-formed and have changed since */
-    struct KeyBox { char text[160] = ""; };
+    struct KeyBox {
+        char text[160] = "";
+    };
     std::vector<KeyBox> boxes = std::vector<KeyBox>(needed_keys().size());
     int key_gen = 0, checked_gen = -1, running_gen = -1;
     std::future<std::pair<int, std::string>> key_check;   /* 0 the keys work, 1 wrong keys, 2 another problem */
@@ -164,7 +178,12 @@ struct Wizard {
     std::string grab;
 
     float u() const { return ImGui::GetFontSize(); }
-    void go(Page p) { page = p; page_new = true; page_frames = 0; }
+    void go(Page p)
+    {
+        page = p;
+        page_new = true;
+        page_frames = 0;
+    }
 
     /* the primary button of a page, in the accent colour */
     bool primary(const char* label, float w, bool enabled = true)
@@ -176,14 +195,19 @@ struct Wizard {
         const bool r = ImGui::Button(label, ImVec2(w, 0));
         ImGui::PopStyleColor(3);
         ImGui::EndDisabled();
-        if (enabled && auto_left > 0 && page_frames >= 45) { auto_left--; return true; }
+        if (enabled && auto_left > 0 && page_frames >= 45) {
+            auto_left--;
+            return true;
+        }
         return r;
     }
 
     void test_grab()
     {
         if (grab.empty()) return;
-        if (page_frames == 20) { if (FILE* f = fopen((grab + ".req").c_str(), "wb")) fclose(f); }
+        if (page_frames == 20) {
+            if (FILE* f = fopen((grab + ".req").c_str(), "wb")) fclose(f);
+        }
         if (page_frames == 40) {
             char n[16];
             snprintf(n, sizeof n, "_%d.ppm", grabs++);
@@ -198,19 +222,23 @@ struct Wizard {
         notes.clear();
         for (const fs::path& p : paths)
             checks.push_back({ p, std::async(std::launch::async, [p] {
-                Source s;
-                std::string err;
-                if (!identify(p, &s, &err)) s = Source();
-                return std::make_pair(s, err);
-            }) });
+                                   Source s;
+                                   std::string err;
+                                   if (!identify(p, &s, &err)) s = Source();
+                                   return std::make_pair(s, err);
+                               }) });
     }
 
     void poll_checks()
     {
         for (size_t i = 0; i < checks.size();) {
-            if (checks[i].fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) { i++; continue; }
+            if (checks[i].fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+                i++;
+                continue;
+            }
             auto [s, err] = checks[i].fut.get();
-            const std::string name = utf8(checks[i].path.filename().empty() ? checks[i].path : checks[i].path.filename());
+            const std::string name =
+                utf8(checks[i].path.filename().empty() ? checks[i].path : checks[i].path.filename());
             switch (s.kind) {
             case SourceKind::Disc: plan.disc = s; break;
             case SourceKind::Update: plan.update = s; break;
@@ -228,18 +256,13 @@ struct Wizard {
     }
 
     bool base_ready() const
-    {
-        return (plan.disc.set() || have.disc) && (!update_required() || plan.update.set() || have.update);
-    }
+    { return (plan.disc.set() || have.disc) && (!update_required() || plan.update.set() || have.update); }
     /* the executable is still to be made; the player is asked for its keys
      * only when the setup has none built in */
     bool make_elf_needed() const { return !plan.eboot.set() && !have.eboot; }
     bool need_keys() const { return make_elf_needed() && !builtin_keys().complete(); }
     bool keys_ok() const { return key_result == 0 && checked_gen == key_gen; }
-    bool eboot_source() const
-    {
-        return (update_required() ? plan.update.set() : plan.disc.set()) || have.eboot_bin;
-    }
+    bool eboot_source() const { return (update_required() ? plan.update.set() : plan.disc.set()) || have.eboot_bin; }
 
     Keys keys_from_boxes() const
     {
@@ -268,12 +291,19 @@ struct Wizard {
     {
         if (running_gen >= 0 && key_check.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
             auto [r, m] = key_check.get();
-            if (running_gen == key_gen) { key_result = r; key_msg = m; checked_gen = running_gen; }
+            if (running_gen == key_gen) {
+                key_result = r;
+                key_msg = m;
+                checked_gen = running_gen;
+            }
             running_gen = -1;
         }
         if (running_gen >= 0 || checked_gen == key_gen || !need_keys() || !eboot_source()) return;
         const Keys k = keys_from_boxes();
-        if (!k.complete()) { key_result = -1; return; }
+        if (!k.complete()) {
+            key_result = -1;
+            return;
+        }
         running_gen = key_gen;
         const Plan p = plan;
         const fs::path b = base;
@@ -321,9 +351,15 @@ struct Wizard {
         light(added || it.installed ? kOk : kWarn, added || it.installed);
         ImGui::TextUnformatted(it.name);
         ImGui::Indent(ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.x);
-        if (added) path_line("", it.src->path);
-        else if (it.installed) ImGui::TextDisabled("Installed");
-        else { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", it.need); ImGui::PopTextWrapPos(); }
+        if (added)
+            path_line("", it.src->path);
+        else if (it.installed)
+            ImGui::TextDisabled("Installed");
+        else {
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextDisabled("%s", it.need);
+            ImGui::PopTextWrapPos();
+        }
         ImGui::Unindent(ImGui::GetTextLineHeight() + ImGui::GetStyle().ItemSpacing.x);
         ImGui::Spacing();
     }
@@ -358,8 +394,10 @@ struct Wizard {
             if (update_required()) bullet("the 1.01 update package (.pkg)");
             bullet("any DLC packages (.pkg) you own (optional)");
             if (need_keys())
-                bullet(update_required() ? "the keys that open the update's EBOOT.BIN, the game's executable (asked for on the Keys page)"
-                                         : "the keys that open the disc's EBOOT.BIN, the game's executable (asked for on the Keys page)");
+                bullet(update_required() ? "the keys that open the update's EBOOT.BIN, the game's executable (asked "
+                                           "for on the Keys page)"
+                                         : "the keys that open the disc's EBOOT.BIN, the game's executable (asked for "
+                                           "on the Keys page)");
             ImGui::Unindent(u());
             ImGui::Spacing();
             para("Nothing is changed in the files you add. Licences are not needed for the DLC.");
@@ -372,9 +410,11 @@ struct Wizard {
         heading("Game files");
         para("Add the files below. Any file can be added on any page; each one is recognised by itself.");
         const Item items[] = {
-            { "Game disc (BLUS31197)", "Add a decrypted .iso with Add Files, or the folder holding PS3_GAME with Add Folder.",
-              &plan.disc, have.disc },
-            { "Update 1.01", "Add the update package, UP0082-BLUS31197_00-DOD3PATCH0000000 (.pkg).", &plan.update, have.update },
+            { "Game disc (BLUS31197)",
+              "Add a decrypted .iso with Add Files, or the folder holding PS3_GAME with Add Folder.", &plan.disc,
+              have.disc },
+            { "Update 1.01", "Add the update package, UP0082-BLUS31197_00-DOD3PATCH0000000 (.pkg).", &plan.update,
+              have.update },
         };
         for (const Item& it : items) {
             if (it.src == &plan.update && !update_required()) continue;
@@ -404,13 +444,19 @@ struct Wizard {
                     const bool inst = have.dlc.count(d.id) != 0;
                     light(added || inst ? kOk : kOff, added || inst);
                     ImGui::TextUnformatted(d.name);
-                    if (added || inst) { ImGui::SameLine(); ImGui::TextDisabled(added ? "added" : "installed"); }
+                    if (added || inst) {
+                        ImGui::SameLine();
+                        ImGui::TextDisabled(added ? "added" : "installed");
+                    }
                 }
             }
             ImGui::EndTable();
         }
         ImGui::Spacing();
-        if (adding) { ImGui::TextDisabled("Adding %s", gb(adding).c_str()); ImGui::Spacing(); }
+        if (adding) {
+            ImGui::TextDisabled("Adding %s", gb(adding).c_str());
+            ImGui::Spacing();
+        }
         add_buttons(false);
     }
 
@@ -443,19 +489,25 @@ struct Wizard {
             ImGui::Spacing();
         }
         if (ImGui::Button("Load Key File...", ImVec2(u() * 9, 0))) {
-            const auto picked = ui_pick_files("A key file (name=hex lines)", { { "Key files (.txt)", "*.txt" }, { "All files", "*.*" } });
+            const auto picked = ui_pick_files("A key file (name=hex lines)",
+                                              { { "Key files (.txt)", "*.txt" }, { "All files", "*.*" } });
             if (!picked.empty()) {
                 Keys k;
                 std::string err;
                 if (keys_load(picked[0], &k, &err)) {
                     fill_boxes(k);
-                    key_note = std::to_string(k.v.size()) + " of " + std::to_string(f.size()) + " keys found in " + utf8(picked[0].filename());
+                    key_note = std::to_string(k.v.size()) + " of " + std::to_string(f.size()) + " keys found in " +
+                               utf8(picked[0].filename());
                 } else {
                     key_note = utf8(picked[0].filename()) + ": " + err;
                 }
             }
         }
-        if (!key_note.empty()) { ImGui::SameLine(); ImGui::AlignTextToFramePadding(); ImGui::TextDisabled("%s", key_note.c_str()); }
+        if (!key_note.empty()) {
+            ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", key_note.c_str());
+        }
         ImGui::Spacing();
         if (!eboot_source()) {
             para(update_required() ? "Add the update package on the Game files page: the executable is made from it."
@@ -468,8 +520,11 @@ struct Wizard {
         } else if (key_result > 0 && checked_gen == key_gen) {
             ImGui::PushStyleColor(ImGuiCol_Text, kErrText);
             ImGui::PushTextWrapPos(0);
-            if (key_result == 1) ImGui::TextUnformatted("These keys do not open EBOOT.BIN. Check each one against your key set (key revision 0x1C).");
-            else ImGui::TextUnformatted(key_msg.c_str());
+            if (key_result == 1)
+                ImGui::TextUnformatted(
+                    "These keys do not open EBOOT.BIN. Check each one against your key set (key revision 0x1C).");
+            else
+                ImGui::TextUnformatted(key_msg.c_str());
             ImGui::PopTextWrapPos();
             ImGui::PopStyleColor();
         }
@@ -487,12 +542,15 @@ struct Wizard {
         if (ImGui::BeginTable("plan", 2, ImGuiTableFlags_SizingStretchProp)) {
             auto row = [](const std::string& a, uint64_t b) {
                 ImGui::TableNextRow();
-                ImGui::TableNextColumn(); ImGui::TextUnformatted(a.c_str());
-                ImGui::TableNextColumn(); ImGui::TextDisabled("%s", gb(b).c_str());
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(a.c_str());
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("%s", gb(b).c_str());
             };
             if (plan.disc.set()) row("Game disc", plan.disc.bytes);
             if (plan.update.set()) row("Update 1.01", plan.update.bytes);
-            if (plan.eboot.set()) row("EBOOT.ELF", plan.eboot.bytes);
+            if (plan.eboot.set())
+                row("EBOOT.ELF", plan.eboot.bytes);
             else if (make_elf_needed())
                 row(need_keys()         ? "The game's executable (made with your keys)"
                     : update_required() ? "The game's executable (made from the update)"
@@ -515,7 +573,10 @@ struct Wizard {
     {
         heading("Installing");
         std::string w;
-        { std::lock_guard<std::mutex> g(what_mu); w = what; }
+        {
+            std::lock_guard<std::mutex> g(what_mu);
+            w = what;
+        }
         ImGui::TextUnformatted(w.empty() ? "Starting..." : w.c_str());
         ImGui::Spacing();
         const uint64_t d = done, t = total ? total.load() : 1;
@@ -527,7 +588,8 @@ struct Wizard {
         const double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
         if (secs > 3 && d > 0 && d < t) {
             const double rate = d / secs, left = (t - d) / rate;
-            ImGui::TextDisabled("%.0f MB/s, about %d min %02d s left", rate / 1048576.0, (int)left / 60, (int)left % 60);
+            ImGui::TextDisabled("%.0f MB/s, about %d min %02d s left", rate / 1048576.0, (int)left / 60,
+                                (int)left % 60);
         }
         if (cancel) ImGui::TextDisabled("Cancelling...");
     }
@@ -536,7 +598,8 @@ struct Wizard {
     {
         heading("Installed");
         para("Drakengard 3 is ready to play.");
-        if (!have.dlc.empty()) ImGui::TextDisabled("%zu DLC pack%s installed.", have.dlc.size(), have.dlc.size() == 1 ? "" : "s");
+        if (!have.dlc.empty())
+            ImGui::TextDisabled("%zu DLC pack%s installed.", have.dlc.size(), have.dlc.size() == 1 ? "" : "s");
     }
 
     void page_failed()
@@ -555,18 +618,31 @@ struct Wizard {
 
     void start_install()
     {
-        cancel = false; finished = false; done = 0; total = 1;
-        { std::lock_guard<std::mutex> g(what_mu); what.clear(); }
+        cancel = false;
+        finished = false;
+        done = 0;
+        total = 1;
+        {
+            std::lock_guard<std::mutex> g(what_mu);
+            what.clear();
+        }
         started = std::chrono::steady_clock::now();
         plan.keys = builtin_keys().complete() ? builtin_keys() : keys_from_boxes();
         const Plan p = plan;
         worker = std::thread([this, p] {
             std::string err;
-            const bool r = install(base, p, [this](uint64_t d, uint64_t t, const std::string& w) {
-                done = d; total = t ? t : 1;
-                { std::lock_guard<std::mutex> g(what_mu); what = w; }
-                return !cancel.load();
-            }, &err);
+            const bool r = install(
+                base, p,
+                [this](uint64_t d, uint64_t t, const std::string& w) {
+                    done = d;
+                    total = t ? t : 1;
+                    {
+                        std::lock_guard<std::mutex> g(what_mu);
+                        what = w;
+                    }
+                    return !cancel.load();
+                },
+                &err);
             ok = r;
             error = err;
             finished = true;
@@ -586,14 +662,18 @@ struct Wizard {
         if (page == Page::Installing && finished) {
             worker.join();
             have = installed(base);
-            if (ok) { plan = Plan(); go(Page::Done); }
-            else go(Page::Failed);
+            if (ok) {
+                plan = Plan();
+                go(Page::Done);
+            } else
+                go(Page::Failed);
         }
         const ImGuiIO& io = ImGui::GetIO();
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(io.DisplaySize);
-        ImGui::Begin("##setup", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
+        ImGui::Begin("##setup", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus);
         const float U = u(), pad = U * 1.6f, footer = U * 3.4f, side = U * 12;
         ImDrawList* dl = ImGui::GetWindowDrawList();
         dl->AddRectFilled(ImVec2(0, 0), ImVec2(side, io.DisplaySize.y), IM_COL32(22, 22, 27, 255));
@@ -607,14 +687,22 @@ struct Wizard {
         ImGui::TextDisabled("Recompiled  -  Setup");
         ImGui::Dummy(ImVec2(0, U * 1.5f));
         const char* steps[] = { "Welcome", "Game files", "DLC", "Keys", "Install" };
-        const int at = page == Page::Welcome ? 0 : page == Page::GameFiles ? 1 : page == Page::Dlc ? 2 : page == Page::Keys ? 3 : 4;
+        const int at = page == Page::Welcome     ? 0
+                       : page == Page::GameFiles ? 1
+                       : page == Page::Dlc       ? 2
+                       : page == Page::Keys      ? 3
+                                                 : 4;
         for (int i = 0; i < 5; i++) {
             if (i == 3 && !need_keys() && at != 3) continue;   /* the Keys step only when the player is asked */
             const ImVec2 p = ImGui::GetCursorScreenPos();
-            if (i == at) dl->AddRectFilled(ImVec2(p.x - pad, p.y - 2), ImVec2(p.x - pad + U * 0.22f, p.y + ImGui::GetTextLineHeight() + 2),
-                                           IM_COL32(163, 23, 31, 255));
-            if (i == at) ImGui::TextUnformatted(steps[i]);
-            else ImGui::TextDisabled("%s", steps[i]);
+            if (i == at)
+                dl->AddRectFilled(ImVec2(p.x - pad, p.y - 2),
+                                  ImVec2(p.x - pad + U * 0.22f, p.y + ImGui::GetTextLineHeight() + 2),
+                                  IM_COL32(163, 23, 31, 255));
+            if (i == at)
+                ImGui::TextUnformatted(steps[i]);
+            else
+                ImGui::TextDisabled("%s", steps[i]);
             ImGui::Dummy(ImVec2(0, U * 0.3f));
         }
         ImGui::EndGroup();
@@ -623,8 +711,8 @@ struct Wizard {
 
         /* the page */
         ImGui::SetCursorPos(ImVec2(side + pad, pad));
-        ImGui::BeginChild("page", ImVec2(io.DisplaySize.x - side - pad * 2, io.DisplaySize.y - pad - footer), ImGuiChildFlags_None,
-                          ImGuiWindowFlags_NoBackground);
+        ImGui::BeginChild("page", ImVec2(io.DisplaySize.x - side - pad * 2, io.DisplaySize.y - pad - footer),
+                          ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground);
         switch (page) {
         case Page::Welcome: page_welcome(); break;
         case Page::GameFiles: page_game_files(); break;
@@ -651,7 +739,10 @@ struct Wizard {
         case Page::Welcome:
             at_right(have.ready() ? 3 : 2);
             if (ImGui::Button("Quit", ImVec2(bw, 0))) result = 1;
-            if (have.ready()) { ImGui::SameLine(); if (ImGui::Button("Start Game", ImVec2(bw, 0))) result = 0; }
+            if (have.ready()) {
+                ImGui::SameLine();
+                if (ImGui::Button("Start Game", ImVec2(bw, 0))) result = 0;
+            }
             ImGui::SameLine();
             if (focus) ImGui::SetKeyboardFocusHere();
             if (primary("Next", bw)) go(Page::GameFiles);
@@ -684,7 +775,12 @@ struct Wizard {
             ImGui::SameLine();
             if (focus) ImGui::SetKeyboardFocusHere();
             if (!anything() && !make_elf_needed()) {
-                if (primary(have.ready() ? "Start Game" : "Back", bw)) { if (have.ready()) result = 0; else go(Page::GameFiles); }
+                if (primary(have.ready() ? "Start Game" : "Back", bw)) {
+                    if (have.ready())
+                        result = 0;
+                    else
+                        go(Page::GameFiles);
+                }
             } else {
                 if (primary("Install", bw, !(space && need > space))) start_install();
             }
@@ -710,7 +806,10 @@ struct Wizard {
             if (ImGui::Button("Quit", ImVec2(bw, 0))) result = 1;
             ImGui::SameLine();
             if (focus) ImGui::SetKeyboardFocusHere();
-            if (primary("Back", bw)) { cancel = false; go(Page::Confirm); }
+            if (primary("Back", bw)) {
+                cancel = false;
+                go(Page::Confirm);
+            }
             break;
         }
         ImGui::End();
@@ -750,10 +849,16 @@ int run_installer(const fs::path& base)
     while (ui_frame_begin()) {
         const int r = w.frame();
         ui_frame_end();
-        if (r >= 0) { result = r; break; }
+        if (r >= 0) {
+            result = r;
+            break;
+        }
     }
     /* the window was closed mid-install: stop the install first */
-    if (w.worker.joinable()) { w.cancel = true; w.worker.join(); }
+    if (w.worker.joinable()) {
+        w.cancel = true;
+        w.worker.join();
+    }
     for (auto& c : w.checks) c.fut.wait();
     if (w.running_gen >= 0) w.key_check.wait();
     ui_shutdown();

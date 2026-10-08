@@ -36,7 +36,7 @@ struct SelfKeys {
 
 /* Decrypt and rebuild the ELF. False with `err`; *wrong_keys is set when
  * the keys do not open the metadata (as opposed to a damaged file). */
-bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::vector<uint8_t>* elf,
-                  bool* wrong_keys, std::string* err);
+bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::vector<uint8_t>* elf, bool* wrong_keys,
+                  std::string* err);
 
 }  // namespace dod3setup

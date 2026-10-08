@@ -34,22 +34,22 @@
 extern "C" {
 typedef void (*hle_ctx_fn)(ppu_context*);
 void ps3_hle_register_ctx(uint32_t nid, const char* name, hle_ctx_fn fn);
-int  dod3_libsre_call(uint32_t addr, ppu_context* ctx);   /* generated */
+int dod3_libsre_call(uint32_t addr, ppu_context* ctx);   /* generated */
 void spu_taskset_signal_task(uint32_t taskset_ea, uint32_t taskId);
-int  spurs_tasksets_on(uint32_t spurs_ea, uint32_t* out, int max);
+int spurs_tasksets_on(uint32_t spurs_ea, uint32_t* out, int max);
 extern uint8_t* vm_base;
 extern void (*g_spu_line_commit_hook2)(uint32_t);   /* runtime/spu/spu_channels.c */
 }
 
 enum : uint32_t {
     LIBSRE_QUEUE_INITIALIZE = 0x010164C0,
-    LIBSRE_QUEUE_PUSH_BODY  = 0x010169D0,
-    LIBSRE_QUEUE_POP_BODY   = 0x01016CFC,
+    LIBSRE_QUEUE_PUSH_BODY = 0x010169D0,
+    LIBSRE_QUEUE_POP_BODY = 0x01016CFC,
 };
 
 enum : uint32_t {
     CELL_SPURS_TASK_ERROR_AGAIN = 0x80410901,   /* non-blocking: nothing to pop */
-    CELL_SPURS_TASK_ERROR_BUSY  = 0x8041090A,   /* non-blocking: lost a race    */
+    CELL_SPURS_TASK_ERROR_BUSY = 0x8041090A,   /* non-blocking: lost a race    */
 };
 
 /* Run a lifted libsre function on the caller's own arguments: r3..r10 as the
@@ -73,12 +73,12 @@ static uint32_t run_libsre(ppu_context* ctx, uint32_t fn, const uint64_t args[4]
  * 1 ms timeout in case a change arrives some other way. (PhysX pops 20-30
  * SPU task results a frame on the thread the game thread then waits on;
  * retrying on a timer held the game thread up for a sixth of every frame.) */
-static std::mutex              s_wait_mu;
+static std::mutex s_wait_mu;
 static std::condition_variable s_wait_cv;
-static std::atomic<unsigned>   s_wait_gen{0};
-static std::atomic<int>        s_waiters{0};
-static uint32_t                s_lines[64];
-static std::atomic<int>        s_nlines{0};
+static std::atomic<unsigned> s_wait_gen{ 0 };
+static std::atomic<int> s_waiters{ 0 };
+static uint32_t s_lines[64];
+static std::atomic<int> s_nlines{ 0 };
 
 static void queue_changed()
 {
@@ -93,14 +93,18 @@ static void queue_line_committed(uint32_t line)
 {
     const int n = s_nlines.load(std::memory_order_acquire);
     for (int i = 0; i < n; i++)
-        if (s_lines[i] == line) { queue_changed(); return; }
+        if (s_lines[i] == line) {
+            queue_changed();
+            return;
+        }
 }
 
 static void watch_queue(uint32_t q)
 {
     std::lock_guard<std::mutex> lk(s_wait_mu);
     const int n = s_nlines.load();
-    for (int i = 0; i < n; i++) if (s_lines[i] == (q & ~127u)) return;
+    for (int i = 0; i < n; i++)
+        if (s_lines[i] == (q & ~127u)) return;
     if (n >= 64) return;
     s_lines[n] = q & ~127u;
     s_nlines.store(n + 1, std::memory_order_release);
@@ -121,7 +125,10 @@ static uint32_t run_blocking(ppu_context* ctx, uint32_t fn, uint64_t args[4], in
             if (rc == 0) queue_changed();   /* a PPU push/pop: room or an item for someone */
             return rc;
         }
-        if (rc == CELL_SPURS_TASK_ERROR_BUSY || spins < 8) { std::this_thread::yield(); continue; }
+        if (rc == CELL_SPURS_TASK_ERROR_BUSY || spins < 8) {
+            std::this_thread::yield();
+            continue;
+        }
         std::unique_lock<std::mutex> lk(s_wait_mu);
         s_waiters.fetch_add(1);
         s_wait_cv.wait_for(lk, std::chrono::milliseconds(1),
@@ -138,8 +145,7 @@ static void queue_initialize(ppu_context* ctx)
     const uint32_t rc = run_libsre(ctx, LIBSRE_QUEUE_INITIALIZE, args);
     if (rc == 0) watch_queue((uint32_t)args[2]);
     fprintf(stderr, "[spurs-queue] init taskset=0x%08X q=0x%08X buf=0x%08X size=%u depth=%u -> 0x%08X\n",
-           (uint32_t)args[1], (uint32_t)args[2], (uint32_t)args[3],
-           (uint32_t)r7, (uint32_t)r8, rc);
+            (uint32_t)args[1], (uint32_t)args[2], (uint32_t)args[3], (uint32_t)r7, (uint32_t)r8, rc);
 }
 
 static void queue_push_body(ppu_context* ctx)
@@ -173,10 +179,15 @@ extern "C" void dod3_spurs_workload_taskset(ppu_context* ctx)
     const uint32_t wid = (uint32_t)ctx->gpr[5];
     uint32_t ts[16];
     const int n = spurs_tasksets_on(spurs, ts, 16);
-    if (!n) { ctx->gpr[3] = (int64_t)(int32_t)0x80410711u; return; }   /* SRCH */
-    if (n > 1) { static int s_once = 0;
-        if (!s_once++) fprintf(stderr, "[spurs-queue] workload %u on spurs 0x%08X: %d tasksets, using the first\n",
-                               wid, spurs, n); }
+    if (!n) {
+        ctx->gpr[3] = (int64_t)(int32_t)0x80410711u;
+        return;
+    }   /* SRCH */
+    if (n > 1) {
+        static int s_once = 0;
+        if (!s_once++)
+            fprintf(stderr, "[spurs-queue] workload %u on spurs 0x%08X: %d tasksets, using the first\n", wid, spurs, n);
+    }
     if (out) vm_write32(out, ts[0]);
     ctx->gpr[3] = 0;
 }
@@ -191,10 +202,7 @@ extern "C" void dod3_libsre_memcpy(ppu_context* ctx)
 
 extern "C" void dod3_register_spurs_queue(void)
 {
-    ps3_hle_register_ctx(ps3_compute_nid("_cellSpursQueueInitialize"),
-                         "_cellSpursQueueInitialize", queue_initialize);
-    ps3_hle_register_ctx(ps3_compute_nid("cellSpursQueuePushBody"),
-                         "cellSpursQueuePushBody", queue_push_body);
-    ps3_hle_register_ctx(ps3_compute_nid("cellSpursQueuePopBody"),
-                         "cellSpursQueuePopBody", queue_pop_body);
+    ps3_hle_register_ctx(ps3_compute_nid("_cellSpursQueueInitialize"), "_cellSpursQueueInitialize", queue_initialize);
+    ps3_hle_register_ctx(ps3_compute_nid("cellSpursQueuePushBody"), "cellSpursQueuePushBody", queue_push_body);
+    ps3_hle_register_ctx(ps3_compute_nid("cellSpursQueuePopBody"), "cellSpursQueuePopBody", queue_pop_body);
 }

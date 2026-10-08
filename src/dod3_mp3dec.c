@@ -147,8 +147,10 @@ static int read_side_info(bits_t* b, const hdr_t* h, int* main_data_begin, int s
                 r->region0 = (int)bits_get(b, 4);
                 r->region1 = (int)bits_get(b, 3);
             }
-            if (h->mpeg1) r->preflag = (int)bits_get1(b);
-            else r->preflag = r->sf_compress >= 500 && !(h->is && ch == 1);
+            if (h->mpeg1)
+                r->preflag = (int)bits_get1(b);
+            else
+                r->preflag = r->sf_compress >= 500 && !(h->is && ch == 1);
             r->sf_scale = (int)bits_get1(b);
             r->count1_table = (int)bits_get1(b);
         }
@@ -214,14 +216,43 @@ static void read_scalefactors_lsf(bits_t* b, const hdr_t* h, const granule_t* r,
     };
     int sl[4] = { 0, 0, 0, 0 }, idx, sfc = r->sf_compress;
     if (!(h->is && ch == 1)) {
-        if (sfc < 400) { sl[0] = (sfc >> 4) / 5; sl[1] = (sfc >> 4) % 5; sl[2] = (sfc & 15) >> 2; sl[3] = sfc & 3; idx = 0; }
-        else if (sfc < 500) { sfc -= 400; sl[0] = (sfc >> 2) / 5; sl[1] = (sfc >> 2) % 5; sl[2] = sfc & 3; idx = 1; }
-        else { sfc -= 500; sl[0] = sfc / 3; sl[1] = sfc % 3; idx = 2; }
+        if (sfc < 400) {
+            sl[0] = (sfc >> 4) / 5;
+            sl[1] = (sfc >> 4) % 5;
+            sl[2] = (sfc & 15) >> 2;
+            sl[3] = sfc & 3;
+            idx = 0;
+        } else if (sfc < 500) {
+            sfc -= 400;
+            sl[0] = (sfc >> 2) / 5;
+            sl[1] = (sfc >> 2) % 5;
+            sl[2] = sfc & 3;
+            idx = 1;
+        } else {
+            sfc -= 500;
+            sl[0] = sfc / 3;
+            sl[1] = sfc % 3;
+            idx = 2;
+        }
     } else {
         sfc >>= 1;
-        if (sfc < 180) { sl[0] = sfc / 36; sl[1] = (sfc % 36) / 6; sl[2] = (sfc % 36) % 6; idx = 3; }
-        else if (sfc < 244) { sfc -= 180; sl[0] = (sfc % 64) >> 4; sl[1] = (sfc % 16) >> 2; sl[2] = sfc % 4; idx = 4; }
-        else { sfc -= 244; sl[0] = sfc / 3; sl[1] = sfc % 3; idx = 5; }
+        if (sfc < 180) {
+            sl[0] = sfc / 36;
+            sl[1] = (sfc % 36) / 6;
+            sl[2] = (sfc % 36) % 6;
+            idx = 3;
+        } else if (sfc < 244) {
+            sfc -= 180;
+            sl[0] = (sfc % 64) >> 4;
+            sl[1] = (sfc % 16) >> 2;
+            sl[2] = sfc % 4;
+            idx = 4;
+        } else {
+            sfc -= 244;
+            sl[0] = sfc / 3;
+            sl[1] = sfc % 3;
+            idx = 5;
+        }
     }
     const int kind = r->block_type == 2 ? (r->mixed ? 2 : 1) : 0;
     int vals[40], maxs[40], n = 0;
@@ -232,13 +263,20 @@ static void read_scalefactors_lsf(bits_t* b, const hdr_t* h, const granule_t* r,
         }
     int k = 0;
     if (kind == 0) {
-        for (int sfb = 0; sfb < 21; sfb++, k++) { s->l[sfb] = vals[k]; s->lmax[sfb] = maxs[k]; }
-        s->l[21] = 0; s->lmax[21] = s->lmax[20];
+        for (int sfb = 0; sfb < 21; sfb++, k++) {
+            s->l[sfb] = vals[k];
+            s->lmax[sfb] = maxs[k];
+        }
+        s->l[21] = 0;
+        s->lmax[21] = s->lmax[20];
     } else {
         int sfb = 0;
         if (kind == 2) {
             const int nl = mixed_long_bands(h);
-            for (; sfb < nl && k < n; sfb++, k++) { s->l[sfb] = vals[k]; s->lmax[sfb] = maxs[k]; }
+            for (; sfb < nl && k < n; sfb++, k++) {
+                s->l[sfb] = vals[k];
+                s->lmax[sfb] = maxs[k];
+            }
             sfb = 3;
         }
         for (; sfb < 12; sfb++) {
@@ -277,7 +315,10 @@ static int read_huffman(bits_t* b, int end, const hdr_t* h, const granule_t* r, 
     int i = 0;
     for (; i < bv; i += 2) {
         const int t = r->table[i < r1 ? 0 : i < r2 ? 1 : 2];
-        if (t == 0 || k_huff_start[t] == 0xFFFFu) { is[i] = is[i + 1] = 0; continue; }
+        if (t == 0 || k_huff_start[t] == 0xFFFFu) {
+            is[i] = is[i + 1] = 0;
+            continue;
+        }
         const int xy = huff_word(b, t), lin = k_huff_linbits[t];
         int x = xy >> 4, y = xy & 15;
         if (lin && x == 15) x += (int)bits_get(b, lin);
@@ -296,7 +337,10 @@ static int read_huffman(bits_t* b, int end, const hdr_t* h, const granule_t* r, 
         for (int k = 0; k < 4; k++)
             if (q[k] && bits_get1(b)) q[k] = -q[k];
         if (b->pos > end) break;
-        is[i] = q[0]; is[i + 1] = q[1]; is[i + 2] = q[2]; is[i + 3] = q[3];
+        is[i] = q[0];
+        is[i + 1] = q[1];
+        is[i + 2] = q[2];
+        is[i + 3] = q[3];
         i += 4;
     }
     for (int k = i; k < 576; k++) is[k] = 0;
@@ -306,10 +350,7 @@ static int read_huffman(bits_t* b, int end, const hdr_t* h, const granule_t* r, 
 
 /* ---- requantization ---------------------------------------------------------- */
 
-static inline float gain_q(int q)   /* 2^(q/4) */
-{
-    return ldexpf(k_pow2_quarter[q & 3], q >> 2);
-}
+static inline float gain_q(int q) /* 2^(q/4) */ { return ldexpf(k_pow2_quarter[q & 3], q >> 2); }
 
 static inline float pow43(int v)
 {
@@ -348,8 +389,8 @@ static void requantize(const hdr_t* h, const granule_t* r, const scf_t* s, const
 
 /* Mid/side and intensity stereo, in decode order. nz[] are the channels'
  * decoded line counts. */
-static void stereo(const hdr_t* h, const granule_t* gr, const scf_t* sr, const int* is_r, const int nz[2],
-                   float* xl, float* xr)
+static void stereo(const hdr_t* h, const granule_t* gr, const scf_t* sr, const int* is_r, const int nz[2], float* xl,
+                   float* xr)
 {
     /* is_pos per line (-1: not intensity-coded). */
     int8_t pos[576];
@@ -467,7 +508,10 @@ static void hybrid(const hdr_t* h, const granule_t* r, const float* xr, int n, d
         float* ov = c->overlap[sb];
         float* o = out[sb];
         if (sb >= live) {
-            for (int i = 0; i < 18; i++) { o[i] = ov[i]; ov[i] = 0.0f; }
+            for (int i = 0; i < 18; i++) {
+                o[i] = ov[i];
+                ov[i] = 0.0f;
+            }
             continue;
         }
         const float* x = lin + 18 * sb;
@@ -600,16 +644,20 @@ int dod3_mp3_decode(dod3_mp3* d, const uint8_t* frame, int16_t* out[2], dod3_mp3
                 const int start = b.pos;
                 int end = start + r->part23;
                 if (end > limit) end = limit;
-                if (h.mpeg1) read_scalefactors_mpeg1(&b, r, g, scfsi[ch], &scf[ch]);
-                else read_scalefactors_lsf(&b, &h, r, ch, &scf[ch]);
+                if (h.mpeg1)
+                    read_scalefactors_mpeg1(&b, r, g, scfsi[ch], &scf[ch]);
+                else
+                    read_scalefactors_lsf(&b, &h, r, ch, &scf[ch]);
                 if (b.pos > end) b.pos = end;
                 nz[ch] = read_huffman(&b, end, &h, r, is[ch]);
                 requantize(&h, r, &scf[ch], is[ch], nz[ch], xr[ch]);
             }
             if (h.nch == 2 && (h.ms || h.is)) {
                 stereo(&h, gr[g], &scf[1], is[1], nz, xr[0], xr[1]);
-                if (h.is) nz[0] = nz[1] = 576;
-                else nz[0] = nz[1] = nz[0] > nz[1] ? nz[0] : nz[1];
+                if (h.is)
+                    nz[0] = nz[1] = 576;
+                else
+                    nz[0] = nz[1] = nz[0] > nz[1] ? nz[0] : nz[1];
             }
             for (int ch = 0; ch < h.nch; ch++) {
                 float sub[32][18];

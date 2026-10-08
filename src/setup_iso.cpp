@@ -18,7 +18,11 @@ const char* const kTitleId = "BLUS31197";
 const char* const kAppVer = "01.00";
 
 using dod3::utf8;
-static std::string utf8_generic(const fs::path& p) { const auto s = p.generic_u8string(); return std::string(s.begin(), s.end()); }
+static std::string utf8_generic(const fs::path& p)
+{
+    const auto s = p.generic_u8string();
+    return std::string(s.begin(), s.end());
+}
 
 std::string sha256_file(const fs::path& p)
 {
@@ -36,7 +40,9 @@ std::string sha256_file(const fs::path& p)
 /* ---- PARAM.SFO -------------------------------------------------------------- */
 bool param_sfo(const std::vector<uint8_t>& d, std::string* title_id, std::string* app_ver)
 {
-    auto le32 = [&](size_t o) { return (uint32_t)d[o] | (uint32_t)d[o + 1] << 8 | (uint32_t)d[o + 2] << 16 | (uint32_t)d[o + 3] << 24; };
+    auto le32 = [&](size_t o) {
+        return (uint32_t)d[o] | (uint32_t)d[o + 1] << 8 | (uint32_t)d[o + 2] << 16 | (uint32_t)d[o + 3] << 24;
+    };
     auto le16 = [&](size_t o) { return (uint32_t)d[o] | (uint32_t)d[o + 1] << 8; };
     if (d.size() < 20 || memcmp(d.data(), "\0PSF", 4) != 0) return false;
     const uint32_t kt = le32(8), dt = le32(12), n = le32(16);
@@ -79,7 +85,10 @@ struct Iso {
     }
 };
 
-uint32_t le32(const uint8_t* p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
+uint32_t le32(const uint8_t* p)
+{
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
+}
 
 std::string iso_name(const uint8_t* p, size_t n, bool joliet)
 {
@@ -87,9 +96,16 @@ std::string iso_name(const uint8_t* p, size_t n, bool joliet)
     if (joliet) {
         for (size_t i = 0; i + 1 < n; i += 2) {
             const uint32_t c = (uint32_t)p[i] << 8 | p[i + 1];
-            if (c < 0x80) s += (char)c;
-            else if (c < 0x800) { s += (char)(0xC0 | (c >> 6)); s += (char)(0x80 | (c & 0x3F)); }
-            else { s += (char)(0xE0 | (c >> 12)); s += (char)(0x80 | ((c >> 6) & 0x3F)); s += (char)(0x80 | (c & 0x3F)); }
+            if (c < 0x80)
+                s += (char)c;
+            else if (c < 0x800) {
+                s += (char)(0xC0 | (c >> 6));
+                s += (char)(0x80 | (c & 0x3F));
+            } else {
+                s += (char)(0xE0 | (c >> 12));
+                s += (char)(0x80 | ((c >> 6) & 0x3F));
+                s += (char)(0x80 | (c & 0x3F));
+            }
         }
     } else {
         s.assign((const char*)p, n);
@@ -100,22 +116,34 @@ std::string iso_name(const uint8_t* p, size_t n, bool joliet)
     return s;
 }
 
-bool walk(Iso& iso, uint32_t lba, uint32_t len, const std::string& prefix, bool joliet,
-          std::vector<DiscFile>* out, int depth, std::string* err)
+bool walk(Iso& iso, uint32_t lba, uint32_t len, const std::string& prefix, bool joliet, std::vector<DiscFile>* out,
+          int depth, std::string* err)
 {
-    if (depth > 32) { *err = "the disc image's folders nest too deep (not an ISO 9660 image?)"; return false; }
+    if (depth > 32) {
+        *err = "the disc image's folders nest too deep (not an ISO 9660 image?)";
+        return false;
+    }
     std::vector<uint8_t> dir(len);
-    if (!iso.read((uint64_t)lba * kSector, dir.data(), len)) { *err = "the disc image is truncated"; return false; }
+    if (!iso.read((uint64_t)lba * kSector, dir.data(), len)) {
+        *err = "the disc image is truncated";
+        return false;
+    }
     for (uint32_t o = 0; o < len;) {
         const uint8_t rl = dir[o];
-        if (rl == 0) { o = (o / kSector + 1) * kSector; continue; }      /* records do not span sectors */
+        if (rl == 0) {
+            o = (o / kSector + 1) * kSector;
+            continue;
+        }      /* records do not span sectors */
         if (o + rl > len || rl < 34) break;
         const uint8_t* r = &dir[o];
         const uint32_t ext = le32(r + 2), size = le32(r + 10);
         const uint8_t flags = r[25], nl = r[32];
         o += rl;
         if (nl == 1 && (r[33] == 0 || r[33] == 1)) continue;            /* . and .. */
-        if (flags & 0x80) { *err = "the disc image has a file split over several extents, which is not supported"; return false; }
+        if (flags & 0x80) {
+            *err = "the disc image has a file split over several extents, which is not supported";
+            return false;
+        }
         const std::string name = iso_name(r + 33, nl, joliet);
         const std::string path = prefix.empty() ? name : prefix + "/" + name;
         if (flags & 0x02) {
@@ -131,7 +159,10 @@ bool list_iso(const fs::path& p, std::vector<DiscFile>* files, std::string* err)
 {
     Iso iso;
     iso.f.open(p, std::ios::binary);
-    if (!iso.f) { *err = "the disc image could not be opened"; return false; }
+    if (!iso.f) {
+        *err = "the disc image could not be opened";
+        return false;
+    }
     uint8_t vd[kSector];
     const uint8_t* root = nullptr;
     bool joliet = false;
@@ -140,14 +171,25 @@ bool list_iso(const fs::path& p, std::vector<DiscFile>* files, std::string* err)
     for (uint32_t s = 16; s < 64; s++) {
         if (!iso.read((uint64_t)s * kSector, vd, kSector)) break;
         if (memcmp(vd + 1, "CD001", 5) != 0) break;
-        if (vd[0] == 1 && !have_pvd) { memcpy(pvd_root, vd + 156, 34); have_pvd = true; }
+        if (vd[0] == 1 && !have_pvd) {
+            memcpy(pvd_root, vd + 156, 34);
+            have_pvd = true;
+        }
         if (vd[0] == 2 && vd[88] == '%' && vd[89] == '/' && (vd[90] == '@' || vd[90] == 'C' || vd[90] == 'E')) {
-            memcpy(svd_root, vd + 156, 34); have_svd = true;
+            memcpy(svd_root, vd + 156, 34);
+            have_svd = true;
         }
         if (vd[0] == 255) break;
     }
-    if (!have_pvd) { *err = "this is not an ISO 9660 disc image"; return false; }
-    if (have_svd) { root = svd_root; joliet = true; } else root = pvd_root;
+    if (!have_pvd) {
+        *err = "this is not an ISO 9660 disc image";
+        return false;
+    }
+    if (have_svd) {
+        root = svd_root;
+        joliet = true;
+    } else
+        root = pvd_root;
     return walk(iso, le32(root + 2), le32(root + 10), "", joliet, files, 0, err);
 }
 
@@ -159,7 +201,10 @@ bool list_folder(const fs::path& p, std::vector<DiscFile>* files, std::string* e
         const std::string rel = utf8_generic(fs::relative(it->path(), p, ec));
         files->push_back({ rel, 0, (uint64_t)it->file_size(ec) });
     }
-    if (ec) { *err = "the folder could not be read: " + ec.message(); return false; }
+    if (ec) {
+        *err = "the folder could not be read: " + ec.message();
+        return false;
+    }
     return true;
 }
 
@@ -168,7 +213,8 @@ const DiscFile* find(const Disc& d, const std::string& path)
     for (const auto& f : d.files) {
         if (f.path.size() != path.size()) continue;
         bool same = true;                                   /* ISO names are upper case; folders may not be */
-        for (size_t i = 0; i < path.size() && same; i++) same = toupper((unsigned char)f.path[i]) == toupper((unsigned char)path[i]);
+        for (size_t i = 0; i < path.size() && same; i++)
+            same = toupper((unsigned char)f.path[i]) == toupper((unsigned char)path[i]);
         if (same) return &f;
     }
     return nullptr;
@@ -199,7 +245,8 @@ bool open_disc(const fs::path& source, Disc* disc, std::string* err)
     disc->is_iso = fs::is_regular_file(source, ec);
     if (!disc->is_iso) {
         /* The folder that holds PS3_GAME; accept PS3_GAME itself too. */
-        if (!fs::exists(source / "PS3_GAME", ec) && fs::exists(source / "PARAM.SFO", ec) && fs::exists(source / "USRDIR", ec))
+        if (!fs::exists(source / "PS3_GAME", ec) && fs::exists(source / "PARAM.SFO", ec) &&
+            fs::exists(source / "USRDIR", ec))
             disc->source = source.parent_path();
     }
     if (!(disc->is_iso ? list_iso(disc->source, &disc->files, err) : list_folder(disc->source, &disc->files, err)))
@@ -209,21 +256,25 @@ bool open_disc(const fs::path& source, Disc* disc, std::string* err)
      * installed copy, its game/ (the update and DLC) and cache/. */
     auto on_disc = [](const std::string& p) {
         auto starts = [&](const char* s) {
-            for (size_t i = 0; s[i]; i++) if (i >= p.size() || toupper((unsigned char)p[i]) != s[i]) return false;
+            for (size_t i = 0; s[i]; i++)
+                if (i >= p.size() || toupper((unsigned char)p[i]) != s[i]) return false;
             return true;
         };
         return starts("PS3_GAME/") || (starts("PS3_DISC.SFB") && p.size() == 12);
     };
-    disc->files.erase(std::remove_if(disc->files.begin(), disc->files.end(), [&](const DiscFile& f) { return !on_disc(f.path); }),
-                      disc->files.end());
+    disc->files.erase(
+        std::remove_if(disc->files.begin(), disc->files.end(), [&](const DiscFile& f) { return !on_disc(f.path); }),
+        disc->files.end());
     disc->total = 0;
     for (const auto& f : disc->files) disc->total += f.size;
 
     std::vector<uint8_t> sfo;
     std::string tid, ver;
     if (!read_disc_file(*disc, "PS3_GAME/PARAM.SFO", &sfo) || !param_sfo(sfo, &tid, &ver)) {
-        *err = disc->is_iso ? "no PS3_GAME/PARAM.SFO in this disc image: it is not a PS3 game disc, or it is still disc-encrypted"
-                            : "no PS3_GAME/PARAM.SFO in this folder: choose the folder that contains PS3_GAME";
+        *err =
+            disc->is_iso
+                ? "no PS3_GAME/PARAM.SFO in this disc image: it is not a PS3 game disc, or it is still disc-encrypted"
+                : "no PS3_GAME/PARAM.SFO in this folder: choose the folder that contains PS3_GAME";
         return false;
     }
     if (tid != kTitleId) {
@@ -235,13 +286,18 @@ bool open_disc(const fs::path& source, Disc* disc, std::string* err)
         return false;
     }
     std::vector<uint8_t> eboot;
-    if (!read_disc_file(*disc, "PS3_GAME/USRDIR/EBOOT.BIN", &eboot)) { *err = "the disc has no PS3_GAME/USRDIR/EBOOT.BIN"; return false; }
-    Sha256 s; s.update(eboot.data(), eboot.size());
+    if (!read_disc_file(*disc, "PS3_GAME/USRDIR/EBOOT.BIN", &eboot)) {
+        *err = "the disc has no PS3_GAME/USRDIR/EBOOT.BIN";
+        return false;
+    }
+    Sha256 s;
+    s.update(eboot.data(), eboot.size());
     if (s.hex() != kEbootBinSha256) {
-        *err = disc->is_iso ? "this disc image's EBOOT.BIN does not match the supported release. If the image came "
-                              "straight from a disc drive it is still disc-encrypted: make a decrypted one "
-                              "(for example with PS3 Disc Dumper)."
-                            : "this folder's EBOOT.BIN does not match the supported release (BLUS31197 v01.00, no update).";
+        *err = disc->is_iso
+                   ? "this disc image's EBOOT.BIN does not match the supported release. If the image came "
+                     "straight from a disc drive it is still disc-encrypted: make a decrypted one "
+                     "(for example with PS3 Disc Dumper)."
+                   : "this folder's EBOOT.BIN does not match the supported release (BLUS31197 v01.00, no update).";
         return false;
     }
     return true;
@@ -253,26 +309,52 @@ bool copy_disc(const Disc& disc, const fs::path& dest, const std::function<bool(
     std::error_code ec;
     fs::create_directories(dest, ec);
     std::ifstream iso;
-    if (disc.is_iso) { iso.open(disc.source, std::ios::binary); if (!iso) { *err = "the disc image could not be opened"; return false; } }
+    if (disc.is_iso) {
+        iso.open(disc.source, std::ios::binary);
+        if (!iso) {
+            *err = "the disc image could not be opened";
+            return false;
+        }
+    }
     std::unique_ptr<char[]> buf(new char[4 << 20]);
     uint64_t done = 0;
     for (const auto& f : disc.files) {
         const fs::path to = dest / fs::u8path(f.path);
         fs::create_directories(to.parent_path(), ec);
         std::ofstream out(to, std::ios::binary | std::ios::trunc);
-        if (!out) { *err = "could not write " + utf8(to); return false; }
+        if (!out) {
+            *err = "could not write " + utf8(to);
+            return false;
+        }
         std::ifstream in;
-        if (disc.is_iso) iso.seekg((std::streamoff)f.offset);
-        else { in.open(disc.source / fs::u8path(f.path), std::ios::binary); if (!in) { *err = "could not read " + f.path; return false; } }
+        if (disc.is_iso)
+            iso.seekg((std::streamoff)f.offset);
+        else {
+            in.open(disc.source / fs::u8path(f.path), std::ios::binary);
+            if (!in) {
+                *err = "could not read " + f.path;
+                return false;
+            }
+        }
         std::istream& src = disc.is_iso ? (std::istream&)iso : (std::istream&)in;
         for (uint64_t left = f.size; left;) {
             const size_t n = (size_t)(left < (4u << 20) ? left : (4u << 20));
             src.read(buf.get(), (std::streamsize)n);
-            if ((size_t)src.gcount() != n) { *err = "a read failed in " + f.path + " (the disc image is truncated?)"; return false; }
+            if ((size_t)src.gcount() != n) {
+                *err = "a read failed in " + f.path + " (the disc image is truncated?)";
+                return false;
+            }
             out.write(buf.get(), (std::streamsize)n);
-            if (!out) { *err = "a write failed for " + utf8(to) + " (disk full?)"; return false; }
-            left -= n; done += n;
-            if (!progress(done, disc.total)) { *err = "cancelled"; return false; }
+            if (!out) {
+                *err = "a write failed for " + utf8(to) + " (disk full?)";
+                return false;
+            }
+            left -= n;
+            done += n;
+            if (!progress(done, disc.total)) {
+                *err = "cancelled";
+                return false;
+            }
         }
     }
     return true;

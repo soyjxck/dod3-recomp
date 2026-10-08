@@ -30,7 +30,10 @@ bool param_sfo(const std::vector<uint8_t>& sfo, std::string* title_id, std::stri
 bool disc_installed(const fs::path& base);
 
 /* A disc to install from: an ISO 9660 image or a folder holding PS3_GAME. */
-struct DiscFile { std::string path; uint64_t offset = 0, size = 0; };   /* path uses '/', offset is the image byte offset */
+struct DiscFile {
+    std::string path;
+    uint64_t offset = 0, size = 0;
+};   /* path uses '/', offset is the image byte offset */
 struct Disc {
     bool is_iso = false;
     fs::path source;
