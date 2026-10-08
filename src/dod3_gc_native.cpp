@@ -29,6 +29,25 @@
 #include <stdlib.h>
 #include <string.h>
 #include "dod3_cycles.h"
+
+/* The pass is bound by memory latency: 136k object headers spread over the
+ * heap, each read (and its flags written) once. The guest's own code issued
+ * dcbt for the object ahead; this does the same on the host -- the header of
+ * the object `ahead` slots further on, so it is in cache by the time it is
+ * read. Hints only: no effect on what the pass does. DOD3_GC_PREFETCH=0 off. */
+static int gc_prefetch_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char* e = getenv("DOD3_GC_PREFETCH"); on = !(e && e[0] == '0'); }
+    return on;
+}
+static inline void gc_prefetch_obj(uint32_t array_data, uint32_t index, uint32_t limit)
+{
+    if (index >= limit) return;
+    extern uint8_t* vm_base;
+    const uint32_t o = vm_read32(array_data + index * 4u);
+    if (o) __builtin_prefetch((const void*)(vm_base + o), 0, 3);
+}
 #include <map>
 
 /* DOD3_GC_STATS=1: per collection, the cycles in the two per-object virtual
@@ -210,7 +229,9 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
     const uint32_t outer_match = (uint32_t)ctx->gpr[3];  /* r31: what func_00EE6408 returned */
 
     /* Phase 1: every object past the first GC index. */
+    const int pf = gc_prefetch_on();
     for (int32_t i = (int32_t)vm_read32(GOBJ_FIRST); i < (int32_t)vm_read32(GOBJ + 4); i++) {
+        if (pf) gc_prefetch_obj(vm_read32(GOBJ), (uint32_t)i + 16u, vm_read32(GOBJ + 4));
         const uint32_t obj = vm_read32(vm_read32(GOBJ) + (uint32_t)i * 4u);
         vm_write32(p.slot70, obj);
         if (obj == 0) continue;
@@ -259,6 +280,7 @@ extern "C" void dod3_gc_reach_native(ppu_context* ctx)
     for (int32_t idx = 0; ; ) {
         last_num = vm_read32(list + 4);
         if (!(idx < (int32_t)last_num)) break;
+        if (pf) gc_prefetch_obj(vm_read32(list + 0), (uint32_t)idx + 8u, last_num);
         const uint32_t cur = vm_read32(vm_read32(list + 0) + (uint32_t)idx * 4u);
         idx++;
         vm_write32(list + 0xC, cur);
