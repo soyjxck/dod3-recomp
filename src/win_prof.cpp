@@ -363,6 +363,11 @@ static DWORD WINAPI prof_thread(LPVOID arg)
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     long report_s = 5;
     if (const char* e = getenv("DOD3_PROF_REPORT")) report_s = atol(e) > 0 ? atol(e) : 5;
+    /* Not before the first frame is presented: suspending threads while the
+     * D3D12 device and window are being created deadlocked the boot twice
+     * (a thread held the loader lock while suspended, and the walk here
+     * needs it), hanging at GCM init with only the 30 us polls in the log. */
+    while (g_rsx_engine_frame == 0) Sleep(50);
     LARGE_INTEGER qf, t0; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&t0);
     for (;;) {
         Sleep((DWORD)interval);

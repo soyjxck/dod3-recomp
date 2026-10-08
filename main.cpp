@@ -235,6 +235,7 @@ static void fifo_kick(void)
  * render thread waited with it (Unreal's end-of-frame sync). DOD3_AB=labelwake
  * switches the label wake in a run. */
 extern "C" void (*g_gcm_label_write_hook)(void);
+extern "C" void (*g_gcm_fifo_kick_hook)(void);   /* cellGcmSys.c: the ring-full recycle */
 static std::atomic<uint64_t> s_drain_gen{0};
 static std::atomic<uint64_t> s_label_gen{0};
 static std::atomic<int>      s_drain_waiters{0};
@@ -737,6 +738,8 @@ static DWORD WINAPI frame_clock(LPVOID)
 {
 #ifdef __APPLE__
     pthread_setname_np("rsx walker (main)");
+#elif defined(_WIN32)
+    SetThreadDescription(GetCurrentThread(), L"rsx walker");   /* names it for the profilers */
 #endif
     const char* title = getenv("PS3_TITLE");
     if (!title || !*title) title = "ps3recomp";
@@ -756,7 +759,8 @@ static DWORD WINAPI frame_clock(LPVOID)
     if (const char* e = getenv("DOD3_FIFO_SLEEP_MS")) fifo_sleep_ms = (DWORD)atoi(e);
     const bool kick_on = !(getenv("DOD3_FIFO_KICK") && getenv("DOD3_FIFO_KICK")[0] == '0');
     if (const char* e = getenv("DOD3_FAST_POLL_LR")) s_fast_poll_lr = (uint32_t)strtoul(e, 0, 16);
-    if (kick_on) { g_lv2_usleep_hook = guest_usleep_hook; g_gcm_label_write_hook = label_written; }
+    if (kick_on) { g_lv2_usleep_hook = guest_usleep_hook; g_gcm_label_write_hook = label_written;
+                   g_gcm_fifo_kick_hook = fifo_kick; }
     uint64_t next_tick = frame_clock_us();
     uint64_t last_pump = 0, last_boot_present = 0;
 
