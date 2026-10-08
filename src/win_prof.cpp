@@ -560,7 +560,10 @@ extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double f
                     const char* nm = symbolize(smp.fr[i]).name.c_str();
                     if (!strncmp(nm, "Nt", 2) || !strncmp(nm, "Zw", 2) || !strncmp(nm, "Rtl", 3) || strstr(nm, "ntdll") ||
                         strstr(nm, "KERNELBASE") || !strncmp(nm, "Sleep", 5) || !strncmp(nm, "WaitFor", 7)) continue;
-                    key += " in "; key += nm; break;
+                    key += " in "; key += nm;
+                    /* The waiter's callers (the guest function polling). */
+                    for (int j = i + 1; j < smp.n && j < i + 9; j++) { key += " <- "; key += symbolize(smp.fr[j]).name; }
+                    break;
                 }
             } else {
                 key = ls.name;

@@ -187,8 +187,10 @@ extern "C" unsigned ppu_boot_frames_presented(void)
 }
 
 static void frame_cpu_tick(void);
+static void trace(uint32_t type, uint32_t a, uint32_t b);
 static void present_guest_frame(void)
 {
+    trace(4, 0, 0);
     rsx_backend_present();
     frame_cpu_tick();
     /* This thread increments and guest threads read, so interlocked rather
@@ -251,13 +253,50 @@ static void drain_wake(void)
         s_drain_cv.notify_all();
     }
 }
+/* DOD3_TRACE_HITCH=1 (with RSX_HITCH_LOG): a ring of what the guest threads
+ * and the walker did -- every guest usleep (caller, length, thread), every
+ * FIFO drain (get/put after it), label write and present -- and, for each
+ * logged hitch, the events of the frame before it as [trace] lines. */
+static uint64_t frame_clock_us(void);
+struct TraceEv { uint64_t t; uint32_t type, tid, a, b; };
+static const uint32_t TRACE_N = 1u << 16;
+static TraceEv* s_trace;
+static std::atomic<uint32_t> s_trace_i{0};
+static void trace(uint32_t type, uint32_t a, uint32_t b)
+{
+    if (!s_trace) return;
+    TraceEv& e = s_trace[s_trace_i.fetch_add(1) & (TRACE_N - 1)];
+#ifdef _WIN32
+    e.tid = (uint32_t)GetCurrentThreadId();
+#else
+    e.tid = 0;
+#endif
+    e.t = frame_clock_us(); e.type = type; e.a = a; e.b = b;
+}
+static void trace_dump(double ms)
+{
+    if (!s_trace) return;
+    const uint64_t now = frame_clock_us(), from = now - (uint64_t)(ms * 1000.0) - 16000;
+    const uint32_t end = s_trace_i.load();
+    static const char* names[] = { "?", "usleep", "drain", "label", "present", "usleep-done",
+                                   "recycle", "recycled", "fifo-flip", "pos-flip-set", "pos-flip" };
+    for (uint32_t k = end > TRACE_N ? end - TRACE_N : 0; k < end; k++) {
+        const TraceEv e = s_trace[k & (TRACE_N - 1)];
+        if (e.t < from || e.t > now) continue;
+        fprintf(stderr, "[trace] %8.2f ms %-11s tid %5u %08X %u\n", (double)(int64_t)(e.t - now) / 1000.0,
+                e.type < 11 ? names[e.type] : "?", e.tid, e.a, e.b);
+    }
+}
+extern "C" void (*g_gcm_trace_hook)(uint32_t type, uint32_t a, uint32_t b);   /* cellGcmSys.c */
 static void drain_done(void)
 {
+    if (s_trace) trace(2, vm_read32(ppu_hle_inject_base + 0x2004u), vm_read32(ppu_hle_inject_base + 0x2000u));
     s_drain_gen.fetch_add(1);
     drain_wake();
 }
 static void label_written(void)
 {
+    if (s_trace) trace(3, 0, 0);
     if (!s_label_wake.load(std::memory_order_relaxed)) return;
     s_label_gen.fetch_add(1);
     drain_wake();
@@ -265,6 +304,7 @@ static void label_written(void)
 static std::atomic<uint64_t> s_fp_calls{0}, s_fp_early{0}, s_fp_us{0};
 static int guest_usleep_hook(uint32_t lr, uint64_t usec)
 {
+    if (s_trace) trace(1, lr, (uint32_t)usec);
     fifo_kick();
     if (!s_fast_poll_lr || lr != s_fast_poll_lr || usec > 100000) return 0;
     /* A label written since this thread last looked: let it look again now.
@@ -313,6 +353,8 @@ static uint64_t frame_clock_us(void)
 extern "C" void (*g_rsx_hitch_hook)(double frame_ms);
 static void hitch_to_profiler(double ms)
 {
+    trace_dump(ms);
+    if (!getenv("DOD3_PROF")) return;
 #ifdef _WIN32
     /* Handed to the profiler thread: symbolising here, on the walker, could
      * deadlock against the profiler's thread suspension. */
@@ -793,7 +835,11 @@ static DWORD WINAPI frame_clock(LPVOID)
                    g_gcm_fifo_kick_hook = fifo_kick; }
     /* RSX_HITCH_LOG with DOD3_PROF: each logged hitch also prints the
      * profiler's samples of the frame it ends ([slow-frame]). */
-    if (getenv("DOD3_PROF")) g_rsx_hitch_hook = hitch_to_profiler;
+    if (getenv("DOD3_TRACE_HITCH")) {
+        s_trace = (TraceEv*)calloc(TRACE_N, sizeof(TraceEv));
+        g_gcm_trace_hook = trace;
+    }
+    if (getenv("DOD3_PROF") || s_trace) g_rsx_hitch_hook = hitch_to_profiler;
     uint64_t next_tick = frame_clock_us();
     uint64_t last_pump = 0, last_boot_present = 0;
 
