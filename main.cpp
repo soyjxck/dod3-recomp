@@ -47,6 +47,8 @@ int dod3_setup_mac(const char* base_dir, int force);
 int dod3_mac_option_held(void);
 }
 #endif
+void dod3_settings_menu_install();  /* src/dod3_settings_menu.cpp: the Graphics Settings page */
+bool dod3_menu_patch_prepare();     /* src/dod3_menu_patch.cpp: the script patch that adds it */
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -437,6 +439,52 @@ static void apply_fps_unlock(void)
     if (const char* m = getenv("DOD3_VBLANK_MULT")) if (atoi(m) >= 2) s_vblank_mult = (unsigned)atoi(m);
     if (fps) fprintf(stderr, "[fps] frame rate locked at %d (smoothing off, vblank %u Hz)\n", fps, s_vblank_mult * s_fps_target);
     else     fprintf(stderr, "[fps] frame rate uncapped (smoothing off, vblank %u Hz)\n", s_vblank_mult * s_fps_target);
+}
+
+/* The engine checks the script packages (and the startup packages and INIs)
+ * against a SHA-1 table compiled into the EBOOT -- "name\0" + 20 bytes, at
+ * 0x019AD200 -- once they are loaded, and a mismatch is an "IO Failure" and
+ * then the BROKEN_EXIT_GAMEDATA dialog. A package patched for the settings
+ * menu (served through PS3_VFS_OVERLAY) carries its own hash, written over
+ * the entry before the title runs. The hash is of the uncompressed package.
+ * DOD3_SHA_OVERRIDE=<name>=<40 hex digits>[,<name>=<hex>...] */
+bool dod3_sha_override(const char* name, const uint8_t sha[20])
+{
+    const uint32_t lo = 0x019AD000u, hi = 0x019AD480u;
+    const size_t n = strlen(name);
+    for (uint32_t a = lo; a + n + 1 + 20 <= hi; a++)
+        if (!memcmp(vm_base + a, name, n + 1)) {
+            memcpy(vm_base + a + n + 1, sha, 20);
+            return true;
+        }
+    return false;
+}
+
+static void apply_sha_overrides(void)
+{
+    const char* e = getenv("DOD3_SHA_OVERRIDE");
+    if (!e || !*e) return;
+    std::string all(e);
+    size_t p = 0;
+    while (p < all.size()) {
+        size_t q = all.find(',', p);
+        if (q == std::string::npos) q = all.size();
+        const std::string item = all.substr(p, q - p);
+        p = q + 1;
+        const size_t eq = item.find('=');
+        uint8_t sha[20];
+        bool ok = eq != std::string::npos && item.size() - eq - 1 == 40;
+        for (int i = 0; ok && i < 20; i++) {
+            unsigned v;
+            ok = sscanf(item.c_str() + eq + 1 + 2 * i, "%2x", &v) == 1;
+            sha[i] = (uint8_t)v;
+        }
+        const std::string name = ok ? item.substr(0, eq) : item;
+        if (!ok || !dod3_sha_override(name.c_str(), sha))
+            fprintf(stderr, "[sha] DOD3_SHA_OVERRIDE: '%s' not applied\n", item.c_str());
+        else
+            fprintf(stderr, "[sha] %s: hash replaced\n", name.c_str());
+    }
 }
 
 /* The replacement GetMaxTickRate: f1 = the lock, 0 for none. */
@@ -1186,6 +1234,11 @@ __attribute__((target("xsave"))) static bool x86_v3_cpu(void)
  * in the environment wins over the file (the benchmark and test scripts set
  * theirs that way). Looked for beside the executable, then in the current
  * directory. */
+static std::string s_settings_path = "dod3.ini";
+/* The file read at boot, else the one beside the executable: where the
+ * Graphics Settings page (src/dod3_settings_menu.cpp) saves. */
+const char* dod3_settings_path() { return s_settings_path.c_str(); }
+
 static void load_settings_file(const char* argv0)
 {
     char path[1024];
@@ -1196,6 +1249,7 @@ static void load_settings_file(const char* argv0)
     if (n && n + 9 < sizeof path) { memcpy(path, argv0, n); strcpy(path + n, "dod3.ini"); tried[0] = path; }
     const char* used = NULL;
     for (int i = 0; i < 2 && !f; i++) if (tried[i] && (f = fopen(tried[i], "r")) != NULL) used = tried[i];
+    s_settings_path = used ? used : tried[0] ? tried[0] : "dod3.ini";
     if (!f) return;
     char line[512]; int applied = 0;
     while (fgets(line, sizeof line, f)) {
@@ -1514,6 +1568,8 @@ int main(int argc, char** argv)
         return 1;
     }
     apply_fps_unlock();
+    apply_sha_overrides();
+    dod3_menu_patch_prepare();
 #ifdef _WIN32
     /* DOD3_PROF / DOD3_STALL_MS / DOD3_STALL_SAMPLE: src/win_prof.cpp. */
     win_prof_start();
@@ -1535,6 +1591,7 @@ int main(int argc, char** argv)
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
 
     ppu_recomp_register();   /* lifted function table -> address map */
+    dod3_settings_menu_install();   /* the Graphics Settings page's two natives */
     ps3_load_prx_modules();  /* this game's lifted system PRX, if it has any */
     ppu_hle_init();          /* firmware import NID -> HLE handlers */
     ppu_sysprx_register();   /* boot-critical CRT */

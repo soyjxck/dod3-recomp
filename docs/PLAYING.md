@@ -39,7 +39,15 @@ To run the setup again: `dod3.exe --setup`.
 
 ## Settings
 
-Edit **dod3.ini** next to dod3.exe (it explains each setting):
+In the game: **Settings → Graphics Settings** (on the title menu, next to
+Audio Settings) sets the resolution, display mode, frame rate, v-sync,
+texture filtering and renderer. Confirm with ✕ to save them to dod3.ini;
+texture filtering changes at once, the rest the next time the game starts.
+The first start adds the page to the game's menu, which takes a second or
+two (the patched menu goes to `game/patch`, the game's own files are not
+changed).
+
+Or edit **dod3.ini** next to dod3.exe (it explains each setting):
 
 | Setting | What it does |
 |---|---|
@@ -48,6 +56,8 @@ Edit **dod3.ini** next to dod3.exe (it explains each setting):
 | `RSX_WINDOW` | Window size in windowed mode, e.g. `1920x1080` |
 | `RSX_VSYNC` | `1` to sync to the display |
 | `DOD3_FPS` | Frame-rate cap: `60` is tested and recommended; unset keeps the original 30 |
+| `RSX_ANISO` | Texture filtering: `1` (original) to `16` (16× anisotropic, the default) |
+| `RSX_BACKEND` | `vulkan` for the Vulkan renderer (experimental); unset is Direct3D 12 |
 
 ## Controls
 

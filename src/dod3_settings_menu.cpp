@@ -1,0 +1,383 @@
+/* The Graphics Settings page in the title's own Settings menu.
+ *
+ * tools/menu_patch.py rewrites a few script functions in SQEX03GAME.XXX (the
+ * copy served through PS3_VFS_OVERLAY): the Settings root gets a fifth entry,
+ * "Graphics Settings", in the empty row above Restore Defaults, and it opens
+ * the page the title shipped unused (Sqex03GameHUDOptionDisplay, with its
+ * layout HUD_Pause.menu.select_option_display), rewritten as a list of rows.
+ * The script reaches this file through two natives:
+ *
+ *   Sqex03DataMessage.GetString(i)   i in [MAGIC, MAGIC + 1000): text from here
+ *     MAGIC+0 / +1         the root entry's label / description
+ *     MAGIC+100+row        a row's label
+ *     MAGIC+200+row        its value (the one being edited)
+ *     MAGIC+300+row        its description
+ *   Sqex03GameOption.UpdateDisplayParam(cmd, a, b) -> int
+ *     the settings bridge; its only script caller was the unused page
+ *     0 begin   1 change(row, dir)   2 is-default(row)   3 reset
+ *     4 apply   5 changed?
+ *
+ * Both natives' exec thunks are replaced in the function registry the
+ * script VM calls them through. A thunk evaluates its own arguments from the
+ * caller's FFrame (Object at +0x14, Code at +0x18) by running the native
+ * for each opcode out of GNatives -- step() below does the same.
+ *
+ * The values are the dod3.ini keys (RSX_SCALE, RSX_DISPLAY, DOD3_FPS,
+ * RSX_VSYNC, RSX_ANISO, RSX_BACKEND); Apply writes them to dod3.ini. Only
+ * anisotropic filtering takes effect at once, the rest on the next start --
+ * a row whose saved value differs from the running one says so. */
+#include "ppu_recomp.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <vector>
+
+extern "C" void ps3_indirect_call(ppu_context* ctx);
+extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
+const char* dod3_settings_path();   /* main.cpp: the dod3.ini read at boot, or the one to create */
+#ifdef _WIN32
+extern "C" int g_rsx_aniso;         /* rsx_d3d12_engine.c: the live anisotropy level */
+/* The CRT's spelling; an empty value removes the variable. */
+static int setenv(const char* k, const char* v, int) { return _putenv_s(k, v) ? -1 : 0; }
+static int unsetenv(const char* k) { return _putenv_s(k, "") ? -1 : 0; }
+#endif
+
+namespace {
+
+/* BLUS31197 1.00 */
+const uint32_t GNATIVES          = 0x019BF370u;   /* 8 bytes an opcode: function, this-adjust */
+const uint32_t THUNK_GETSTRING   = 0x0145D030u;   /* USqex03DataMessage::execGetString */
+const uint32_t THUNK_BRIDGE      = 0x013F31B0u;   /* USqex03GameOption::execUpdateDisplayParam */
+const uint32_t FRAME_OBJECT = 0x14, FRAME_CODE = 0x18;
+
+const int MAGIC = 900000;
+
+inline void drain(ppu_context* ctx)
+{
+    while (g_trampoline_fn) {
+        void (*f)(void*) = g_trampoline_fn;
+        g_trampoline_fn = 0;
+        f((void*)ctx);
+    }
+}
+
+/* One FFrame::Step: the native for the opcode at Code, with the result
+ * written to `result` (guest). */
+void step(ppu_context* ctx, uint32_t stack, uint32_t result)
+{
+    const uint32_t obj = vm_read32(stack + FRAME_OBJECT);
+    const uint32_t code = vm_read32(stack + FRAME_CODE);
+    const uint32_t op = vm_read8(code);
+    vm_write32(stack + FRAME_CODE, code + 1);
+    uint32_t fn = vm_read32(GNATIVES + op * 8);
+    const uint32_t self = obj + vm_read32(GNATIVES + op * 8 + 4);
+    if (fn & 1) fn = vm_read32(vm_read32(self) + fn - 1);   /* virtual: the vtable slot */
+    ctx->gpr[2] = vm_read32(fn + 4);
+    ctx->gpr[3] = self;
+    ctx->gpr[4] = stack;
+    ctx->gpr[5] = result;
+    ctx->ctr = vm_read32(fn);
+    ps3_indirect_call(ctx);
+    drain(ctx);
+}
+
+/* Evaluate one int argument, in a frame of our own below the caller's. */
+int32_t eval_int(ppu_context* ctx, uint32_t stack)
+{
+    const uint64_t sp = ctx->gpr[1];
+    const uint32_t nsp = ((uint32_t)sp - 0x90u) & ~0xFu;
+    vm_write64(nsp, sp);
+    vm_write32(nsp + 0x80, 0);
+    ctx->gpr[1] = nsp;
+    step(ctx, stack, nsp + 0x80);
+    ctx->gpr[1] = sp;
+    return (int32_t)vm_read32(nsp + 0x80);
+}
+
+uint32_t app_realloc(ppu_context* ctx, uint32_t p, uint32_t size)
+{
+    ctx->gpr[3] = p; ctx->gpr[4] = size; ctx->gpr[5] = 8;
+    func_0001028C(ctx); drain(ctx);
+    return (uint32_t)ctx->gpr[3];
+}
+
+/* *fs = text, as the thunk assigns: Data reallocated to the exact size,
+ * Num = Max = characters + the terminator, UTF-16. */
+void set_fstring(ppu_context* ctx, uint32_t fs, const std::string& text)
+{
+    const uint32_t n = (uint32_t)text.size() + 1;
+    const uint32_t data = app_realloc(ctx, vm_read32(fs), n * 2);
+    for (uint32_t i = 0; i + 1 < n; i++) vm_write16(data + 2 * i, (uint8_t)text[i]);
+    vm_write16(data + 2 * (n - 1), 0);
+    vm_write32(fs, data);
+    vm_write32(fs + 4, n);
+    vm_write32(fs + 8, n);
+}
+
+/* ---- the settings ---------------------------------------------------------- */
+
+struct Choice { const char* value; const char* text; };
+struct Row {
+    const char* key;          /* dod3.ini / environment name */
+    const char* label;
+    const char* desc;
+    std::vector<Choice> choices;   /* value NULL: the key unset */
+    int def;                  /* index of the default */
+    bool live;                /* applied at once (else on the next start) */
+    int running, saved, pending;   /* choice indices; -1 = a value not in the list */
+    std::string other;        /* that value */
+};
+
+std::vector<Row> s_rows;
+bool s_init;
+
+int find_choice(const Row& r, const char* v)
+{
+    for (size_t i = 0; i < r.choices.size(); i++) {
+        const char* c = r.choices[i].value;
+        if (!v || !*v) { if (!c) return (int)i; continue; }
+        if (c && !strcmp(c, v)) return (int)i;
+        if (c && r.key == std::string("RSX_SCALE") && atof(c) == atof(v)) return (int)i;
+    }
+    return -1;
+}
+
+void read_current(Row& r, int& idx)
+{
+    const char* v = getenv(r.key);
+    idx = find_choice(r, v);
+    if (idx < 0) {
+        if (!v || !*v) idx = r.def;
+        else r.other = v;
+    }
+}
+
+void init_rows()
+{
+    if (s_init) return;
+    s_init = true;
+    const char* restart = " Applies after a restart.";
+    s_rows.push_back({"RSX_SCALE", "Resolution",
+        "The resolution the game is drawn at.",
+        {{"1", "1280x720"}, {"1.5", "1920x1080"}, {"2", "2560x1440"}, {"3", "3840x2160"}, {"4", "5120x2880"}},
+        0, false});
+    s_rows.push_back({"RSX_DISPLAY", "Display Mode",
+        "Window, borderless window or fullscreen.",
+        {{"windowed", "Windowed"}, {"borderless", "Borderless"}, {"fullscreen", "Fullscreen"}},
+        0, false});
+    s_rows.push_back({"DOD3_FPS", "Frame Rate",
+        "The frame rate limit. 60 is recommended.",
+        {{NULL, "30 (Original)"}, {"60", "60"}, {"120", "120"}, {"uncapped", "Unlimited"}},
+        0, false});
+    s_rows.push_back({"RSX_VSYNC", "V-Sync",
+        "Wait for the display's refresh.",
+        {{"1", "On"}, {"0", "Off"}},
+        0, false});
+    s_rows.push_back({"RSX_ANISO", "Texture Filtering",
+        "Sharper ground and walls when seen at an angle.",
+        {{"1", "Trilinear"}, {"2", "2x Anisotropic"}, {"4", "4x Anisotropic"}, {"8", "8x Anisotropic"}, {"16", "16x Anisotropic"}},
+        4, true});
+#ifdef _WIN32
+    s_rows.push_back({"RSX_BACKEND", "Renderer",
+        "The graphics API the game is drawn with.",
+        {{NULL, "Direct3D 12"}, {"vulkan", "Vulkan"}},
+        0, false});
+#else
+    s_rows.push_back({"RSX_BACKEND", "Renderer",
+        "The graphics API the game is drawn with.",
+        {{NULL, "Metal"}},
+        0, false});
+#endif
+    for (Row& r : s_rows) {
+        if (!r.live) r.desc = strdup((std::string(r.desc) + restart).c_str());
+        read_current(r, r.running);
+        r.saved = r.pending = r.running;
+    }
+}
+
+std::string value_text(const Row& r, int idx)
+{
+    std::string t = idx >= 0 ? r.choices[idx].text : ("Custom (" + r.other + ")");
+    if (!r.live && idx != r.running) t += " (next start)";
+    return t;
+}
+
+bool menu_text(int i, std::string& out)
+{
+    if (i < MAGIC || i >= MAGIC + 1000) return false;
+    init_rows();
+    const int k = i - MAGIC, row = k % 100;
+    const bool have = row < (int)s_rows.size();
+    if (k == 0) out = "Graphics Settings";
+    else if (k == 1) out = "Adjust settings related to graphics and the display.";
+    else if (k >= 100 && k < 200) out = have ? s_rows[row].label : "";
+    else if (k >= 200 && k < 300) out = have ? value_text(s_rows[row], s_rows[row].pending) : "";
+    else if (k >= 300 && k < 400) out = have ? s_rows[row].desc : "";
+    else out = "";
+    return true;
+}
+
+/* dod3.ini: KEY = VALUE on the key's line (uncommenting "#KEY = ..."), or
+ * appended; a NULL value comments the line out. */
+void write_ini(const std::vector<std::pair<std::string, const char*>>& kv)
+{
+    const char* path = dod3_settings_path();
+    std::vector<std::string> lines;
+    bool crlf = false;    /* written back with the line ends it had */
+    if (FILE* f = fopen(path, "rb")) {
+        char buf[1024];
+        while (fgets(buf, sizeof buf, f)) {
+            std::string l(buf);
+            if (l.size() >= 2 && l[l.size() - 2] == '\r') crlf = true;
+            while (!l.empty() && (l.back() == '\n' || l.back() == '\r')) l.pop_back();
+            lines.push_back(l);
+        }
+        fclose(f);
+    }
+    for (const auto& p : kv) {
+        const std::string& key = p.first;
+        int hit = -1, commented = -1;
+        for (size_t i = 0; i < lines.size(); i++) {
+            const char* s = lines[i].c_str();
+            while (*s == ' ' || *s == '\t') s++;
+            const bool c = *s == '#';
+            if (c) { s++; while (*s == ' ' || *s == '\t') s++; }
+            if (strncmp(s, key.c_str(), key.size())) continue;
+            const char* e = s + key.size();
+            while (*e == ' ' || *e == '\t') e++;
+            if (*e != '=') continue;
+            if (!c) { hit = (int)i; break; }
+            if (commented < 0) commented = (int)i;
+        }
+        const std::string line = p.second ? key + " = " + p.second : "#" + key + " = ";
+        if (hit >= 0) {
+            if (p.second) lines[hit] = line;
+            else lines[hit] = "#" + lines[hit];
+        } else if (p.second) {
+            if (commented >= 0) lines[commented] = line;
+            else lines.push_back(line);
+        }
+    }
+    if (FILE* f = fopen(path, "wb")) {
+        for (const std::string& l : lines) fprintf(f, "%s%s", l.c_str(), crlf ? "\r\n" : "\n");
+        fclose(f);
+        fprintf(stderr, "[settings] saved %s\n", path);
+    } else {
+        fprintf(stderr, "[settings] could not write %s\n", path);
+    }
+}
+
+void apply()
+{
+    std::vector<std::pair<std::string, const char*>> kv;
+    for (Row& r : s_rows) {
+        if (r.pending == r.saved) continue;
+        const char* v = r.pending >= 0 ? r.choices[r.pending].value : r.other.c_str();
+        kv.push_back({r.key, v});
+        r.saved = r.pending;
+        if (r.live) {
+            if (v) setenv(r.key, v, 1); else unsetenv(r.key);
+            r.running = r.pending;
+#ifdef _WIN32
+            if (!strcmp(r.key, "RSX_ANISO")) g_rsx_aniso = v ? atoi(v) : 16;
+#endif
+        }
+    }
+    if (!kv.empty()) write_ini(kv);
+}
+
+int bridge(int cmd, int a, int b)
+{
+    init_rows();
+    const int n = (int)s_rows.size();
+    switch (cmd) {
+    case 0:   /* begin: edit the saved values */
+        for (Row& r : s_rows) r.pending = r.saved;
+        return 0;
+    case 1: { /* change row a by b */
+        if (a < 0 || a >= n) return 0;
+        Row& r = s_rows[a];
+        const int m = (int)r.choices.size();
+        int i = r.pending < 0 ? (b > 0 ? 0 : m - 1) : r.pending + (b > 0 ? 1 : -1);
+        if (i < 0) i = m - 1;
+        if (i >= m) i = 0;
+        r.pending = i;
+        return 1;
+    }
+    case 2:   /* is row a at its default? */
+        return (a >= 0 && a < n && s_rows[a].pending == s_rows[a].def) ? 1 : 0;
+    case 3:   /* reset */
+        for (Row& r : s_rows) r.pending = r.def;
+        return 0;
+    case 4:
+        apply();
+        return 0;
+    case 5:
+        for (const Row& r : s_rows) if (r.pending != r.saved) return 1;
+        return 0;
+    }
+    return 0;
+}
+
+/* ---- the two thunks ---------------------------------------------------------- */
+
+uint32_t s_scratch;   /* guest: "IntConst <i> EndFunctionParms" for the original GetString */
+
+void hook_getstring(ppu_context* ctx)
+{
+    const uint64_t lr = ctx->lr, r2 = ctx->gpr[2];
+    const uint32_t self = (uint32_t)ctx->gpr[3], stack = (uint32_t)ctx->gpr[4], result = (uint32_t)ctx->gpr[5];
+    const int32_t idx = eval_int(ctx, stack);
+    const uint32_t after = vm_read32(stack + FRAME_CODE);   /* at the 0x16 */
+    std::string text;
+    if (menu_text(idx, text)) {
+        vm_write32(stack + FRAME_CODE, after + 1);
+        set_fstring(ctx, result, text);
+    } else {
+        /* The title's own: the original thunk, fed the value already
+         * evaluated (an argument is evaluated once, as it would be). */
+        if (!s_scratch) s_scratch = app_realloc(ctx, 0, 16);
+        vm_write8(s_scratch, 0x1D);
+        vm_write32(s_scratch + 1, (uint32_t)idx);
+        vm_write8(s_scratch + 5, 0x16);
+        vm_write32(stack + FRAME_CODE, s_scratch);
+        ctx->gpr[2] = r2; ctx->gpr[3] = self; ctx->gpr[4] = stack; ctx->gpr[5] = result;
+        ctx->lr = lr;
+        func_0145D030(ctx); drain(ctx);
+        vm_write32(stack + FRAME_CODE, after + 1);
+    }
+    ctx->gpr[2] = r2;
+    ctx->lr = lr;
+}
+
+void hook_bridge(ppu_context* ctx)
+{
+    const uint64_t lr = ctx->lr, r2 = ctx->gpr[2];
+    const uint32_t stack = (uint32_t)ctx->gpr[4], result = (uint32_t)ctx->gpr[5];
+    if (vm_read8(vm_read32(stack + FRAME_CODE)) == 0x16) {   /* no arguments: the title's call */
+        func_013F31B0(ctx); drain(ctx);
+        ctx->gpr[2] = r2; ctx->lr = lr;
+        return;
+    }
+    int args[3] = {0, 0, 0};
+    for (int k = 0; k < 3 && vm_read8(vm_read32(stack + FRAME_CODE)) != 0x16; k++)
+        args[k] = eval_int(ctx, stack);
+    while (vm_read8(vm_read32(stack + FRAME_CODE)) != 0x16)   /* extra arguments: evaluate, drop */
+        eval_int(ctx, stack);
+    vm_write32(stack + FRAME_CODE, vm_read32(stack + FRAME_CODE) + 1);
+    const int v = bridge(args[0], args[1], args[2]);
+    if (result) vm_write32(result, (uint32_t)v);
+    ctx->gpr[2] = r2;
+    ctx->lr = lr;
+}
+
+}  // namespace
+
+/* Called once at boot, after the lifted function table is registered. */
+void dod3_settings_menu_install()
+{
+    ppu_register_function(THUNK_GETSTRING, hook_getstring);
+    ppu_register_function(THUNK_BRIDGE, hook_bridge);
+}

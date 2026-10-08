@@ -220,6 +220,8 @@ add_executable(${PROJECT_NAME}
     src/dod3_gc.cpp
     src/dod3_gc_native.cpp
     src/dod3_hot.cpp
+    src/dod3_settings_menu.cpp
+    src/dod3_menu_patch.cpp
     src/setup_iso.cpp
     ${LIBSRE_LIFTED_CPP}
     ${PS3RECOMP_SCAFFOLD}
