@@ -69,6 +69,7 @@ static int setenv(const char* k, const char* v, int overwrite)
 /* src/win_prof.cpp: DOD3_PROF sampling profiler and DOD3_STALL_MS stack dumps. */
 extern "C" void win_prof_start(void);
 extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double frame_ms);
+extern "C" void win_prof_slow_frame_async(uint64_t start_us, uint64_t end_us, double frame_ms);
 #endif
 
 /* ---------------------------------------------------------------------------
@@ -313,8 +314,10 @@ extern "C" void (*g_rsx_hitch_hook)(double frame_ms);
 static void hitch_to_profiler(double ms)
 {
 #ifdef _WIN32
+    /* Handed to the profiler thread: symbolising here, on the walker, could
+     * deadlock against the profiler's thread suspension. */
     const uint64_t now = frame_clock_us();
-    win_prof_slow_frame(now - (uint64_t)(ms * 1000.0), now, ms);
+    win_prof_slow_frame_async(now - (uint64_t)(ms * 1000.0), now, ms);
 #else
     (void)ms;
 #endif
@@ -703,7 +706,7 @@ static void frame_cpu_tick(void)
         fprintf(stderr, "[frame-cpu] frame %lu took %.1f ms%s; CPU ms: %s; all threads %.1f\n",
                 (unsigned long)g_frames_presented, frame_ms, refreshed ? " (thread list refreshed in it)" : "",
                 line.c_str(), total / hz * 1e3);
-        if (!refreshed) win_prof_slow_frame(last_us, now, frame_ms);
+        if (!refreshed) win_prof_slow_frame_async(last_us, now, frame_ms);
     }
     last_us = now;
 }

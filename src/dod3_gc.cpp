@@ -22,7 +22,7 @@
 #include <algorithm>
 #ifdef _WIN32
 #include <windows.h>
-extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double frame_ms);
+extern "C" void win_prof_slow_frame_async(uint64_t start_us, uint64_t end_us, double frame_ms);
 #endif
 
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
@@ -151,8 +151,93 @@ void func_00EE6538(ppu_context* ctx)
     s_reach_calls++;
 }
 
+/* ---- the periodic collection, moved into the frame limiter's sleep ---------
+ *
+ * UWorld::Tick (func_0041FC84) purges pending-kill objects every
+ * TimeBetweenPurgingPendingKillObjects (GEngine+0x4AC; ~10 s here) through
+ * func_0041C270: CollectGarbage, then the levels' actor lists compacted, then
+ * TimeSinceLastPendingKillPurge (world+0x1A0) zeroed. The frame limiter
+ * (appUpdateTimeAndHandleMaxTickRate, func_008EDC6C) sleeps *before* the
+ * tick, so the collection's 3-5 ms land on top of a frame that had already
+ * waited out its budget: that frame reaches the screen late (16.7 + 4 ms, a
+ * third vblank at 120 Hz) and the next one early -- a visible judder every
+ * 10 s at 60 fps.
+ *
+ * DOD3_GC_DEFER=1 (default): that call's collection is skipped where it
+ * stands, and the whole of func_0041C270 runs again at the start of the next
+ * frame, inside the limiter's sleep (its usleep returns to 0x008EDF10), on
+ * the game thread, with the guest registers saved around it; the sleep is
+ * shortened by what it took. Nothing is ticking there (the top of
+ * FEngineLoop::Tick), the world is checked to be the same (GWorld), and any
+ * other collection in between (a level load) supersedes it. The first,
+ * collection-less pass compacts the actor lists and zeroes the purge timer
+ * as before, so the world tick does not ask again meanwhile. If no limiter
+ * sleep comes (a frame over budget), the next periodic request collects at
+ * once. */
+static const uint32_t PERIODIC_GC_RET = 0x0041C2C8u;   /* func_0041C270's call */
+static const uint32_t LIMITER_SLEEP_RET = 0x008EDF10u; /* appSleep in the limiter */
+static const uint32_t GWORLD = 0x0199B880u;           /* UGameEngine::Tick's world (func_009053D0) */
+static uint32_t s_def_world;     /* a deferred purge's world, 0 if none */
+static uint32_t s_def_frame;
+static int s_in_deferred;
+static int s_def_dropped;        /* the last one was not run: the next request collects at once */
+static uint32_t s_limiter_frame = 0xFFFFFFFFu;   /* the frame of the last limiter sleep */
+
+extern "C" void (*g_lv2_usleep_pre)(ppu_context* ctx, uint64_t* usec);
+
+static int gc_defer(void)
+{
+    static int on = -1;
+    if (on < 0) { const char* e = getenv("DOD3_GC_DEFER"); on = e ? atoi(e) : 1; }
+    return on;
+}
+
+static void gc_usleep_pre(ppu_context* ctx, uint64_t* usec)
+{
+    if ((uint32_t)ctx->lr != LIMITER_SLEEP_RET) return;
+    s_limiter_frame = g_rsx_engine_frame;
+    if (!s_def_world) return;
+    const uint32_t world = s_def_world;
+    s_def_world = 0;
+    if (be32(GWORLD) != world) {
+        s_def_dropped = 1;
+        if (gc_log()) fprintf(stderr, "[gc] deferred purge dropped: the world changed (%08X -> %08X)\n", world, be32(GWORLD));
+        return;
+    }
+    const double t0 = now_ms();
+    const ppu_context saved = *ctx;
+    ctx->gpr[1] = (ctx->gpr[1] - 0x400) & ~0xFull;
+    ctx->gpr[3] = world;
+    ctx->lr = LIMITER_SLEEP_RET;
+    s_in_deferred = 1;
+    func_0041C270(ctx);
+    drain(ctx);
+    s_in_deferred = 0;
+    *ctx = saved;
+    const double ms = now_ms() - t0;
+    const uint64_t spent = (uint64_t)(ms * 1000.0);
+    if (gc_log())
+        fprintf(stderr, "[gc] deferred purge from frame %u ran at frame %u: %.2f ms of a %.2f ms limiter sleep\n",
+                s_def_frame, g_rsx_engine_frame, ms, *usec / 1000.0);
+    *usec = spent >= *usec ? 0 : *usec - spent;
+}
+
 void func_000C1E50(ppu_context* ctx)
 {
+    const uint32_t caller = (uint32_t)ctx->lr;
+    if (gc_defer() && !s_in_deferred) {
+        g_lv2_usleep_pre = gc_usleep_pre;                /* from the first collection (boot) on */
+        /* Only while the limiter is sleeping (a frame cap, frames within it):
+         * uncapped, or over budget, there is no sleep to put it in. */
+        const bool limiting = g_rsx_engine_frame - s_limiter_frame <= 2u;
+        if (caller == PERIODIC_GC_RET && limiting && !s_def_world && !s_def_dropped) {
+            s_def_world = (uint32_t)ctx->gpr[27];        /* func_0041C270's r27: the world */
+            s_def_frame = g_rsx_engine_frame;
+            return;
+        }
+        s_def_world = 0;                                 /* this one collects instead */
+        s_def_dropped = 0;
+    }
     s_reach_ms = 0; s_reach_calls = 0;
     const uint64_t u0 = clock_us();
     const double t0 = now_ms();
@@ -164,12 +249,12 @@ void func_000C1E50(ppu_context* ctx)
         /* GObjObjects: a TArray (data, num, max) at 0x01A0C2B4. */
         const uint32_t nobj = __builtin_bswap32(*(const uint32_t*)(vm_base + 0x01A0C2B8u));
 
-        fprintf(stderr, "[gc] #%u collection %.2f ms, reachability %.2f ms (%u passes), %u objects, %.0f ns each, frame %u\n",
-                ++n, ms, s_reach_ms, s_reach_calls, nobj, nobj ? s_reach_ms * 1e6 / nobj : 0.0, g_rsx_engine_frame);
+        fprintf(stderr, "[gc] #%u collection %.2f ms, reachability %.2f ms (%u passes), %u objects, %.0f ns each, frame %u, from %08X\n",
+                ++n, ms, s_reach_ms, s_reach_calls, nobj, nobj ? s_reach_ms * 1e6 / nobj : 0.0, g_rsx_engine_frame, caller);
 #ifdef _WIN32
         /* DOD3_GC_LOG=2 with DOD3_PROF / DOD3_PROF_TREE: the sampled stacks
          * of the collection, as [slow-frame] lines. */
-        if (gc_log() >= 2) win_prof_slow_frame(u0, clock_us(), ms);
+        if (gc_log() >= 2) win_prof_slow_frame_async(u0, clock_us(), ms);
 #endif
     }
 }

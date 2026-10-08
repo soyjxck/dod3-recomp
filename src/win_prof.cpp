@@ -359,6 +359,21 @@ static void dump_all_stacks(FILE* out, const char* why)
     fflush(out);
 }
 
+/* A slow-frame report asked for by another thread (RSX_HITCH_LOG's hook, on
+ * the walker): printed here, between sampling passes, not on the asking
+ * thread -- which could be suspended mid-allocation by this one while it
+ * waited for the symbol lock, and the boot hung that way once. One at a
+ * time; a request while one is pending is dropped. */
+static volatile LONG s_sf_pending;
+static uint64_t s_sf_start, s_sf_end; static double s_sf_ms;
+extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double frame_ms);
+extern "C" void win_prof_slow_frame_async(uint64_t start_us, uint64_t end_us, double frame_ms)
+{
+    if (s_sf_pending) return;
+    s_sf_start = start_us; s_sf_end = end_us; s_sf_ms = frame_ms;
+    InterlockedExchange(&s_sf_pending, 1);
+}
+
 static DWORD WINAPI prof_thread(LPVOID arg)
 {
     const long interval = (long)(intptr_t)arg;
@@ -374,6 +389,7 @@ static DWORD WINAPI prof_thread(LPVOID arg)
     LARGE_INTEGER qf, t0; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&t0);
     for (;;) {
         Sleep((DWORD)interval);
+        if (s_sf_pending) { win_prof_slow_frame(s_sf_start, s_sf_end, s_sf_ms); InterlockedExchange(&s_sf_pending, 0); }
         refresh_threads();
         AcquireSRWLockExclusive(&s_dbg);
         s_passes++;
