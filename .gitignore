@@ -21,7 +21,7 @@ spu/
 gamedata/
 __pycache__/
 
-# PS3 firmware unpacked from the disc PUP (tools/extract_dev_flash.py); not redistributable
+# PS3 firmware files (dev_flash, from a firmware installed in RPCS3); not redistributable
 fw/
 cache/
 

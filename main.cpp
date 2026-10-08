@@ -37,6 +37,7 @@
 #include <math.h>
 #include "ps3emu/vm_watch.h"
 #include "ppu_recomp.h"
+#include "src/setup_iso.h"   /* the release layout (first-run setup) */
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
  * VirtualAlloc, the scalar typedefs -- from one place. On Windows this is a
@@ -1205,8 +1206,71 @@ static void load_settings_file(const char* argv0)
     if (applied) fprintf(stderr, "[settings] %d from %s\n", applied, used);
 }
 
+#ifdef _WIN32
+extern "C" int dod3_setup_win(const wchar_t* base_dir, int force);   /* src/setup_win.cpp */
+#endif
+
 int main(int argc, char** argv)
 {
+    /* No arguments -- a double-click, a shortcut -- or --setup: the release
+     * layout. Everything is relative to the executable's directory (the
+     * player's files, dod3.ini, saves, shader cache), the title and disc root
+     * default accordingly, and missing files are asked for first
+     * (src/setup_win.cpp; setup_iso.h lists them). With an ELF argument the
+     * developer layout is unchanged. */
+    static char s_release_elf[] = "elf/EBOOT.ELF";
+    static char* s_release_argv[3];
+    /* --check-disc <iso or folder> [EBOOT.ELF] [flashMP3.pic]: the setup's
+     * checks without installing anything, as text (support, and tests). */
+    if (argc >= 3 && !strcmp(argv[1], "--check-disc")) {
+        dod3setup::Disc disc;
+        std::string err;
+        const bool ok = dod3setup::open_disc(std::filesystem::u8path(argv[2]), &disc, &err);
+        printf("disc %s: %s (%zu files, %.1f GB)\n", argv[2], ok ? "OK" : err.c_str(), disc.files.size(),
+               (double)disc.total / (1u << 30));
+        int bad = !ok;
+        const char* want[2] = { dod3setup::kEbootElfSha256, dod3setup::kFlashMp3Sha256 };
+        for (int i = 0; i < 2 && argc > 3 + i; i++) {
+            const bool match = dod3setup::sha256_file(std::filesystem::u8path(argv[3 + i])) == want[i];
+            printf("%s %s: %s\n", i ? "flashMP3.pic" : "EBOOT.ELF", argv[3 + i], match ? "OK" : "does not match");
+            bad |= !match;
+        }
+        return bad;
+    }
+    /* --install <disc> <EBOOT.ELF> <flashMP3.pic>: the setup without a UI,
+     * into the executable's directory. */
+    if (argc >= 5 && !strcmp(argv[1], "--install")) {
+#ifdef _WIN32
+        wchar_t dir[MAX_PATH] = L"";
+        GetModuleFileNameW(NULL, dir, MAX_PATH);
+        if (wchar_t* sl = wcsrchr(dir, L'\\')) *sl = 0;
+        const std::filesystem::path base(dir);
+#else
+        const std::filesystem::path base = std::filesystem::path(argv[0]).parent_path();
+#endif
+        return dod3setup::install_cli(base, std::filesystem::u8path(argv[2]), std::filesystem::u8path(argv[3]),
+                                      std::filesystem::u8path(argv[4]));
+    }
+    const bool force_setup = argc >= 2 && !strcmp(argv[1], "--setup");
+    if (argc < 2 || force_setup) {
+#ifdef _WIN32
+        wchar_t dir[MAX_PATH] = L"";
+        GetModuleFileNameW(NULL, dir, MAX_PATH);
+        if (wchar_t* sl = wcsrchr(dir, L'\\')) *sl = 0;
+        SetCurrentDirectoryW(dir);
+        if (dod3_setup_win(dir, force_setup ? 1 : 0) != 0) return 1;
+#else
+        if (!dod3setup::check_installed(".").all()) {
+            printf("usage: %s <PPU ELF>\n(or run it from a folder holding elf/EBOOT.ELF, game/disc and "
+                   "fw/dev_flash; see src/setup_iso.h)\n", argv[0]);
+            return 2;
+        }
+#endif
+        setenv("PS3_TITLE", "Drakengard 3", 0);
+        setenv("PS3_VFS_ROOT", "game/disc", 0);
+        s_release_argv[0] = argv[0]; s_release_argv[1] = s_release_elf; s_release_argv[2] = NULL;
+        argv = s_release_argv; argc = 2;
+    }
     if (argc >= 1 && argv[0]) load_settings_file(argv[0]);
 #if defined(DOD3_X86_V3) && defined(_WIN32)
     if (!x86_v3_cpu()) {

@@ -196,7 +196,8 @@ add_custom_command(
 set_source_files_properties("${LIBSRE_LIFTED_CPP}" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off")
 
 if(WIN32)
-    list(APPEND PORT_WIN_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/win_prof.cpp")
+    list(APPEND PORT_WIN_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/win_prof.cpp"
+                                 "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_win.cpp")
 endif()
 
 add_executable(${PROJECT_NAME}
@@ -209,6 +210,7 @@ add_executable(${PROJECT_NAME}
     src/dod3_gc.cpp
     src/dod3_gc_native.cpp
     src/dod3_hot.cpp
+    src/setup_iso.cpp
     ${LIBSRE_LIFTED_CPP}
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
