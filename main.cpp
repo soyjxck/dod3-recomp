@@ -1576,6 +1576,8 @@ int main(int argc, char** argv)
          * ~/Library/Application Support/Drakengard 3 Recompiled
          * (src/setup_mac.mm). Option held at launch runs setup again. */
         const char* data = dod3_mac_data_dir();
+        /* DOD3_INSTALL_BASE: somewhere else (tests) */
+        if (const char* tb = getenv("DOD3_INSTALL_BASE")) if (*tb) data = tb;
         if (!data || chdir(data) != 0) {
             fprintf(stderr, "cannot open the data folder %s\n", data ? data : "(Application Support)");
             return 1;

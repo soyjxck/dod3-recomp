@@ -245,8 +245,19 @@ if(WIN32)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_ui_win.cpp"
         ${IMGUI_SOURCES})
 elseif(APPLE)
-    # The Mac's window layer: src/setup_ui_mac.mm, imgui_impl_osx.mm and
-    # imgui_impl_metal.mm, with src/setup_wizard.cpp and ${IMGUI_SOURCES}.
+    # The Mac's window layer (src/setup_ui_mac.mm): a window with a Metal
+    # view, ImGui's OSX and Metal backends (Objective-C++, ARC).
+    list(APPEND IMGUI_SOURCES
+        "${IMGUI_DIR}/backends/imgui_impl_osx.mm"
+        "${IMGUI_DIR}/backends/imgui_impl_metal.mm")
+    list(APPEND SETUP_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_wizard.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_ui_mac.mm"
+        ${IMGUI_SOURCES})
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_ui_mac.mm"
+                        "${IMGUI_DIR}/backends/imgui_impl_osx.mm"
+                        "${IMGUI_DIR}/backends/imgui_impl_metal.mm"
+                 APPEND PROPERTY COMPILE_OPTIONS "-fobjc-arc")
 endif()
 # The retail PKG key, read from the submodule's tools/pkg_extract.py
 # (PS3_GPKG_KEY) into a header in the build tree: this repository carries no
@@ -359,6 +370,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ps3recomp_runtime
 )
+# The installer's window on the Mac (src/setup_ui_mac.mm): MetalKit's view,
+# pads for ImGui through GameController, file types for the open panels.
+if(APPLE)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        "-framework MetalKit" "-framework GameController" "-framework UniformTypeIdentifiers")
+endif()
 
 # The runtime is C++, and on Apple also Objective-C. Letting CMake infer the
 # link language from the generated C would leave the C++ standard library out.
