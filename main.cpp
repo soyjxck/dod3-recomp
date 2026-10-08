@@ -307,50 +307,79 @@ static uint64_t frame_clock_us(void)
 #endif
 }
 
-/* DOD3_FPS=<n>: raise the title's 30 fps cap to n. It has two limiters: a
- * minimum frame time of (the float at 0x008EDC5C) / 30 s, 1.0 as shipped, and
- * its vblank handler, which flips on every second vblank. The first is set to
- * 0.125 (Whatcookie's RPCS3 "Unlock FPS" patch for BLUS31197 1.00) and the
- * vblank runs at 2n Hz. Its physics hold up to 120 fps; above that jumps get
- * lower and dragon lock-on fails. 0 when the cap stays. */
-/* Pacing. With the cap left to the vblank count (the original scheme:
- * minimum frame time 0.125/30 s, vblank at 2n Hz, a flip every second
- * vblank) frame times are quantised to 1/(2n) s: at n = 60 a frame that
- * takes 17 ms instead of 16.6 waits for the next vblank and takes 25, so the
- * title flapped between 60 and 40 fps scene by scene. Now the cap is the
- * title's own minimum frame time, set to exactly 1/n s (the float is
- * seconds * 30), and the vblank runs at DOD3_VBLANK_MULT * n Hz (default 8:
- * 480 Hz at n = 60), so a late frame is late by at most ~2 ms.
- * DOD3_PACE=vblank restores the old scheme. */
-static unsigned s_fps_target;
+/* DOD3_FPS=<n> locks the frame rate at n (30, 60, 120, 240, or any other);
+ * DOD3_FPS=uncapped (or 0) removes the cap. Unset, the title keeps its own
+ * 30 fps scheme.
+ *
+ * The title caps itself in UE3's appUpdateTimeAndHandleMaxTickRate
+ * (func_008EDC78): every frame it sleeps until 1/GetMaxTickRate() s have
+ * passed. GetMaxTickRate is UEngine's frame-rate smoothing (bSmoothFrameRate,
+ * MinSmoothedFrameRate 22, MaxSmoothedFrameRate 30 in Coalesced_INT): a
+ * running average of the frame rate over ~300 frames, clamped to [22, 30].
+ * The old unlock scaled the numerator (the 1.0 at 0x008EDC5C) to 30/n, so
+ * the cap followed the average: after the destruction scene's heavy frames
+ * the average sank below 22 and the title held itself at 44 fps for seconds
+ * on frames that could have run at 60 (the game thread slept 63% of the
+ * time at 42 fps). Now GetMaxTickRate itself is replaced: it returns n, or 0
+ * for no cap, and the numerator stays 1.0 -- no smoothing at all.
+ *
+ * The title's vblank handler flips on every second vblank, so the vblank
+ * runs at DOD3_VBLANK_MULT * n Hz (default 8: 480 Hz at 60; 2000 Hz when
+ * uncapped) and a late frame waits at most a fraction of a ms for it. The
+ * title's physics hold up to 120 fps; above that jumps get lower and dragon
+ * lock-on fails. */
+static unsigned s_fps_target;        /* for the vblank rate; 0 = the title's own */
 static unsigned s_vblank_mult = 2;
+static int      s_fps_lock = -1;     /* -1 the title's own cap, 0 none, n locked */
 static void apply_fps_unlock(void)
 {
     const char* e = getenv("DOD3_FPS");
-    const int fps = e ? atoi(e) : 30;
-    if (fps <= 30) return;
+    if (!e || !*e) return;
+    const int fps = (!strcmp(e, "uncapped") || !strcmp(e, "0")) ? 0 : atoi(e);
+    if (fps < 0 || (fps > 0 && fps < 10)) {
+        fprintf(stderr, "[fps] DOD3_FPS=%s ignored\n", e);
+        return;
+    }
     const uint32_t addr = 0x008EDC5Cu;
     const uint32_t word = vm_read32(addr);
     if (word != 0x3F800000u) {           /* 1.0f: anything else is another build */
-        fprintf(stderr, "[fps] DOD3_FPS=%d ignored: 0x%08X holds 0x%08X, not 1.0 -- not BLUS31197 1.00?\n",
-                fps, addr, word);
+        fprintf(stderr, "[fps] DOD3_FPS=%s ignored: 0x%08X holds 0x%08X, not 1.0 -- not BLUS31197 1.00?\n",
+                e, addr, word);
         return;
     }
-    const char* pace = getenv("DOD3_PACE");
-    if (pace && !strcmp(pace, "vblank")) {
-        vm_write32(addr, 0x3E000000u);   /* 0.125f: the vblank count is the cap */
-        s_vblank_mult = 2;
-    } else {
-        const float min_frame = 30.0f / (float)fps;   /* seconds * 30 */
-        uint32_t bits; memcpy(&bits, &min_frame, 4);
-        vm_write32(addr, bits);
-        s_vblank_mult = 8;
-        if (const char* m = getenv("DOD3_VBLANK_MULT")) if (atoi(m) >= 2) s_vblank_mult = (unsigned)atoi(m);
-    }
-    s_fps_target = (unsigned)fps;
-    fprintf(stderr, "[fps] frame cap raised to %d (%s, vblank %u Hz)\n", fps,
-            s_vblank_mult == 2 && pace ? "capped by vblank count" : "capped by minimum frame time",
-            s_vblank_mult * (unsigned)fps);
+    s_fps_lock = fps;
+    s_fps_target = fps ? (unsigned)fps : 250u;
+    s_vblank_mult = 8;
+    if (const char* m = getenv("DOD3_VBLANK_MULT")) if (atoi(m) >= 2) s_vblank_mult = (unsigned)atoi(m);
+    if (fps) fprintf(stderr, "[fps] frame rate locked at %d (smoothing off, vblank %u Hz)\n", fps, s_vblank_mult * s_fps_target);
+    else     fprintf(stderr, "[fps] frame rate uncapped (smoothing off, vblank %u Hz)\n", s_vblank_mult * s_fps_target);
+}
+
+/* The replacement GetMaxTickRate: f1 = the lock, 0 for none. */
+static void fps_get_max_tick_rate(ppu_context* ctx)
+{
+    ctx->fpr[1] = (double)(float)(s_fps_lock > 0 ? s_fps_lock : 0);
+}
+extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
+
+/* GetMaxTickRate is a virtual (GEngine's vtable + 0x138, GEngine at
+ * 0x01999164), so it is replaced in the function registry the virtual call
+ * resolves through, once the engine object exists. */
+static void fps_install_override(void)
+{
+    static int done = 0;
+    if (done || s_fps_lock < 0) return;
+    const uint32_t engine = vm_read32(0x01999164u);
+    if (!engine) return;
+    const uint32_t vtable = vm_read32(engine);
+    if (!vtable) return;
+    const uint32_t opd = vm_read32(vtable + 0x138u);
+    const uint32_t code = opd ? vm_read32(opd) : 0;
+    if (!code) return;
+    done = 1;
+    ppu_register_function(code, fps_get_max_tick_rate);
+    fprintf(stderr, "[fps] GetMaxTickRate (0x%08X, engine 0x%08X) replaced: %s\n", code, engine,
+            s_fps_lock ? "fixed cap" : "no cap");
 }
 
 #ifndef _WIN32
@@ -781,6 +810,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                       fprintf(stderr, "[gcm-tail] io %08X: %08X %08X %08X %08X\n", a - 0x40000000u,
                               vm_read32(a), vm_read32(a + 4), vm_read32(a + 8), vm_read32(a + 12)); } } }
         uint64_t now = frame_clock_us();
+        fps_install_override();
         /* PPU_WAITPROF=1: where the guest threads waited, every 5 s. */
         { static uint64_t wp_last = 0;
           if (!wp_last) wp_last = now;

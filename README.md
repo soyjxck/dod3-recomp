@@ -27,6 +27,7 @@ python3 -m venv .venv && .venv/bin/pip install -r ps3recomp/tools/requirements.t
     --hle-stubs out/EBOOT.imports.json \
     --code-end 0x157e770 \
     --nonvolatile-locals \
+    --hook 0x000C1E50 --hook 0x00EE6538 --hook 0x00272F58 \
     -o recompiled/
 
 tools/lift_spu.sh     # SPU tasks, the ShaderPatching job, MultiStream DSP plugins
@@ -39,6 +40,14 @@ PS3_VFS_ROOT=game/disc ./build/dod3 elf/EBOOT.ELF
 
 `--code-end 0x157e770` is the end of the last executable section, so
 `.rodata` in the R-X segment is never promoted to functions.
+
+The three `--hook`s are required: those functions are supplied natively and
+the lifted bodies are emitted as `func_<addr>_lifted` --
+`src/dod3_gc.cpp` (the garbage collector, `func_000C1E50` and its
+reachability pass `func_00EE6538`, which runs natively from
+`src/dod3_gc_native.cpp`) and `src/dod3_hot.cpp` (a timing wrapper around
+the collision test `func_00272F58`, `DOD3_HOT_LOG=1`). A lift without them
+fails to link with duplicate symbols.
 
 The build also lifts libsre's SPURS LFQueue push and SPURS queue paths out of
 `ps3recomp/fw_spu/libsre.prx` (`tools/gen_libsre.py`, into

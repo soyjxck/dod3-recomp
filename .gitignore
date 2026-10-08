@@ -8,8 +8,10 @@ elf/
 # Generated
 out/
 recompiled/
+recompiled_*/
 build/
 build-*/
+build_*/
 
 .venv/
 .DS_Store
