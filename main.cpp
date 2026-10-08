@@ -545,6 +545,10 @@ extern "C" int g_dod3_lzf_memo;
 static void ab_lzfmemo(int on) { g_dod3_lzf_memo = on; }
 extern "C" int g_eng_vc_watch;   /* rsx_draw_engine.c */
 static void ab_vcwatch(int on) { g_eng_vc_watch = on; }
+#ifdef _WIN32
+extern "C" int g_rsx_snap_incr;   /* rsx_d3d12_engine.c: own-target snapshots by copy draws */
+static void ab_snapincr(int on) { g_rsx_snap_incr = on; }
+#endif
 extern "C" uint32_t g_rsx_engine_hitches;   /* rsx_draw_engine.c: presents over 25 ms apart */
 static void ab_none(int) {}
 static const struct { const char* name; void (*set)(int on); } s_ab_switches[] = {
@@ -558,6 +562,9 @@ static const struct { const char* name; void (*set)(int on); } s_ab_switches[] =
     { "patchhook", ab_patchhook },
     { "lzfmemo",   ab_lzfmemo },
     { "vcwatch",   ab_vcwatch },
+#ifdef _WIN32
+    { "snapincr",  ab_snapincr },
+#endif
     { "none",   ab_none },
 };
 #ifdef _WIN32
