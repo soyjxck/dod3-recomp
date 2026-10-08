@@ -11,19 +11,35 @@ or Sony.
 
 - **Windows 10 or 11, 64-bit**, a GPU with Direct3D 12, and a CPU with AVX2
   (Intel Haswell / AMD Zen or newer). About 16 GB of free disk space.
-- **Your copy of Drakengard 3, US release (BLUS31197), version 1.00**, as one
-  of:
-  - a **decrypted** disc image (`.iso`), or
-  - the disc dumped to a folder (the one that contains `PS3_GAME`).
+- **Your copy of Drakengard 3, US release (BLUS31197), version 1.00**, as
+  one of:
+  - the disc dumped to a folder (the one that contains `PS3_GAME`), or
+  - a **decrypted** disc image (`.iso`).
 
-  PS3 Disc Dumper and a compatible Blu-ray drive dump your disc to a
-  decrypted folder. An image ripped directly from the drive is still
-  encrypted and will be refused. Other regions (EU, JP) and copies with the game update installed are
-  not supported.
-- **[RPCS3](https://rpcs3.net)** (the PS3 emulator, free), for one thing only:
-  **EBOOT.ELF**. In RPCS3, choose *Utilities › Decrypt PS3 Binaries* and pick
-  `PS3_GAME\USRDIR\EBOOT.BIN` from your disc. RPCS3 writes `EBOOT.elf` next to it.
-  No PS3 firmware is needed.
+  The easiest way to get it is
+  **[PS3 Disc Dumper](https://github.com/13xforever/ps3-disc-dumper)** (free,
+  for Windows, macOS and Linux) with a compatible Blu-ray drive: it reads your
+  disc and writes a decrypted folder, which the setup takes as it is. A
+  modded PS3 (multiMAN, webMAN MOD) can also copy the disc to a decrypted
+  folder or image. An image ripped with an ordinary disc tool is still
+  encrypted and will be refused. Other regions (EU, JP) are not supported.
+- **EBOOT.ELF**, the game's executable decrypted with
+  **[RPCS3](https://rpcs3.net)** (the PS3 emulator, free, for Windows and
+  macOS). You only need RPCS3 for this; no PS3 firmware is needed.
+  1. Find `PS3_GAME/USRDIR/EBOOT.BIN` on your disc dump. If you have an
+     `.iso`, open (mount) it first — on Windows right-click it and choose
+     *Mount*, on a Mac double-click it — and **copy EBOOT.BIN to a normal
+     folder** such as your Desktop: RPCS3 saves its result next to the file,
+     and a mounted image is read-only.
+  2. In RPCS3, choose *Utilities › Decrypt PS3 Binaries* and pick that
+     EBOOT.BIN.
+  3. RPCS3 writes **EBOOT.elf** in the same folder. That is the file the
+     setup asks for.
+
+  Use the EBOOT.BIN **from the disc**. If you have played the game in RPCS3
+  with its update installed, RPCS3's own copy (under
+  `dev_hdd0/game/BLUS31197`) is the updated one, and the setup will refuse
+  it: this release is built for version 1.00.
 
 ## Installing
 
