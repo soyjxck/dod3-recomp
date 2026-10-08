@@ -308,6 +308,18 @@ static uint64_t frame_clock_us(void)
 #endif
 }
 
+/* The draw engine's RSX_HITCH_LOG hook (see the frame clock below). */
+extern "C" void (*g_rsx_hitch_hook)(double frame_ms);
+static void hitch_to_profiler(double ms)
+{
+#ifdef _WIN32
+    const uint64_t now = frame_clock_us();
+    win_prof_slow_frame(now - (uint64_t)(ms * 1000.0), now, ms);
+#else
+    (void)ms;
+#endif
+}
+
 /* DOD3_FPS=<n> locks the frame rate at n (30, 60, 120, 240, or any other);
  * DOD3_FPS=uncapped (or 0) removes the cap. Unset, the title keeps its own
  * 30 fps scheme.
@@ -632,7 +644,11 @@ static void frame_cpu_tick(void)
     if (!tsc0) { tsc0 = __rdtsc(); QueryPerformanceCounter(&q0); QueryPerformanceFrequency(&qf); }
     /* The snapshot is itself a 20-30 ms stall of this (the presenting)
      * thread, so it is rare, and the frame it lands in says so. */
-    const bool refreshed = (calls++ % 600) == 0;
+    /* DOD3_FRAME_CPU_REFRESH=<n>: refresh every n presents (default 600);
+     * a large n keeps the refresh's own stall out of a long run. */
+    static unsigned every = 0;
+    if (!every) { const char* e = getenv("DOD3_FRAME_CPU_REFRESH"); every = e && atoi(e) > 0 ? (unsigned)atoi(e) : 600u; }
+    const bool refreshed = (calls++ % every) == 0;
     if (refreshed) {
         HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
         if (snap != INVALID_HANDLE_VALUE) {
@@ -761,6 +777,9 @@ static DWORD WINAPI frame_clock(LPVOID)
     if (const char* e = getenv("DOD3_FAST_POLL_LR")) s_fast_poll_lr = (uint32_t)strtoul(e, 0, 16);
     if (kick_on) { g_lv2_usleep_hook = guest_usleep_hook; g_gcm_label_write_hook = label_written;
                    g_gcm_fifo_kick_hook = fifo_kick; }
+    /* RSX_HITCH_LOG with DOD3_PROF: each logged hitch also prints the
+     * profiler's samples of the frame it ends ([slow-frame]). */
+    if (getenv("DOD3_PROF")) g_rsx_hitch_hook = hitch_to_profiler;
     uint64_t next_tick = frame_clock_us();
     uint64_t last_pump = 0, last_boot_present = 0;
 

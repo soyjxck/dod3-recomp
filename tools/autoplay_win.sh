@@ -33,6 +33,16 @@ wait_for "BG00_CHC_10_MAP.XXX" 30 || { echo "[autoplay] new game NOT reached"; e
 echo "$(date +%H:%M:%S) [autoplay] chapter 1 loading"
 state=""
 while :; do
+  # AUTOPLAY_GRAB_UNTIL=<s>: from that many seconds after this script started,
+  # stop checking the HUD (each check grabs a frame -- a GPU readback that
+  # costs the game a ~9 ms hitch every ~3 s) and only hold the stick, so
+  # the frame times after it are the game's own.
+  if [ -n "$AUTOPLAY_GRAB_UNTIL" ] && [ "$SECONDS" -ge "$AUTOPLAY_GRAB_UNTIL" ]; then
+    [ "$state" != hold ] && { state=hold; echo "$(date +%H:%M:%S) [autoplay] holding forward, no more grabs"; }
+    [ -n "$PAD_STICK_FILE" ] && : > "$PAD_STICK_FILE"
+    sleep 3
+    continue
+  fi
   if hud; then
     [ "$state" != play ] && { state=play; echo "$(date +%H:%M:%S) [autoplay] gameplay (HUD up)"; }
     if [ -n "$AUTOPLAY_FORWARD" ] && [ -n "$PAD_STICK_FILE" ]; then

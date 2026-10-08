@@ -27,6 +27,7 @@ extern "C" void win_prof_slow_frame(uint64_t start_us, uint64_t end_us, double f
 
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" uint8_t* vm_base;
+extern "C" uint32_t g_rsx_engine_frame;   /* rsx_draw_engine.c: the present count */
 
 /* Finish any tail call the lifted body left in the trampoline, so the time
  * measured is the whole function (the caller would drain it next anyway). */
@@ -162,8 +163,9 @@ void func_000C1E50(ppu_context* ctx)
         static unsigned n = 0;
         /* GObjObjects: a TArray (data, num, max) at 0x01A0C2B4. */
         const uint32_t nobj = __builtin_bswap32(*(const uint32_t*)(vm_base + 0x01A0C2B8u));
-        fprintf(stderr, "[gc] #%u collection %.2f ms, reachability %.2f ms (%u passes), %u objects, %.0f ns each\n",
-                ++n, ms, s_reach_ms, s_reach_calls, nobj, nobj ? s_reach_ms * 1e6 / nobj : 0.0);
+
+        fprintf(stderr, "[gc] #%u collection %.2f ms, reachability %.2f ms (%u passes), %u objects, %.0f ns each, frame %u\n",
+                ++n, ms, s_reach_ms, s_reach_calls, nobj, nobj ? s_reach_ms * 1e6 / nobj : 0.0, g_rsx_engine_frame);
 #ifdef _WIN32
         /* DOD3_GC_LOG=2 with DOD3_PROF / DOD3_PROF_TREE: the sampled stacks
          * of the collection, as [slow-frame] lines. */
