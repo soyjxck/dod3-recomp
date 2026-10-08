@@ -6,7 +6,7 @@
 # <padfile> is one press ("<mask> [polls]"), consumed by the next pad poll.
 # Masks: START 0x0008, CROSS 0x4000, CIRCLE 0x2000, UP 0x0010, DOWN 0x0040.
 #
-#   opening movie opened   -> START (skip it)
+#   opening movie opened   -> START (skip it; none with DOD3_SKIP_INTRO)
 #   title music loaded     -> START, then CROSS every 3 s until the chapter
 #                             loads: with no save that is two notices, the
 #                             save slot list and New Game
@@ -38,8 +38,13 @@ hud() {        # 0 when the battle HUD is on screen
 }
 
 : > "$pad"
-wait_for "D3_OPN_TEST.BIK" 400 || { echo "[autoplay] no opening movie seen"; exit 1; }
-nap 3; press $START "skip opening"
+# The opening movie, unless the title skips it (DOD3_SKIP_INTRO, on by
+# default): then the title screen comes first.
+for i in $(seq 1 400); do
+  grep -q "MUSIC_OTHER_TITLE_SCD.XXX" "$log" 2>/dev/null && break
+  if grep -q "D3_OPN_TEST.BIK" "$log" 2>/dev/null; then nap 3; press $START "skip opening"; break; fi
+  nap 1
+done
 wait_for "MUSIC_OTHER_TITLE_SCD.XXX" 120 || { echo "[autoplay] no title screen seen"; exit 1; }
 nap 4; press $START "press start"
 for i in $(seq 1 20); do
