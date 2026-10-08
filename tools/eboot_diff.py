@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """eboot_diff.py <a.ELF> <a.functions.json> <b.ELF> <b.functions.json> [--map out.json]
 
 Which PPU functions differ between two builds of a title (BLUS31197 1.00 and
@@ -59,7 +60,8 @@ def main():
                 changed.append((a[i1 + k], b[j1 + k])); amap[a[i1 + k][0]] = b[j1 + k][0]
         else:
             removed += a[i1:i2]; added += b[j1:j2]
-    exact = sum(1 for (s, e, w) in a if s in amap and w == dict((x[0], x[2]) for x in b).get(amap[s]))
+    words_b = {s: w for s, _, w in b}
+    exact = sum(1 for s, _, w in a if s in amap and w == words_b.get(amap[s]))
     print('%s: %d functions; %s: %d' % (sys.argv[1], len(a), sys.argv[3], len(b)))
     print('matched %d (byte-identical %d, same once moves are masked %d), changed %d, only in a %d, only in b %d'
           % (len(amap), exact, len(amap) - len(changed) - exact, len(changed), len(removed), len(added)))

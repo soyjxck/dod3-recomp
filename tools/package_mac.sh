@@ -3,14 +3,15 @@
 #
 #   tools/package_mac.sh v0.1.0
 #
-# Contents: "Drakengard 3 Recompiled.app" (the game, SDL2 inside it, the
-# default dod3.ini, an icon drawn by tools/make_icon.py), the player guide as
-# README.txt and the licence notices. Nothing from the game or the PS3
-# firmware: the player's own files are installed by the app's first-run
-# setup (src/setup_mac.mm) into ~/Library/Application Support.
+# Contents: "Drakengard 3 Recompiled.app" (the game and its installer, SDL2
+# inside it, the default dod3.ini, an icon drawn by tools/make_icon.py), the
+# player guide as README.txt and the licences. Nothing from the game: the
+# player's own files are installed by the app's setup (src/setup_wizard.cpp)
+# into ~/Library/Application Support.
 #
-# It builds its own Release tree, build-macos-release/, for Apple silicon and
-# macOS $MACOSX_DEPLOYMENT_TARGET (default 13.0), against the libraries from
+# It builds its own Release tree, build-macos-release/ -- the 1.01 build, from
+# recompiled_101/ and spu/ -- for Apple silicon and macOS
+# $MACOSX_DEPLOYMENT_TARGET (default 13.0), against the libraries from
 # tools/build_mac_deps.sh rather than Homebrew's, which only run on the macOS
 # they were installed on. It needs this tree's lifted recompiled/ and spu/,
 # as any build does. The app is signed ad hoc: without a Developer ID it is
@@ -32,7 +33,7 @@ app="$out/$product.app"
 # find_library) so nothing in the binary needs a newer macOS than the target.
 mkdir -p "$build"
 PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig" PKG_CONFIG_PATH="" \
-cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DDOD3_EBOOT=101 \
     -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET="$target" \
     -DCMAKE_PREFIX_PATH="$deps" -DCMAKE_IGNORE_PREFIX_PATH="/opt/homebrew;/usr/local" \
     -DCMAKE_FIND_FRAMEWORK=LAST > "$build/package-configure.log"
@@ -55,7 +56,7 @@ cp dod3.ini "$app/Contents/Resources/dod3.ini"
 # .icns holds.
 iconset=$(mktemp -d)/AppIcon.iconset
 mkdir -p "$iconset"
-python3 -c "import sys; sys.path.insert(0, 'tools'); import make_icon; make_icon.render().save(sys.argv[1])" \
+"${PYTHON:-python3}" -c "import sys; sys.path.insert(0, 'tools'); import make_icon; make_icon.render().save(sys.argv[1])" \
     "$iconset/icon_512x512@2x.png"
 for s in 16 32 128 256 512; do
     sips -z $s $s "$iconset/icon_512x512@2x.png" --out "$iconset/icon_${s}x${s}.png" > /dev/null
@@ -94,23 +95,24 @@ codesign --verify --deep --strict "$app"
 
 # ---- the rest of the package ------------------------------------------------------
 cp docs/PLAYING.md "$out/README.txt"
+cp LICENSE "$out/LICENSE.txt"
+cp THIRD_PARTY_NOTICES.md "$out/THIRD_PARTY_NOTICES.txt"
+cp ps3recomp/LICENSE "$out/LICENSE-ps3recomp.txt"
+cp third_party/imgui/LICENSE.txt "$out/LICENSE-imgui.txt"
 {
-  printf 'Third-party components\n\n'
-  printf 'ps3recomp (the recompilation toolkit and runtime): MIT License, see https://github.com/sp00nznet/ps3recomp\n\n'
-  cat ps3recomp/LICENSE
+  printf 'The libraries built into the app (tools/build_mac_deps.sh):\n'
   printf '\n\nSDL 2 (libSDL2-2.0.0.dylib, controllers and audio): zlib License\n\n'
   cat deps/src/SDL2/LICENSE.txt
-  printf '\n\nglslang (shader translation, built in)\n\n'
+  printf '\n\nglslang (shader translation)\n\n'
   cat deps/src/glslang/LICENSE.txt
-  printf '\n\nSPIRV-Tools (shader translation, built in): Apache License 2.0\n\n'
+  printf '\n\nSPIRV-Tools (shader translation): Apache License 2.0\n\n'
   cat deps/src/glslang/External/spirv-tools/LICENSE
-  printf '\n\nSPIRV-Cross (shader translation, built in): Apache License 2.0\n\n'
+  printf '\n\nSPIRV-Cross (shader translation): Apache License 2.0\n\n'
   cat deps/src/SPIRV-Cross/LICENSE
-} > "$out/THIRD-PARTY.txt"
-[ -f LICENSE ] && cp LICENSE "$out/LICENSE.txt"
+} > "$out/LICENSE-libraries.txt"
 
 # Nothing the player supplies, and no build leftovers.
-for bad in EBOOT.ELF EBOOT.BIN flashMP3.pic PARAM.SFO; do
+for bad in EBOOT.ELF EBOOT_101.ELF EBOOT.BIN flashMP3.pic PARAM.SFO keys.txt; do
   if find "$out" -iname "$bad" | grep -q .; then echo "package_mac: $bad in the package"; exit 1; fi
 done
 

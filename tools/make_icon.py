@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Draw the Windows application icon (an original design, no game artwork).
+"""Draw the application icon (an original design, no game artwork).
 
-    .venv/Scripts/python tools/make_icon.py assets/app.ico [preview.png]
+    python tools/make_icon.py assets/app.ico [preview.png]
 
 A six-petal crimson flower on a dark rounded square, drawn at 1024 px and
 scaled down, written as an .ico with 256, 128, 64, 48, 32 and 16 pixel sizes
-(needs Pillow: .venv/Scripts/pip install pillow). app.rc embeds assets/app.ico
-as the executable's icon; the D3D12 window class loads it at run time.
+(needs Pillow: tools/requirements.txt). app.rc embeds assets/app.ico as the
+Windows executable's icon, which its windows load at run time;
+tools/package_mac.sh renders the same drawing into the app's .icns.
 """
 import math
 import sys

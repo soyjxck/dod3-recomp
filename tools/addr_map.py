@@ -7,9 +7,13 @@ offset into it. The instruction words around the address are compared
 (branch targets and address immediates masked, as in eboot_diff.py), so an
 address inside a changed function is reported, not silently mapped.
 """
-import sys, json, bisect, struct
-sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
-import eboot_diff as d
+import bisect
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import eboot_diff as d  # noqa: E402
 
 def main():
     m = {int(k, 16): int(v, 16) for k, v in json.load(open(sys.argv[1])).items()}

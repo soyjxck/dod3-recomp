@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Generate the Graphics / System Settings (and skip-intro) patch for SQEX03GAME.XXX.
 
 menu_patch.py [<overlay dir>] [--header=src/dod3_menu_patch_data.h] [--show] [--eboot=101]
@@ -71,7 +72,8 @@ def main():
         SRC = ROOT + '/COOKEDPS3/SQEX03GAME.XXX'
     disasm.load_natives([ROOT + '/COOKEDPS3/' + n for n in ('CORE.XXX', 'ENGINE.XXX', 'GAMEFRAMEWORK.XXX', 'SQEX03GAME.XXX')])
     u = upk.decompress(SRC)
-    assert hashlib.sha1(u).hexdigest() == ORIG_SHA1, 'not the BLUS31197 %s script package' % ('1.01' if v101 else '1.00')
+    if hashlib.sha1(u).hexdigest() != ORIG_SHA1:
+        sys.exit('%s is not the BLUS31197 %s script package' % (SRC, '1.01' if v101 else '1.00'))
     pk = Pkg(u)
     new = {}
 

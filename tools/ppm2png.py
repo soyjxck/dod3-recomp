@@ -5,25 +5,14 @@
 
 --scale N downsamples by an integer factor (nearest), for a quick look.
 """
+import argparse
+import os
 import struct
 import sys
 import zlib
 
-
-def read_ppm(path):
-    with open(path, "rb") as f:
-        data = f.read()
-    parts, pos = [], 0
-    while len(parts) < 4:
-        while data[pos:pos + 1].isspace():
-            pos += 1
-        start = pos
-        while not data[pos:pos + 1].isspace():
-            pos += 1
-        parts.append(data[start:pos])
-    pos += 1
-    w, h = int(parts[1]), int(parts[2])
-    return w, h, data[pos:pos + w * h * 3]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ppm import read_ppm  # noqa: E402
 
 
 def write_png(path, w, h, rgb):
@@ -46,24 +35,22 @@ def write_png(path, w, h, rgb):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    scale = 1
-    if "--scale" in sys.argv:
-        scale = int(sys.argv[sys.argv.index("--scale") + 1])
-        args = [a for a in args if a != str(scale)]
-    if len(args) < 2:
-        print(__doc__)
-        return 2
-    w, h, rgb = read_ppm(args[0])
-    if scale > 1:
-        nw, nh = w // scale, h // scale
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("ppm")
+    ap.add_argument("png")
+    ap.add_argument("--scale", type=int, default=1, help="downsample by this factor")
+    args = ap.parse_args()
+    w, h, rgb = read_ppm(args.ppm)
+    if args.scale > 1:
+        s = args.scale
+        nw, nh = w // s, h // s
         out = bytearray()
         for y in range(nh):
-            row = rgb[(y * scale) * w * 3:(y * scale + 1) * w * 3]
+            row = rgb[(y * s) * w * 3:(y * s + 1) * w * 3]
             for x in range(nw):
-                out += row[x * scale * 3:x * scale * 3 + 3]
+                out += row[x * s * 3:x * s * 3 + 3]
         w, h, rgb = nw, nh, bytes(out)
-    write_png(args[1], w, h, rgb)
+    write_png(args.png, w, h, rgb)
     return 0
 
 

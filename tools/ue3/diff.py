@@ -1,7 +1,6 @@
-#!/usr/bin/env python3
-"""ue3_diff.py <dir a> <dir b> [PACKAGE ...]: what changed in the UnrealScript
-of two builds -- e.g. the disc's COOKEDPS3 (1.00) against the 1.01 update's
-PATCH/SQEX03GAME/COOKEDPS3.
+"""python tools/ue3 diff <dir a> <dir b> [-v] [PACKAGE ...]: what changed in the
+UnrealScript of two builds -- e.g. the disc's COOKEDPS3 (1.00) against the
+1.01 update's PATCH/SQEX03GAME/COOKEDPS3.
 
 Per script package (default: the eight the 1.01 update replaces): exports
 only in one build (classes, properties, functions, states), and every
@@ -10,9 +9,11 @@ code offsets, and each build is read with its own native-function names,
 so a function that only moved or whose package indices shifted does not
 count as changed. -v prints a unified diff of each changed function.
 """
-import os, sys, struct, difflib
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ue3 import upk, dis
+import difflib
+import os
+import sys
+
+from . import dis, upk
 
 PACKAGES = ['CORE.XXX', 'ENGINE.XXX', 'GAMEFRAMEWORK.XXX', 'GFXUI.XXX', 'IPDRV.XXX',
             'ONLINESUBSYSTEMPC.XXX', 'SQEXSEAD.XXX', 'SQEX03GAME.XXX']
@@ -66,6 +67,3 @@ def main():
             if verbose:
                 for l in list(difflib.unified_diff(fa[k], fb[k], lineterm='', n=1))[2:]:
                     print('       ' + l)
-
-if __name__ == '__main__':
-    main()

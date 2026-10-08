@@ -1,6 +1,6 @@
 """UnrealScript (UE3 v860, PS3 cook) disassembler for DoD3 packages.
 
-tools/ue3_dis.py <package> <Class> [Function]
+python tools/ue3 dis <package> <Class> [Function]
 Prints each function of the class: flags, parameters/locals, and the
 bytecode with in-memory offsets (object refs are 4 bytes on disk, 8 in
 memory; jump targets are memory offsets).

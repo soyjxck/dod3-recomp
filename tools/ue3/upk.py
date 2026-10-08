@@ -98,9 +98,3 @@ def objname(i, imps, exps):
     if i < 0: return imps[-i - 1][3]
     return 'None'
 
-if __name__ == '__main__':
-    u = decompress(sys.argv[1])
-    s, names, imps, exps = tables(u)
-    print('ver', s['ver'], 'names', len(names), 'imports', len(imps), 'exports', len(exps), 'size', len(u))
-    for i, e in enumerate(exps[:int(sys.argv[2]) if len(sys.argv) > 2 else 40]):
-        print(i + 1, objname(e['cls'], imps, exps), e['name'], 'outer', objname(e['outer'], imps, exps), e['size'], hex(e['off']))

@@ -43,9 +43,9 @@ MSDSP_LSA = 0x37000
 MSDSP_NAME = "spu_ovl_msdsp_37000"
 # (source SPU ELF, offset of its text in the block)
 PLUGINS = [
-    ("spu_0027_at_018F7C00", 0x0000),
-    ("spu_0029_at_018FC300", 0x2000),
-    ("spu_0037_at_01904F80", 0x2900),
+    ("spu_0027_at_018F9280", 0x0000),
+    ("spu_0029_at_018FD980", 0x2000),
+    ("spu_0037_at_01906600", 0x2900),
 ]
 
 MP3_LSA = 0x1A900

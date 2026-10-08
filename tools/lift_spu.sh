@@ -4,32 +4,38 @@
 #   - raw SPURS job binaries embedded in the EBOOT (ShaderPatching and others)
 #   - the MultiStream DSP plugin block, rebuilt at the LS address it runs at
 # then generate the workload and overlay registries the build compiles.
+#
+# From the 1.01 update's EBOOT, elf/EBOOT_101.ELF (or DOD3_ELF=<path>): the
+# images are named by their address in it, and the hooks below name them.
 set -e
 cd "$(dirname "$0")/.."
 PY=.venv/bin/python
 [ -x "$PY" ] || PY=.venv/Scripts/python.exe   # a Windows venv (run this from Git Bash)
 T=ps3recomp/tools
+ELF=${DOD3_ELF:-elf/EBOOT_101.ELF}
+[ -f "$ELF" ] || { echo "lift_spu: no $ELF (docs/BUILDING.md)"; exit 1; }
+[ "$(wc -c < "$ELF" | tr -d ' ')" = 26872424 ] || { echo "lift_spu: $ELF is not the 1.01 update's EBOOT"; exit 1; }
 
 # Lifts already in spu/ are kept (build_spu_workloads.py skips them), so an
 # unchanged image is not recompiled. The overlays (the DSP plugin block, our
-# stand-in MP3 decoder and, if the firmware's dev_flash is here, Sony's: see
-# tools/make_spu_overlays.py) are rebuilt every time. Sony's is optional: it
-# is only for DOD3_MP3_NATIVE=0 and the MP3 check modes (fw/dev_flash, or
-# FW_DEV_FLASH=<RPCS3's dev_flash folder>).
+# stand-in MP3 decoder and, if the console's dev_flash is here, its own: see
+# tools/make_spu_overlays.py) are rebuilt every time. The console's is
+# optional: it is only for DOD3_MP3_NATIVE=0 and the MP3 check modes
+# (fw/dev_flash, or FW_DEV_FLASH=<a dev_flash folder>).
 mkdir -p spu/images
 rm -rf spu/spu_ovl_msdsp_37000 spu/spu_ovl_mp3_1A900 spu/spu_ovl_mp3native_1A900
-$PY $T/extract_spu_images.py elf/EBOOT.ELF --output spu/images
+$PY $T/extract_spu_images.py "$ELF" --output spu/images
 
 # Raw SPURS job binaries in the EBOOT (not ELFs, so extract_spu_images.py
 # misses them): "<file offset> <bytes>". The vaddr is offset + 0x10000.
 # Named to sort after spu_*, so the task images keep their ids -- the runtime
 # still special-cases some image ids for other titles.
-#   0x01775E00  ShaderPatching job chain
-#   0x0177E580  job dispatched as the title loads (fp D6E964B601AB14C0)
-for job in "0x01775E00 34688" "0x0177E580 528"; do
+#   0x01777480  ShaderPatching job chain
+#   0x0177FC00  job dispatched as the title loads (fp D6E964B601AB14C0)
+for job in "0x01777480 34688" "0x0177FC00 528"; do
     set -- $job
     va=$(printf '%08X' $(( $1 + 0x10000 )))
-    dd if=elf/EBOOT.ELF of=spu/job.bin bs=1 skip=$(( $1 )) count=$2 2>/dev/null
+    dd if="$ELF" of=spu/job.bin bs=1 skip=$(( $1 )) count=$2 2>/dev/null
     $PY $T/wrap_spu_elf.py spu/job.bin --base 0x0 --entry 0x0 \
         --out spu/images/spurs_job_$va.elf
     rm spu/job.bin
@@ -41,20 +47,20 @@ EXTRA=$($PY tools/make_spu_overlays.py wrap)
 # one, hit unlifted local store, died, and the chapter load hung. Found by
 # scanning each image's data for 4-aligned text addresses that start a
 # plausible instruction and are not already a lifted function.
-EXTRA="$EXTRA --extra-funcs spu_0018_at_0186AD80=0x3288,0x3298,0xF9E8,0x10000,0x10008,0x170E0,0x17420"
-EXTRA="$EXTRA --extra-funcs spu_0015_at_01840980=0x10000"
-EXTRA="$EXTRA --extra-funcs spu_0000_at_01781700=0x505C"
+EXTRA="$EXTRA --extra-funcs spu_0018_at_0186C400=0x3288,0x3298,0xF9E8,0x10000,0x10008,0x170E0,0x17420"
+EXTRA="$EXTRA --extra-funcs spu_0015_at_01842000=0x10000"
+EXTRA="$EXTRA --extra-funcs spu_0000_at_01782D80=0x505C"
 # Native fast paths (src/dod3_spu_hooks.c): ShaderPatching's LZF copy loops.
-EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x528:dod3_spu_lzf_literal_hook"
-EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x638:dod3_spu_lzf_match_hook"
-EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x560:dod3_spu_lzf_token_hook"
-EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x6A0:dod3_spu_patch_loop_hook"
+EXTRA="$EXTRA --native-hook spurs_job_01787480=0x528:dod3_spu_lzf_literal_hook"
+EXTRA="$EXTRA --native-hook spurs_job_01787480=0x638:dod3_spu_lzf_match_hook"
+EXTRA="$EXTRA --native-hook spurs_job_01787480=0x560:dod3_spu_lzf_token_hook"
+EXTRA="$EXTRA --native-hook spurs_job_01787480=0x6A0:dod3_spu_patch_loop_hook"
 # MultiStream's DSP plugin block (src/dod3_msdsp_hooks.c): the two biquad
-# loops that were half of the mixer task's time.
+# loops that are half of the mixer task's time.
 EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39350:dod3_msdsp_biquad_a_hook"
 EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39630:dod3_msdsp_biquad_b_hook"
 # The MP3 decoder, natively (src/dod3_mp3_native.c): the stand-in
-# flashMP3.pic's entry, and the firmware decoder's decodeFrame when it is lifted.
+# flashMP3.pic's entry, and the console decoder's decodeFrame when it is lifted.
 EXTRA="$EXTRA --native-hook spu_ovl_mp3native_1A900=0x1A910:dod3_mp3_standin_hook"
 EXTRA="$EXTRA --native-hook spu_ovl_mp3_1A900=0x21D20:dod3_mp3_decode_hook"
 $PY $T/build_spu_workloads.py --images spu/images --lifted spu \
