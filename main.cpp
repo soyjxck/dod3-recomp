@@ -1146,11 +1146,17 @@ int main(int argc, char** argv)
      * the next sound (opening movie, new game). tools/extract_dev_flash.py
      * unpacks fw/dev_flash from the PS3UPDAT.PUP on the game disc. */
     setenv("PS3_DEV_FLASH", "fw/dev_flash", 0);
-    /* The PhysX taskset (five memory-manager/physics tasks sharing request
-     * blocks). Run concurrently on host threads they race: a task reads a
-     * request record before it is filled, dispatches type 0 to a null
-     * handler and dies mid-chapter. One at a time removes that. */
-    setenv("SPURS_TASKSET_SERIAL", "01AA7700", 0);
+    /* The PhysX taskset (memory-manager and physics tasks sharing request
+     * blocks). With no limit, as many of its tasks ran at once as there were
+     * host threads, and they raced: a task read a request record before it
+     * was filled, dispatched type 0 to a null handler and died mid-chapter
+     * (a double dispatch fixed since, in cellSpursCreateTask, may have been
+     * that race). It was then run one task at a time, which in the
+     * destruction scenes queued each Havok task behind the others for 1-3 ms
+     * while the game thread waited for the step. Now it runs as hardware
+     * runs it: up to its maxContention (3) at once, started in creation
+     * order. SPURS_TASKSET_SERIAL=01AA7700 is the one-at-a-time fallback. */
+    setenv("SPURS_TASKSET_CONTENTION", "01AA7700", 0);
     /* The runtime treats SPU image 22 as You Don't Know Jack's cri media task
      * (context from the CreateTask globals, an EXIT that returns to the task).
      * Here image 22 is a PhysX task; it never returned and the serialised

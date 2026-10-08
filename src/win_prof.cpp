@@ -286,7 +286,10 @@ static void report(double secs, long interval_ms)
     for (auto& b : busy) {
         const ThreadStat& t = s_stats[b.second];
         const double pct = 100.0 * b.first * per / secs;
-        if (pct < 15.0) break;
+        /* Threads under 15% are skipped, except those DOD3_PROF_TREE names:
+         * several lightly loaded threads can still be the chain a frame
+         * waits on (PhysX's SPU tasks). */
+        if (pct < 15.0 && !(pct >= 1.0 && s_tree_of && tree_match(t.name.c_str()))) continue;
         std::vector<std::pair<uint64_t, uint64_t>> top(t.self.begin(), t.self.end());
         std::sort(top.begin(), top.end(), [](auto& a, auto& c) { return a.second > c.second; });
         fprintf(stderr, "[prof]   %s (%.0f%%):", t.name.c_str(), pct);
