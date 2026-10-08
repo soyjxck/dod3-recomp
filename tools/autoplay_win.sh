@@ -36,8 +36,13 @@ combat_cycle() {
   stick "128 0 20 128"; sleep 0.7
 }
 : > "$pad"
-wait_for "D3_OPN_TEST.BIK" 400 || { echo "[autoplay] no opening movie seen"; exit 1; }
-sleep 3; press $START "skip opening"
+# The opening movie, unless the title skips it (DOD3_SKIP_INTRO, on by
+# default): then the title screen comes first.
+for i in $(seq 1 400); do
+  grep -q "MUSIC_OTHER_TITLE_SCD.XXX" "$log" 2>/dev/null && break
+  if grep -q "D3_OPN_TEST.BIK" "$log" 2>/dev/null; then sleep 3; press $START "skip opening"; break; fi
+  sleep 1
+done
 wait_for "MUSIC_OTHER_TITLE_SCD.XXX" 120 || { echo "[autoplay] no title screen seen"; exit 1; }
 sleep 4; press $START "press start"
 for i in $(seq 1 20); do
