@@ -46,13 +46,17 @@
 #include <string>
 #include <sys/stat.h>
 #include "ppu_recomp.h"
+#include "dod3_eboot.h"   /* the EBOOT version's addresses */
 #include "dod3_sysset.h"
+#ifdef _WIN32
+#define strcasecmp _stricmp   /* the CRT's spelling */
+#endif
 
 namespace {
 
-const uint32_t kData = 0x01A12E0Cu;         /* GSystemSettings + 4 */
+const uint32_t kData = DOD3_A_SYSTEM_SETTINGS_DATA;   /* GSystemSettings + 4 (1.00: 0x01A12E0C) */
 const uint32_t kTexGroups = kData + 0xA4u;
-const uint32_t kGEngine = 0x01999164u;
+const uint32_t kGEngine = DOD3_A_GENGINE;
 
 enum Kind { B, I, F };
 struct Field { const char* name; uint32_t off; Kind kind; };
@@ -289,7 +293,7 @@ void apply_player_settings()
 
 void dod3_sysset_rows(std::vector<Dod3RowSpec>& rows)
 {
-    rows.push_back({"DOD3_SHADOWS", "Shadow Quality", "Shadow sharpness. Applies the next time the game starts.",
+    rows.push_back({"DOD3_SHADOWS", "Shadow Quality", "Sharper, more defined shadows.",
                     {{nullptr, "Original"}, {"high", "High"}, {"ultra", "Ultra"}}, 0, false, nullptr});
     rows.push_back({"DOD3_MOTION_BLUR", "Motion Blur", "Blur on fast movement of the camera and characters.",
                     {{nullptr, "On"}, {"0", "Off"}}, 0, true, set_motion_blur});

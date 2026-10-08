@@ -66,6 +66,7 @@
 #define DOD3_A_GMALLOC                0x0197FFA0u
 #define DOD3_A_GERROR                 0x0197FF84u
 #define DOD3_A_GC_ERROR_FMT           0x01639D0Cu
+#define DOD3_A_SYSTEM_SETTINGS_DATA   0x01A12D8Cu            /* GSystemSettings + 4 (src/dod3_sysset.cpp) */
 #define DOD3_A_GCM_CACHE64            0x01A2A150u            /* DOD3_GCM_WATCH diagnostics only */
 #define DOD3_A_GCM_CONTEXT            0x01AC3E38u
 #define DOD3_A_SHADER_JOB_CHAIN       0x01A2A800u
@@ -110,6 +111,7 @@
 #define DOD3_A_GMALLOC                0x0197FFA0u
 #define DOD3_A_GERROR                 0x0197FF84u
 #define DOD3_A_GC_ERROR_FMT           0x016386CCu
+#define DOD3_A_SYSTEM_SETTINGS_DATA   0x01A12E0Cu
 #define DOD3_A_GCM_CACHE64            0x01A2A1D0u
 #define DOD3_A_GCM_CONTEXT            0x01AC3E38u
 #define DOD3_A_SHADER_JOB_CHAIN       0x01A2A880u

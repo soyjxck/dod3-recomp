@@ -13,6 +13,7 @@
  *   Sqex03DataMessage.GetString(i)   i in [MAGIC, MAGIC + 1000): text from here
  *     MAGIC+0 / +1         Graphics Settings: the root entry's label / description
  *     MAGIC+2 / +3         System Settings: the same
+ *     MAGIC+4 / +5         Advanced Graphics (rows from src/dod3_sysset.cpp)
  *     MAGIC+100+row        a row's label (of the open page)
  *     MAGIC+200+row        its value (the one being edited)
  *     MAGIC+300+row        its description
@@ -22,8 +23,9 @@
  *     4 apply   5 changed?   6 skip the intro? (the title's version-check
  *     page then hands straight to "Press START": no company, middleware
  *     or UE3 logos, no opening movie; DOD3_SKIP_INTRO=0 keeps them)
- *     7 open(root entry): 3 Graphics, 4 System, 5 Restore Defaults (the
- *     reset and apply that follow cover every page)   8 the page's rows
+ *     7 open(root entry): 3 Graphics, 4 System, 5 Advanced Graphics,
+ *     6 Restore Defaults (the reset and apply that follow cover every page)
+ *     8 the page's rows
  *     9 the camera's FOV   10 is the Graphics page on screen? (in play,
  *     the pause screen's dimming and frost are then left out)
  *
@@ -48,7 +50,8 @@
  * so its default 65 degrees (horizontal) becomes 65+N and the game's own
  * zooms keep their proportion. Cutscene cameras are left alone. */
 #include "ppu_recomp.h"
-#include "dod3_eboot.h"   /* the EBOOT version's addresses */
+#include "dod3_eboot.h"
+#include "dod3_sysset.h"      /* the Advanced Graphics page's rows   /* the EBOOT version's addresses */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -158,11 +161,13 @@ struct Row {
     bool live;                /* applied at once (else on the next start) */
     int running, saved, pending;   /* choice indices; -1 = a value not in the list */
     std::string other;        /* that value */
-    int page;                 /* 0 Graphics, 1 System */
+    int page;                 /* 0 Graphics, 1 System, 2 Advanced Graphics */
+    void (*apply_fn)(const char* value);   /* a live row's own apply (src/dod3_sysset.cpp) */
 };
 
 std::vector<Row> s_rows;            /* every page's */
-std::vector<int> s_page_rows[2];    /* each page's, in order */
+const int NPAGES = 3;
+std::vector<int> s_page_rows[NPAGES];   /* each page's, in order */
 int s_page;                         /* the page open; -1: every page (Restore Defaults) */
 bool s_init;
 float s_fov_k = 1.0f;               /* DOD3_FOV as a zoom factor on tan(FOV/2) */
@@ -273,6 +278,16 @@ void init_rows()
         0, false});
 #endif
     s_rows.back().page = 1;
+    /* Advanced Graphics: the engine's own switches (src/dod3_sysset.cpp) */
+    std::vector<Dod3RowSpec> adv;
+    dod3_sysset_rows(adv);
+    for (const Dod3RowSpec& a : adv) {
+        Row r{a.key, a.label, a.desc, {}, a.def, a.live};
+        for (const auto& c : a.choices) r.choices.push_back({c.first, c.second});
+        r.page = 2;
+        r.apply_fn = a.apply;
+        s_rows.push_back(r);
+    }
     for (size_t i = 0; i < s_rows.size(); i++) {
         Row& r = s_rows[i];
         if (!r.live) r.desc = strdup((std::string(r.desc) + restart).c_str());
@@ -299,6 +314,8 @@ bool menu_text(int i, std::string& out)
     else if (k == 1) out = "Adjust settings related to graphics and the display.";
     else if (k == 2) out = "System Settings";
     else if (k == 3) out = "Adjust the start-up, the background behaviour and the renderer.";
+    else if (k == 4) out = "Advanced Graphics";
+    else if (k == 5) out = "Adjust the engine's shadows, motion blur and post-processing.";
     else if (k >= 100 && k < 200) out = r ? r->label : "";
     else if (k >= 200 && k < 300) out = r ? value_text(*r, r->pending) : "";
     else if (k >= 300 && k < 400) out = r ? r->desc : "";
@@ -379,6 +396,7 @@ void apply()
             if (!strcmp(r.key, "DOD3_FPS")) fps = true;
             if (!strcmp(r.key, "DOD3_UNFOCUSED")) unfocused = true;
             if (!strcmp(r.key, "DOD3_FOV")) set_fov(v);
+            if (r.apply_fn) r.apply_fn(v);
         }
     });
     if (display) g_rsx_display_reload = 1;
@@ -426,14 +444,13 @@ int bridge(int cmd, int a, int b)
         const char* e = getenv("DOD3_SKIP_INTRO");
         return (e && e[0] == '0') ? 0 : 1;
     }
-    case 7:   /* the root opens entry a */
-        if (a == 3) s_page = 0;
-        else if (a == 4) s_page = 1;
-        else if (a == 5) s_page = -1;
+    case 7:   /* the root opens entry a: 3 + page, then Restore Defaults (every page) */
+        if (a >= 3 && a < 3 + NPAGES) s_page = a - 3;
+        else if (a == 3 + NPAGES) s_page = -1;
         return 0;
     case 10:  /* is the Graphics page on screen? The pause screen's dimming and
                * frost are left out while it is, so changes can be seen. */
-        return (s_page == 0 &&
+        return ((s_page == 0 || s_page == 2) &&     /* Graphics, Advanced Graphics */
                 std::chrono::steady_clock::now() - s_page_drawn < std::chrono::milliseconds(250)) ? 1 : 0;
     case 8:   /* the open page's rows */
         return (int)s_page_rows[s_page > 0 ? s_page : 0].size();

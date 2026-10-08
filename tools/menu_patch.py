@@ -7,9 +7,9 @@ The overlay is for testing (PS3_VFS_OVERLAY=<dir> and DOD3_SHA_OVERRIDE from
 --eboot=101 patches the 1.01 update's package instead (its PATCH folder,
 game/disc/game/BLES00000/USRDIR/PATCH; header src/dod3_menu_patch_data_101.h).
 
-Settings root: two more entries, "Graphics Settings" and "System Settings",
-in the empty row between Audio Settings and Restore Defaults and one row
-below it (Restore Defaults moves down a row). Both open the title's unused
+Settings root: PAGES more entries, "Graphics Settings", "System Settings"
+and "Advanced Graphics", from the empty row between Audio Settings and
+Restore Defaults down (Restore Defaults moves below them). All open the title's unused
 Display page (Sqex03GameHUDOptionDisplay, layout
 HUD_Pause.menu.select_option_display), rewritten as a list of rows whose
 count, text and values come from the port -- the root tells it which page:
@@ -18,11 +18,12 @@ count, text and values come from the port -- the root tells it which page:
   m_xOption.UpdateDisplayParam(cmd, a, b) -> int
                                   the port's settings bridge (the native's
                                   only caller was this page)
-Text: MAGIC+0/+1 Graphics' root label and description, MAGIC+2/+3 System's,
+Text: MAGIC+2p/+2p+1 page p's root label and description (0 Graphics, 1
+System, 2 Advanced Graphics),
 MAGIC+100+row row label, MAGIC+200+row value, MAGIC+300+row row description.
 Bridge: 0 begin (pending = current), 1 change(row, dir), 2 is-default(row),
 3 reset (pending = defaults), 4 apply, 5 changed?, 6 skip the intro?,
-7 open(root entry: 3 Graphics, 4 System, 5 Restore Defaults = every page),
+7 open(root entry: 3 + page, or 3 + PAGES = Restore Defaults = every page),
 8 the open page's row count, 9 the camera's field of view, 10 is the
 Graphics page on screen? (in play the pause screen's dimming and frost are
 left out while it is, so what a setting changes can be seen behind it).
@@ -44,6 +45,7 @@ from ue3.script import Node
 
 MAGIC = 900000
 MAX_ROWS = 7     # the layout's
+PAGES = 3        # our root entries: Graphics, System, Advanced Graphics
 CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO, CMD_OPEN, CMD_ROWS, CMD_FOV, \
     CMD_GRAPHICS_SHOWN = range(11)
 
@@ -108,16 +110,16 @@ def main():
     subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(7))
     new[f] = st
 
-    # ---- Sqex03GameHUDOption.Draw: six rows; rows 3 and 4 are ours ----
+    # ---- Sqex03GameHUDOption.Draw: the root's rows; 3 .. 3+PAGES-1 are ours ----
     # The layout's empty row is one row high (Audio at y 286, Restore at 358)
     # but its own sprites (11, 12, text 50) are a narrower, indented bar from
-    # some earlier design; rows 3 and 4 are drawn with Audio's (9, 10, text
-    # 49) one and two rows (36, 72) lower instead -- Sqex03Menu.Draw takes an
-    # offset -- and Restore Defaults one row lower.
+    # some earlier design; our rows are drawn with Audio's (9, 10, text 49)
+    # one, two, ... rows (36 px each) lower instead -- Sqex03Menu.Draw takes
+    # an offset -- and Restore Defaults below the last of them.
     f = pk.func(OPT, 'Draw'); st = pk.parse(f)
     I = pk.local(f, 'I')
     i = pk.find(st, 'if !(Less_IntInt(I, 4)) goto 0x03ce')
-    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(6))
+    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(4 + PAGES))
     i_lt3 = pk.find(st, 'if !(Less_IntInt(I, 3)) goto 0x0250')
     d0 = pk.find(st, 'self.m_xMenu.Draw(Add_IntInt(5, Multiply_IntInt(2, I)), self.m_xHUD.self.Canvas, <empty>, <empty>, <empty>, <empty>, <empty>, <empty>)')
     gp = pk.find(st, 'xParam = self.m_xMenu.GetFrameAnimParam(Add_IntInt(47, I), <empty>)')
@@ -142,61 +144,72 @@ def main():
         g_tx = clone(st[tx]); subst(g_tx, lambda n: pk.text(n) == 'Add_IntInt(72, I)', lambda n: pk.int_(text))
         return [g_if, offset(clone(st[d0]), off, 9), offset(clone(st[d0]), off, 10), g_gp, g_y,
                 clone(st[fa]), g_tx, clone(st[jd])]
-    # Restore Defaults (the statement the `I < 3` test jumped to), one row lower
+    # Restore Defaults (the statement the `I < 3` test jumped to), below ours
     else_at = ds - 5
     assert pk.text(st[else_at]).startswith('self.m_xMenu.Draw(13,'), pk.text(st[else_at])
-    offset(st[else_at], 36.0); offset(st[else_at + 1], 36.0)
+    roff = 36.0 * (PAGES - 1)
+    offset(st[else_at], roff); offset(st[else_at + 1], roff)
     rp = pk.find(st, 'xParam = self.m_xMenu.GetFrameAnimParam(51, <empty>)')
-    st.insert(rp + 1, pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy), pk.float_(36.0))))
-    # rows 3 and 4 go before it
-    st[else_at:else_at] = row(3, 'row4', 36.0, MAGIC + 0) + row(4, st[else_at].mem, 72.0, MAGIC + 2)
+    st.insert(rp + 1, pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy), pk.float_(roff))))
+    rows = []
+    for j in range(PAGES):
+        nxt = 'row%d' % (4 + j) if j + 1 < PAGES else st[else_at].mem
+        rows += row(3 + j, nxt, 36.0 * (j + 1), MAGIC + 2 * j)
+    st[else_at:else_at] = rows
     st[i_lt3].parts[0] = ('jmp', 'row3')
     new[f] = st
 
-    # ---- Root.UpdateSelect: six entries; Restore Defaults is now index 5 ----
-    # An entry opens child 1 + index; System (4) opens the same page as
-    # Graphics (child 4), and the port is told which before it does.
+    # ---- Root.UpdateSelect: 4 + PAGES entries; Restore Defaults is the last ----
+    # An entry opens child 1 + index; ours all open the same page (child 4),
+    # and the port is told which before it does.
     f = pk.func(ROOTC, 'UpdateSelect'); st = pk.parse(f)
     sel = pk.inst('Sqex03GameHUDOptionBase', 'm_iSelect')
+    def lt(k): return pk.native('Less_IntInt', clone(sel), pk.int_(k))
     for t in ('self.m_iSelect = AddValueLimit(self.m_iSelect, -1, 4, <empty>)',
               'self.m_iSelect = AddValueLimit(self.m_iSelect, 1, 4, <empty>)'):
         i = pk.find(st, t)
-        subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(6))
+        subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(4 + PAGES))
     i = pk.find(st, 'self.m_xParent.self.m_iNextType = Add_IntInt(1, self.m_iSelect)')
     subst(st[i], lambda n: pk.text(n) == 'Add_IntInt(1, self.m_iSelect)',
-          lambda n: pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(4)), pk.int_(4), n))
+          lambda n: pk.cond(lt(3), n, pk.cond(lt(3 + PAGES), pk.int_(4), clone(n))))
     i = pk.find(st, 'if !(NotEqual_IntInt(self.m_iSelect, 3)) goto 0x0230')
-    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 3)], lambda n: pk.int_(5))
+    subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 3)], lambda n: pk.int_(3 + PAGES))
     st.insert(i, bridge(CMD_OPEN, clone(sel)))
     i = pk.find(st, 'self.m_xParent.self.m_iNextType = 4')
     subst(st[i], lambda n: n.op == 0x2C and n.parts == [('u8', 4)], lambda n: pk.int_(7))
     new[f] = st
 
-    # ---- Root.Draw: the cursor (params 40 + index): rows 3 and 4 at Audio's
-    # position (42) one and two rows lower, Restore Defaults at its own (44)
-    # one row lower ----
+    # ---- Root.Draw: the cursor (params 40 + index): ours at Audio's position
+    # (42) one, two, ... rows lower, Restore Defaults at its own (44) below
+    # them ----
     f = pk.func(ROOTC, 'Draw'); st = pk.parse(f)
     sel = pk.inst('Sqex03GameHUDOptionBase', 'm_iSelect')
     def is_(k): return pk.native('EqualEqual_IntInt', clone(sel), pk.int_(k))
+    def lt(k): return pk.native('Less_IntInt', clone(sel), pk.int_(k))
     i = pk.find(st, 'iAdjust = (Less_IntInt(self.m_iSelect, 3) ? 0 : 1)')
-    st[i].parts[1] = ('e', pk.cond(is_(4), pk.int_(-2),
-                                   pk.cond(pk.native('GreaterEqual_IntInt', clone(sel), pk.int_(3)), pk.int_(-1), pk.int_(0))))
+    st[i].parts[1] = ('e', pk.cond(lt(3), pk.int_(0),
+                                   pk.cond(lt(3 + PAGES), pk.native('Subtract_IntInt', pk.int_(2), clone(sel)),
+                                           pk.int_(1 - PAGES))))
     dc = pk.find(st, 'self.m_xHUD.self.m_Common.DrawCursor(xParam.m_fPosX, xParam.m_fPosY, <empty>)')
     posy = findnode(st[dc], 'xParam.m_fPosY')
+    down = pk.float_(36.0 * (PAGES - 1))             # Restore Defaults
+    for j in reversed(range(PAGES)):
+        down = pk.cond(is_(3 + j), pk.float_(36.0 * (j + 1)), down)
     st[dc:dc] = [Node(0x07, [('jmp', st[dc].mem), ('e', pk.native('GreaterEqual_IntInt', clone(sel), pk.int_(3)))]),
-                 pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy),
-                                               pk.cond(is_(4), pk.float_(72.0), pk.float_(36.0))))]
+                 pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy), down))]
     new[f] = st
 
-    # ---- Root.DrawDetail: descriptions (78 + index, Restore's 83); ours for 3 and 4 ----
+    # ---- Root.DrawDetail: descriptions (78 + index, Restore's 83); ours from the port ----
     f = pk.func(ROOTC, 'DrawDetail'); st = pk.parse(f)
-    i = pk.find(st, 'iAdjust = (Less_IntInt(self.m_iSelect, 3) ? 0 : 2)')
-    st[i].parts[1] = ('e', pk.int_(0))
-    i = pk.find(st, 'sText = self.m_xParent.self.m_MessageData.GetString(Add_IntInt(Add_IntInt(78, self.m_iSelect), iAdjust))')
     sel = pk.inst('Sqex03GameHUDOptionBase', 'm_iSelect')
+    i = pk.find(st, 'iAdjust = (Less_IntInt(self.m_iSelect, 3) ? 0 : 2)')
+    st[i].parts[1] = ('e', pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(3 + PAGES)),
+                                   pk.int_(2 - PAGES), pk.int_(0)))
+    i = pk.find(st, 'sText = self.m_xParent.self.m_MessageData.GetString(Add_IntInt(Add_IntInt(78, self.m_iSelect), iAdjust))')
     def desc(n):
-        return pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(3)), pk.int_(MAGIC + 1),
-                       pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(4)), pk.int_(MAGIC + 3), n))
+        for j in reversed(range(PAGES)):
+            n = pk.cond(pk.native('EqualEqual_IntInt', clone(sel), pk.int_(3 + j)), pk.int_(MAGIC + 1 + 2 * j), n)
+        return n
     subst(st[i], lambda n: pk.text(n) == 'Add_IntInt(Add_IntInt(78, self.m_iSelect), iAdjust)', desc)
     new[f] = st
 
