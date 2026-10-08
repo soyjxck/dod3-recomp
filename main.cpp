@@ -470,6 +470,11 @@ extern "C" volatile int g_audio_hold;                 /* cellAudio.c: 1 mute, 2 
 extern "C" void ps3_guest_clock_pause(int paused);   /* sys_timer.c */
 extern "C" uint64_t ppu_timebase_now(void);           /* sys_timer.c: mftb */
 
+#ifdef __APPLE__
+extern "C" int rsx_metal_backend_window_focused(void);   /* the app active and the window key */
+#endif
+static bool s_window_up;   /* the backend opened its window */
+
 /* Is the game's window the one in front? DOD3_FOCUS_FILE=<path> (testing):
  * out of focus while that file exists. */
 static bool window_focused(void)
@@ -484,8 +489,10 @@ static bool window_focused(void)
     DWORD pid = 0;
     if (HWND w = GetForegroundWindow()) GetWindowThreadProcessId(w, &pid);
     return pid == GetCurrentProcessId();
+#elif defined(__APPLE__)
+    return !s_window_up || rsx_metal_backend_window_focused();   /* no window: nothing to leave */
 #else
-    return true;   /* macOS: not asked yet (NSApp.isActive, in the Metal backend) */
+    return true;
 #endif
 }
 
@@ -993,6 +1000,7 @@ static DWORD WINAPI frame_clock(LPVOID)
     if (!title || !*title) title = "ps3recomp";
 
     int rsx_ok = (rsx_backend_init(WINDOW_WIDTH, WINDOW_HEIGHT, title) == 0);
+    s_window_up = rsx_ok != 0;
     fprintf(stderr, "[rsx] %s backend init %s\n", RSX_BACKEND_NAME,
             rsx_ok ? "OK -- window open" : "FAILED");
 

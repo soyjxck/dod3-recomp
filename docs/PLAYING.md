@@ -81,7 +81,7 @@ Or edit **dod3.ini** next to dod3.exe (it explains each setting):
 | `RSX_ANISO` | Texture filtering: `1` (original) to `16` (16× anisotropic, the default) |
 | `RSX_AA` | `fxaa`, or `msaa2` / `msaa4` / `msaa8` (MSAA costs a lot at 4K); unset is off |
 | `DOD3_SKIP_INTRO` | `1` (default) skips the logos and the opening movie at start-up; `0` keeps them |
-| `DOD3_UNFOCUSED` | While the window is in the background: unset keeps running, `mute` silences the audio, `pause` stops the game until you come back (Windows) |
+| `DOD3_UNFOCUSED` | While the window is in the background: unset keeps running, `mute` silences the audio, `pause` stops the game until you come back |
 | `RSX_BACKEND` | `vulkan` for the Vulkan renderer (experimental); unset is Direct3D 12 |
 
 ## Controls
