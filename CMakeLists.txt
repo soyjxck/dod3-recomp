@@ -221,10 +221,58 @@ elseif(APPLE)
         PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
 
+# The installer (src/setup_install.h): the core on every platform; the pages
+# (src/setup_wizard.cpp) in Dear ImGui (third_party/imgui, v1.92.9b), in a
+# window from one layer per platform (src/setup_ui.h).
+set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui")
+set(SETUP_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_install.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_pkg.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_crypto.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_self.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_keys.cpp")
+set(IMGUI_SOURCES
+    "${IMGUI_DIR}/imgui.cpp"
+    "${IMGUI_DIR}/imgui_draw.cpp"
+    "${IMGUI_DIR}/imgui_tables.cpp"
+    "${IMGUI_DIR}/imgui_widgets.cpp")
+if(WIN32)
+    list(APPEND IMGUI_SOURCES
+        "${IMGUI_DIR}/backends/imgui_impl_win32.cpp"
+        "${IMGUI_DIR}/backends/imgui_impl_dx12.cpp")
+    list(APPEND SETUP_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_wizard.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_ui_win.cpp"
+        ${IMGUI_SOURCES})
+elseif(APPLE)
+    # The Mac's window layer: src/setup_ui_mac.mm, imgui_impl_osx.mm and
+    # imgui_impl_metal.mm, with src/setup_wizard.cpp and ${IMGUI_SOURCES}.
+endif()
+# The retail PKG key, read from the submodule's tools/pkg_extract.py
+# (PS3_GPKG_KEY) into a header in the build tree: this repository carries no
+# copy, and the key stays off the compile command lines and build logs.
+set(_pkg_py "${PS3RECOMP_DIR}/tools/pkg_extract.py")
+file(STRINGS "${_pkg_py}" _pkgkey_line REGEX "^PS3_GPKG_KEY *= *bytes\\.fromhex")
+string(REGEX MATCH "\"([0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])\"" _m "${_pkgkey_line}")
+if(NOT CMAKE_MATCH_1)
+    message(FATAL_ERROR "${_pkg_py}: no PS3_GPKG_KEY -- the installer reads the retail PKG key from there")
+endif()
+string(REGEX REPLACE "([0-9a-fA-F][0-9a-fA-F])" "0x\\1," _pkgkey_c "${CMAKE_MATCH_1}")
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/gen/ps3recomp_pkg_key.h" CONTENT
+"/* Generated from ps3recomp/tools/pkg_extract.py (PS3_GPKG_KEY); not in git. */
+static const unsigned char k_ps3recomp_pkg_key[16] = {${_pkgkey_c}};
+")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_pkg_py}")
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_pkg.cpp" APPEND PROPERTY INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/gen")
+set_property(SOURCE ${SETUP_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${IMGUI_DIR}")
+# third-party code: its warnings are not ours to act on
+set_property(SOURCE ${IMGUI_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "-w")
+
 add_executable(${PROJECT_NAME}
     main.cpp
     stubs.cpp
     ${PORT_WIN_SOURCES}
+    ${SETUP_SOURCES}
     src/spurs_lfqueue.cpp
     src/spurs_queue.cpp
     src/dod3_edgezlib.cpp
@@ -276,7 +324,7 @@ if(WIN32 AND DOD3_SYMBOLS)
         src/dod3_edgezlib.cpp ${PORT_WIN_SOURCES} ${PS3RECOMP_SCAFFOLD} ${HLE_NID_TABLE}
         PROPERTIES COMPILE_OPTIONS "/Z7")
     # These already carry options (set above); append rather than replace.
-    set_property(SOURCE ${SPU_SOURCES} "${LIBSRE_LIFTED_CPP}" APPEND PROPERTY COMPILE_OPTIONS "/Z7")
+    set_property(SOURCE ${SPU_SOURCES} "${LIBSRE_LIFTED_CPP}" ${SETUP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "/Z7")
     target_link_options(${PROJECT_NAME} PRIVATE /DEBUG /OPT:REF /OPT:ICF)
 endif()
 

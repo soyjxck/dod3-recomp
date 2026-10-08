@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "setup_install.h"
 
 namespace fs = std::filesystem;
 
@@ -50,17 +51,16 @@ bool write_list(const fs::path& out, const std::vector<std::string>& lines)
 
 }  // namespace
 
-/* At boot: write the Japanese voice pack's file lists if it is installed and
- * they are missing. */
-void dod3_dlc_prepare()
+/* The Japanese voice pack's file lists, if it is installed under the game
+ * tree `game_root` (game/disc) and they are missing (or `force`). Also the
+ * installer's, right after it installs the pack. */
+bool dod3setup::dlc_write_jpv_lists(const fs::path& game_root, bool force)
 {
-    const char* r = getenv("PS3_VFS_ROOT");
-    if (!r || !*r) return;
-    const fs::path jpv = fs::path(r) / "game" / "NPUB31251" / "USRDIR" / "DLC_JPV";
+    const fs::path jpv = game_root / "game" / "NPUB31251" / "USRDIR" / "DLC_JPV";
     std::error_code ec;
-    if (!fs::is_directory(jpv / "SQEX03GAME", ec)) return;
+    if (!fs::is_directory(jpv / "SQEX03GAME", ec)) return false;
     const fs::path pkg_list = jpv / "JPV_PKG_FILES.TXT", non_list = jpv / "JPV_NON_PKG_FILES.TXT";
-    if (fs::exists(pkg_list, ec) && fs::exists(non_list, ec)) return;
+    if (!force && fs::exists(pkg_list, ec) && fs::exists(non_list, ec)) return true;
     std::vector<std::string> pkgs, others;
     for (fs::recursive_directory_iterator it(jpv / "SQEX03GAME", ec), end; !ec && it != end; it.increment(ec)) {
         if (!it->is_regular_file(ec)) continue;
@@ -71,10 +71,20 @@ void dod3_dlc_prepare()
     }
     std::sort(pkgs.begin(), pkgs.end());
     std::sort(others.begin(), others.end());
-    if (pkgs.empty()) return;
-    if (write_list(pkg_list, pkgs) && write_list(non_list, others))
+    if (pkgs.empty()) return false;
+    if (write_list(pkg_list, pkgs) && write_list(non_list, others)) {
         fprintf(stderr, "[dlc] Japanese voice pack: wrote its file lists (%zu packages, %zu other files)\n",
                 pkgs.size(), others.size());
-    else
-        fprintf(stderr, "[dlc] Japanese voice pack: could not write its file lists in %s\n", jpv.string().c_str());
+        return true;
+    }
+    fprintf(stderr, "[dlc] Japanese voice pack: could not write its file lists in %s\n", jpv.string().c_str());
+    return false;
+}
+
+/* At boot: the lists, if the pack is installed and they are missing (a pack
+ * copied in by hand, or from RPCS3). */
+void dod3_dlc_prepare()
+{
+    const char* r = getenv("PS3_VFS_ROOT");
+    if (r && *r) dod3setup::dlc_write_jpv_lists(fs::path(r), false);
 }

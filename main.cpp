@@ -38,7 +38,7 @@
 #include "ps3emu/vm_watch.h"
 #include "ppu_recomp.h"
 #include "src/dod3_eboot.h"   /* the EBOOT version's addresses */
-#include "src/setup_iso.h"   /* the release layout (first-run setup) */
+#include "src/setup_install.h"   /* the release layout (the installer) */
 #include "src/dod3_mp3_standin.h"   /* our flashMP3.pic (tools/make_spu_overlays.py standin) */
 #include "src/dod3_sysset.h"        /* the engine's graphics switches */
 #ifdef __APPLE__
@@ -1471,6 +1471,29 @@ static bool dod3_mp3_standin_install(const char* dev_flash)
     return static_cast<bool>(out);
 }
 
+/* File arguments from `from` on, as paths. On Windows from the wide command
+ * line: argv is in the ANSI code page, which cannot hold every name
+ * ("Kainé's Garb.pkg" is not valid UTF-8 there). */
+#ifdef _WIN32
+#include <shellapi.h>   /* CommandLineToArgvW */
+#pragma comment(lib, "shell32.lib")
+#endif
+static std::vector<std::filesystem::path> cli_paths(int argc, char** argv, int from)
+{
+    std::vector<std::filesystem::path> out;
+#ifdef _WIN32
+    (void)argv;
+    int n = 0;
+    if (LPWSTR* w = CommandLineToArgvW(GetCommandLineW(), &n)) {
+        for (int i = from; i < n && i < argc; i++) out.emplace_back(w[i]);
+        LocalFree(w);
+    }
+#else
+    for (int i = from; i < argc; i++) out.push_back(std::filesystem::u8path(argv[i]));
+#endif
+    return out;
+}
+
 int main(int argc, char** argv)
 {
 #ifdef _WIN32
@@ -1490,29 +1513,30 @@ int main(int argc, char** argv)
      * layout. Everything is relative to the executable's directory (the
      * player's files, dod3.ini, saves, shader cache), the title and disc root
      * default accordingly, and missing files are asked for first
-     * (src/setup_win.cpp; setup_iso.h lists them). With an ELF argument the
-     * developer layout is unchanged. */
-    static char s_release_elf[] = "elf/EBOOT.ELF";
+     * (the installer, src/setup_install.h lists them). With an ELF argument
+     * the developer layout is unchanged. */
+    static char s_release_elf[64];
+    snprintf(s_release_elf, sizeof s_release_elf, "%s", dod3setup::eboot_path());   /* per version */
     static char* s_release_argv[3];
-    /* --check-disc <iso or folder> [EBOOT.ELF]: the setup's checks without
-     * installing anything, as text (support, and tests). */
-    if (argc >= 3 && !strcmp(argv[1], "--check-disc")) {
-        dod3setup::Disc disc;
-        std::string err;
-        const bool ok = dod3setup::open_disc(std::filesystem::u8path(argv[2]), &disc, &err);
-        printf("disc %s: %s (%zu files, %.1f GB)\n", argv[2], ok ? "OK" : err.c_str(), disc.files.size(),
-               (double)disc.total / (1u << 30));
-        int bad = !ok;
-        if (argc > 3) {
-            const bool match = dod3setup::sha256_file(std::filesystem::u8path(argv[3])) == dod3setup::kEbootElfSha256;
-            printf("EBOOT.ELF %s: %s\n", argv[3], match ? "OK" : "does not match");
-            bad |= !match;
+    /* --check <file>...: what the installer makes of each file (the disc,
+     * the update, EBOOT.ELF, DLC), installing nothing (support, and tests). */
+    if (argc >= 3 && (!strcmp(argv[1], "--check") || !strcmp(argv[1], "--check-disc"))) {
+        int bad = 0;
+        for (const std::filesystem::path& f : cli_paths(argc, argv, 2)) {
+            dod3setup::Source s;
+            std::string err;
+            const bool ok = dod3setup::identify(f, &s, &err);
+            const auto name = f.u8string();
+            printf("%s: %s", std::string(name.begin(), name.end()).c_str(), ok ? s.name.c_str() : err.c_str());
+            if (ok) printf(" (%.2f GB to install)", (double)s.bytes / (1u << 30));
+            printf("\n");
+            bad |= !ok;
         }
         return bad;
     }
-    /* --install <disc> <EBOOT.ELF>: the setup without a UI, into the
-     * executable's directory. */
-    if (argc >= 4 && !strcmp(argv[1], "--install")) {
+    /* --install <file>...: the installer without a UI, into the release
+     * layout (any mix of the disc, the update, EBOOT.ELF and DLC packages). */
+    if (argc >= 3 && !strcmp(argv[1], "--install")) {
 #ifdef _WIN32
         wchar_t dir[MAX_PATH] = L"";
         GetModuleFileNameW(NULL, dir, MAX_PATH);
@@ -1525,7 +1549,16 @@ int main(int argc, char** argv)
 #else
         const std::filesystem::path base = std::filesystem::path(argv[0]).parent_path();
 #endif
-        return dod3setup::install_cli(base, std::filesystem::u8path(argv[2]), std::filesystem::u8path(argv[3]));
+        /* --keys <file>: the keys for the executable (setup_keys.h) */
+        std::vector<std::filesystem::path> files = cli_paths(argc, argv, 2), install_files;
+        std::filesystem::path keys;
+        for (size_t i = 0; i < files.size(); i++) {
+            if (files[i] == "--keys" && i + 1 < files.size()) keys = files[++i];
+            else install_files.push_back(files[i]);
+        }
+        /* DOD3_INSTALL_BASE: somewhere else (tests) */
+        const char* tb = getenv("DOD3_INSTALL_BASE");
+        return dod3setup::install_files_cli(tb && *tb ? std::filesystem::u8path(tb) : base, install_files, keys);
     }
     const bool force_setup = argc >= 2 && !strcmp(argv[1], "--setup");
     if (argc < 2 || force_setup) {
@@ -1533,6 +1566,8 @@ int main(int argc, char** argv)
         wchar_t dir[MAX_PATH] = L"";
         GetModuleFileNameW(NULL, dir, MAX_PATH);
         if (wchar_t* sl = wcsrchr(dir, L'\\')) *sl = 0;
+        /* DOD3_INSTALL_BASE: somewhere else (tests) */
+        if (const wchar_t* tb = _wgetenv(L"DOD3_INSTALL_BASE")) if (*tb) wcsncpy_s(dir, tb, _TRUNCATE);
         SetCurrentDirectoryW(dir);
         if (dod3_setup_win(dir, force_setup ? 1 : 0) != 0) return 1;
 #elif defined(__APPLE__)
@@ -1548,9 +1583,9 @@ int main(int argc, char** argv)
         dod3_mac_log_to_file();
         if (dod3_setup_mac(data, (force_setup || dod3_mac_option_held()) ? 1 : 0) != 0) return 1;
 #else
-        if (!dod3setup::check_installed(".").all()) {
-            printf("usage: %s <PPU ELF>\n(or run it from a folder holding elf/EBOOT.ELF and game/disc; "
-                   "see src/setup_iso.h)\n", argv[0]);
+        if (!dod3setup::installed(".").ready()) {
+            printf("usage: %s <PPU ELF>\n(or run it from a folder the installer has set up: %s --install <file>...; "
+                   "see src/setup_install.h)\n", argv[0], argv[0]);
             return 2;
         }
 #endif
@@ -1669,8 +1704,10 @@ int main(int argc, char** argv)
     if (!entry) {
         fprintf(stderr, "ERROR: could not load %s\n", argv[1]);
 #ifdef _WIN32
-        MessageBoxA(NULL, "The game's executable (elf\\EBOOT.ELF) could not be loaded. Run dod3.exe --setup to "
-                          "set the game up again.", "Drakengard 3 Recompiled", MB_OK | MB_ICONERROR);
+        char msg[512];
+        snprintf(msg, sizeof msg, "The game's executable (%s) could not be loaded. Run dod3.exe --setup to "
+                                  "set the game up again.", argv[1]);
+        MessageBoxA(NULL, msg, "Drakengard 3 Recompiled", MB_OK | MB_ICONERROR);
 #endif
         return 1;
     }
@@ -1689,6 +1726,8 @@ int main(int argc, char** argv)
     apply_fps_unlock();
     apply_unfocused();
     apply_sha_overrides();
+    /* the title's game-data install as links onto the disc (setup_install.h) */
+    if (const char* root = getenv("PS3_VFS_ROOT")) if (*root) dod3setup::gamedata_layout(std::filesystem::u8path(root));
     dod3_menu_patch_prepare();
     dod3_dlc_prepare();
 #ifdef _WIN32

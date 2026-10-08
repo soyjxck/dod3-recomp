@@ -1,19 +1,12 @@
 /*
- * First-run setup, the portable half: what an installation needs, checking
- * the files a player supplies, and reading a disc image.
+ * First-run setup: the disc. Checking a disc a player supplies (a decrypted
+ * ISO or a folder holding PS3_GAME: Drakengard 3, BLUS31197, version 01.00,
+ * checked against the hash of its EBOOT.BIN), reading it, and copying it to
+ * game/disc/. (No firmware is needed: the MP3 decoder MultiStream loads from
+ * dev_flash is our own stand-in, main.cpp.)
  *
- * The release does not carry any of the game. From the player's own copy it
- * needs:
- *   game/disc/                          the disc's files (PS3_GAME/...), copied
- *                                       from a decrypted ISO or a folder
- *   elf/EBOOT.ELF                       the disc's EBOOT.BIN, decrypted with
- *                                       RPCS3 (Utilities > Decrypt PS3 Binaries)
- * both relative to the executable's directory. (No firmware: the MP3 decoder
- * MultiStream loads from dev_flash is our own stand-in, main.cpp.) The build is tied to one
- * executable -- Drakengard 3, BLUS31197, version 01.00 -- so each file is
- * checked against the hash of the one it was built from.
- *
- * The platform halves (src/setup_win.cpp) ask for the files and show progress.
+ * The whole install -- the disc, the 1.01 update, EBOOT.ELF and the DLC -- is
+ * src/setup_install.h, with the installer's pages in src/setup_wizard.cpp.
  */
 #pragma once
 #include <cstdint>
@@ -27,7 +20,7 @@ namespace dod3setup {
 namespace fs = std::filesystem;
 
 /* SHA-256 of the build's inputs, as lowercase hex. */
-extern const char* const kEbootElfSha256;      /* elf/EBOOT.ELF (decrypted) */
+extern const char* const kEbootElfSha256;      /* the disc's EBOOT.BIN decrypted (1.00) */
 extern const char* const kEbootBinSha256;      /* the disc's PS3_GAME/USRDIR/EBOOT.BIN */
 extern const char* const kTitleId;             /* BLUS31197 */
 extern const char* const kAppVer;              /* 01.00 */
@@ -63,9 +56,5 @@ bool read_disc_file(const Disc& disc, const std::string& path, std::vector<uint8
  * false to cancel. */
 bool copy_disc(const Disc& disc, const fs::path& dest, const std::function<bool(uint64_t, uint64_t)>& progress,
                std::string* err);
-
-/* The whole install without a UI (dod3 --install <disc> <EBOOT.ELF>):
- * checks, then copies into `base`, reporting on stdout. Returns 0 on success. */
-int install_cli(const fs::path& base, const fs::path& disc, const fs::path& elf);
 
 }  // namespace dod3setup
