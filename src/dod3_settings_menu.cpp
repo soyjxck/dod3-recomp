@@ -41,8 +41,10 @@ extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
 const char* dod3_settings_path();   /* main.cpp: the dod3.ini read at boot, or the one to create */
 void dod3_fps_reload();             /* main.cpp: DOD3_FPS again */
 extern "C" volatile int g_rsx_display_reload;   /* rsx_draw_engine.c: the renderer re-reads its display settings */
+#if defined(_WIN32) || defined(__APPLE__)
+extern "C" int g_rsx_aniso;         /* the live anisotropy level: rsx_d3d12_engine.c, rsx_metal_backend.m */
+#endif
 #ifdef _WIN32
-extern "C" int g_rsx_aniso;         /* rsx_d3d12_engine.c: the live anisotropy level */
 /* The CRT's spelling; an empty value removes the variable. */
 static int setenv(const char* k, const char* v, int) { return _putenv_s(k, v) ? -1 : 0; }
 static int unsetenv(const char* k) { return _putenv_s(k, "") ? -1 : 0; }
@@ -159,9 +161,9 @@ void read_current(Row& r, int& idx)
 }
 
 /* The renderer applies RSX_DISPLAY / RSX_VSYNC / RSX_SCALE changes at its
- * next window pump (g_rsx_display_reload); the Direct3D 12 and Vulkan
- * engines do. */
-#ifdef _WIN32
+ * next window pump (g_rsx_display_reload); the Direct3D 12, Vulkan and
+ * Metal engines do. */
+#if defined(_WIN32) || defined(__APPLE__)
 #define LIVE_DISPLAY true
 #else
 #define LIVE_DISPLAY false
@@ -294,7 +296,7 @@ void apply()
         if (r.live) {
             if (v) setenv(r.key, v, 1); else unsetenv(r.key);
             r.running = r.pending;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
             if (!strcmp(r.key, "RSX_ANISO")) g_rsx_aniso = v ? atoi(v) : 16;
 #endif
             if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE")) display = true;
