@@ -47,6 +47,10 @@ EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x528:dod3_spu_lzf_literal_hook"
 EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x638:dod3_spu_lzf_match_hook"
 EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x560:dod3_spu_lzf_token_hook"
 EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x6A0:dod3_spu_patch_loop_hook"
+# MultiStream's DSP plugin block (src/dod3_msdsp_hooks.c): the two biquad
+# loops that were half of the mixer task's time.
+EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39350:dod3_msdsp_biquad_a_hook"
+EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39630:dod3_msdsp_biquad_b_hook"
 $PY $T/build_spu_workloads.py --images spu/images --lifted spu \
     --out spu/spu_workloads.c --register-fn dod3_spu_register_all \
     --constructor --title dod3 $EXTRA
