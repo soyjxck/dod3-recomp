@@ -40,6 +40,7 @@
 #include "src/dod3_eboot.h"   /* the EBOOT version's addresses */
 #include "src/setup_iso.h"   /* the release layout (first-run setup) */
 #include "src/dod3_mp3_standin.h"   /* our flashMP3.pic (tools/make_spu_overlays.py standin) */
+#include "src/dod3_sysset.h"        /* the engine's graphics switches */
 #ifdef __APPLE__
 extern "C" {   /* src/setup_mac.mm */
 const char* dod3_mac_data_dir(void);
@@ -1100,6 +1101,7 @@ static DWORD WINAPI frame_clock(LPVOID)
                               vm_read32(a), vm_read32(a + 4), vm_read32(a + 8), vm_read32(a + 12)); } } }
         uint64_t now = frame_clock_us();
         fps_install_override();
+        dod3_sysset_poll();
         if (s_fps_gen.load() != vblank_gen) { vblank_gen = s_fps_gen.load(); vblank_us = vblank_period(); }
         /* PPU_WAITPROF=1: where the guest threads waited, every 5 s. */
         { static uint64_t wp_last = 0;
