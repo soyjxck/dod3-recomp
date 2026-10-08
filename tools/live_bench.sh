@@ -10,10 +10,16 @@
 #   PROFILE=1: also a 10 s `sample` of the process 25 s before the end (it
 #   stalls the game, so the summary stops 40 s before the end).
 #   out/<tag>.log, out/<tag>.autoplay.txt, out/<tag>.prof.txt
+#   AUTOPLAY_FORWARD=1 / AUTOPLAY_COMBAT=1 / AUTOPLAY_GRAB_UNTIL=<s> among the
+#   VAR=val arguments drive tools/autoplay.sh (see there): run ahead to the
+#   destruction scene, fight on the way, stop the HUD grabs after <s>.
+#   FROM=<s> (environment) moves the summary's start.
 tag=$1; secs=$2; shift 2
 cd ~/Workspace/dod3-recomp
 rm -rf out/save_bench; rm -f out/$tag.grab.*(N); mkdir -p out/save_bench
 pad=out/$tag.pad; : > $pad
+export PAD_STICK_FILE=$PWD/$pad.stick; rm -f $PAD_STICK_FILE
+for kv in "$@"; do case $kv in AUTOPLAY_*=*) export "$kv";; esac; done
 tools/autoplay.sh out/$tag.log $pad out/$tag.grab > out/$tag.autoplay.txt 2>&1 &
 ap=$!
 upto=$secs
@@ -23,7 +29,7 @@ if [ -n "$PROFILE" ]; then
   upto=$((secs - 40))
 fi
 caffeinate -i tools/run_timed.sh $secs out/$tag.log PAD_FILE=$pad PS3_SAVEDATA_ROOT=out/save_bench \
-    PS3RECOMP_METAL_FRAME_GRAB=out/$tag.grab "$@"
+    PAD_STICK_FILE=$PAD_STICK_FILE PS3RECOMP_METAL_FRAME_GRAB=out/$tag.grab "$@"
 kill $ap 2>/dev/null; wait 2>/dev/null
 grep -q "gameplay (HUD up)" out/$tag.autoplay.txt || echo "$tag: WARNING -- autoplay never saw the battle HUD"
 python3 - out/$tag.log ${FROM:-100} $upto $tag <<'PY'

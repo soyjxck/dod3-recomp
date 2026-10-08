@@ -58,13 +58,46 @@ if [ -z "$grab" ]; then
   exit 0
 fi
 
+# AUTOPLAY_FORWARD=1: in play, hold the left stick forward (cellPad's
+# PAD_STICK_FILE, which tools/live_bench.sh points at <pad>.stick) instead of
+# attacking -- running ahead reaches the scene where scenery breaks up, the
+# heaviest in chapter 1. AUTOPLAY_COMBAT=1 (with it): a ~4 s cycle of
+# running, light and heavy attacks, camera swings and strafing instead.
+# AUTOPLAY_GRAB_UNTIL=<s>: from that many seconds after this script started,
+# stop checking the HUD -- each check grabs a frame, a GPU readback that costs
+# the game a hitch every ~3 s -- so the frame times after it are the game's
+# own. As tools/autoplay_win.sh.
+SQUARE=0x8000; TRIANGLE=0x1000
+stick() { [ -n "$PAD_STICK_FILE" ] && echo "$1" > "$PAD_STICK_FILE"; }
+tap() { echo "$1 6" > "$pad"; }
+combat_cycle() {
+  stick "128 0 128 128"; nap 0.8
+  tap $SQUARE; nap 0.35; tap $SQUARE; nap 0.35; tap $SQUARE; nap 0.35
+  tap $TRIANGLE; nap 0.6
+  stick "128 0 235 128"; nap 0.7
+  tap $SQUARE; nap 0.35; tap $TRIANGLE; nap 0.5
+  stick "40 40 128 128"; nap 0.5
+  stick "128 0 20 128"; nap 0.7
+}
 state=""
 while :; do
+  if [ -n "$AUTOPLAY_GRAB_UNTIL" ] && [ "$SECONDS" -ge "$AUTOPLAY_GRAB_UNTIL" ]; then
+    [ "$state" != hold ] && { state=hold; echo "$(date +%H:%M:%S) [autoplay] holding forward, no more grabs"; }
+    if [ -n "$AUTOPLAY_COMBAT" ]; then combat_cycle; continue; fi
+    [ -n "$PAD_STICK_FILE" ] && : > "$PAD_STICK_FILE"
+    nap 3
+    continue
+  fi
   if hud; then
     [ "$state" != play ] && { state=play; echo "$(date +%H:%M:%S) [autoplay] gameplay (HUD up)"; }
-    press $CROSS "in play"
-    nap 3
+    if [ -n "$AUTOPLAY_FORWARD" ] && [ -n "$PAD_STICK_FILE" ]; then
+      if [ -n "$AUTOPLAY_COMBAT" ]; then combat_cycle; else : > "$PAD_STICK_FILE"; nap 3; fi
+    else
+      press $CROSS "in play"
+      nap 3
+    fi
   else
+    [ -n "$PAD_STICK_FILE" ] && rm -f "$PAD_STICK_FILE"
     [ "$state" != skip ] && { state=skip; echo "$(date +%H:%M:%S) [autoplay] no HUD -- skipping"; }
     press $START "skip"; nap 1
     press $CROSS "take skip"; nap 1

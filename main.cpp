@@ -1015,6 +1015,20 @@ static LONG WINAPI vm_commit_veh(EXCEPTION_POINTERS* ep)
 }
 #endif
 
+#ifndef _WIN32
+#include <sys/mman.h>
+/* The texture write-watch's faults (ps3emu/vm_watch.h): a store to a page it
+ * protected is noted, the page opened, and the store re-runs. */
+static LONG WINAPI vm_watch_veh(EXCEPTION_POINTERS* ep)
+{
+    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+        vm_watch_fault((uintptr_t)ep->ExceptionRecord->ExceptionInformation[1],
+                       ep->ExceptionRecord->ExceptionInformation[0] == 1))
+        return EXCEPTION_CONTINUE_EXECUTION;
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 static bool alloc_guest_vm(void)
 {
 #ifdef _WIN32
@@ -1023,12 +1037,20 @@ static bool alloc_guest_vm(void)
     ppu_vm_size = 0;              /* the whole space is backed; no OOB guard needed */
     if (vm_base) vm_watch_init(vm_base, VM_SIZE);
 #else
-    /* No vectored exception handlers off Windows, so the arena is committed up
-     * front and lazily backed by the OS: only pages the title touches cost
-     * anything. It stops below the 0xE0000000 mark, so ppu_vm_size arms the
-     * loader's bounds check for what is left. */
-    vm_base = (uint8_t*)calloc(1, 0xE0000000u);
+    /* The arena is mapped up front and lazily backed by the OS: only pages the
+     * title touches cost anything. It stops below the 0xE0000000 mark, so
+     * ppu_vm_size arms the loader's bounds check for what is left. An mmap
+     * rather than the calloc it was: the texture write-watch mprotects pages
+     * of it, which wants a page-aligned mapping of its own. */
+    void* m = mmap(nullptr, 0xE0000000u, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    vm_base = (m == MAP_FAILED) ? nullptr : (uint8_t*)m;
     ppu_vm_size = 0xE0000000u;
+    if (vm_base) {
+        /* A write to a page the watch protected arrives as SIGBUS/SIGSEGV
+         * through win32_compat's vectored-handler shim, as on Windows. */
+        AddVectoredExceptionHandler(1, vm_watch_veh);
+        vm_watch_init(vm_base, 0xE0000000u);
+    }
 #endif
     return vm_base != nullptr;
 }
