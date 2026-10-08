@@ -146,9 +146,119 @@ static uint8_t ls_line_byte(const uint8_t* ls, uint32_t a, uint32_t k)
     return ls[((a & ~0xFu) + ((a + 4u * k) & 0xFu)) & SPU_LS_MASK];
 }
 
+static int lzf_decode_native(spu_context* ctx, uint32_t* out_tokens, uint32_t* back);
+
+/* ---- decode memo -----------------------------------------------------------
+ * The jobs decompress the same shaders over and over (every draw of a mesh
+ * patches its fragment program again; a broken-up scene draws the same
+ * debris shaders hundreds of times a frame). What lzf_decode_native does is a
+ * function of the bytes it reads alone: the input window [ip & ~15, end
+ * rounded up + 16) -- the scan reads to `end`, and the lane bookkeeping reads
+ * the 16-byte lines of the control bytes -- and the output that precedes it:
+ * the shaders are decoded block after block into one buffer, and a block's
+ * back-references reach into the blocks before it (`back` bytes before its
+ * output; at most 8 KiB in LZF). As long as the output does not overlap the
+ * window, a decode is kept, keyed by the window's bytes and the input's place
+ * in it, as the bytes it wrote, the `back` bytes before them, and what it
+ * added to every lane of r16 and r17; a later decode of the same window, with
+ * the same bytes before its own output, writes the same bytes and adds the
+ * same amounts. Hits compare the whole window and the preceding bytes, not
+ * just the hash. DOD3_LZF_MEMO=0 turns it off;
+ * DOD3_SPU_NATIVE_CHECK=1 checks it along with the hooks. */
+typedef struct {
+    uint64_t hash;
+    uint32_t in_off, span, win_len, out_len, stop, back;
+    uint32_t d16[4], d17[4];
+    uint8_t* bytes;          /* the window, the output, the `back` bytes before it */
+} lzf_memo;
+#define LZF_MEMO_N 4096
+static _Thread_local lzf_memo t_memo[LZF_MEMO_N];
+static unsigned long long s_memo_hit, s_memo_miss, s_memo_skip, s_memo_outside, s_memo_overlap, s_memo_stored;
+
+static int memo_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char* e = getenv("DOD3_LZF_MEMO"); on = !(e && e[0] == '0'); }
+    return on;
+}
+
+static void memo_report(void)
+{
+    static int lg = -1;
+    if (lg < 0) lg = getenv("DOD3_LZF_MEMO_LOG") ? 1 : 0;
+    const unsigned long long n = s_memo_hit + s_memo_miss;
+    if (lg && n && (n % 50000) == 0)
+        fprintf(stderr, "[lzf-memo] %llu decodes: %llu hits (%.1f%%), %llu misses (%llu stored, %llu reaching too far back, %llu overlapping), %llu not cacheable\n",
+                n, s_memo_hit, 100.0 * (double)s_memo_hit / (double)n, s_memo_miss,
+                s_memo_stored, s_memo_outside, s_memo_overlap, s_memo_skip);
+}
+
+static uint64_t memo_hash(const uint8_t* p, uint32_t n, uint64_t h)
+{
+    uint32_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        uint64_t v; memcpy(&v, p + i, 8);
+        h = (h ^ v) * 0x9E3779B97F4A7C15ull;
+        h ^= h >> 29;
+    }
+    for (; i < n; i++) h = (h ^ p[i]) * 0x100000001B3ull;
+    return h ^ (h >> 32);
+}
+
 static int lzf_token_native(spu_context* ctx, uint32_t* out_tokens)
 {
+    if (!memo_on()) { uint32_t back; return lzf_decode_native(ctx, out_tokens, &back); }
     uint8_t* ls = ctx->ls;
+    const uint32_t ip0 = ctx->gpr[17]._u32[0], end = ctx->gpr[23]._u32[0], op0 = ctx->gpr[16]._u32[0];
+    const uint32_t ws = ip0 & ~0xFu;
+    const uint32_t we = ((end + 15u) & ~0xFu) + 16u;
+    if (!(end > ip0) || we <= ws || we > SPU_LS_SIZE || ip0 >= SPU_LS_SIZE || (we - ws) > 0x10000u) {
+        s_memo_skip++;
+        uint32_t back; return lzf_decode_native(ctx, out_tokens, &back);
+    }
+    const uint32_t win_len = we - ws, in_off = ip0 - ws, span = end - ip0;
+    const uint64_t h = memo_hash(ls + ws, win_len, 0xCBF29CE484222325ull ^ ((uint64_t)in_off << 32) ^ span);
+    lzf_memo* m = &t_memo[h & (LZF_MEMO_N - 1)];
+    if (m->bytes && m->hash == h && m->in_off == in_off && m->span == span && m->win_len == win_len &&
+        op0 + m->out_len <= SPU_LS_SIZE && !(op0 < we && op0 + m->out_len > ws) && op0 >= m->back &&
+        memcmp(m->bytes, ls + ws, win_len) == 0 &&
+        memcmp(m->bytes + win_len + m->out_len, ls + op0 - m->back, m->back) == 0) {
+        memcpy(ls + op0, m->bytes + win_len, m->out_len);
+        for (int k = 0; k < 4; k++) { ctx->gpr[16]._u32[k] += m->d16[k]; ctx->gpr[17]._u32[k] += m->d17[k]; }
+        *out_tokens = m->stop;
+        s_memo_hit++; memo_report();
+        return 1;
+    }
+    const u128 r16_0 = ctx->gpr[16], r17_0 = ctx->gpr[17];
+    uint32_t back = 0;
+    const int ok = lzf_decode_native(ctx, out_tokens, &back);
+    s_memo_miss++; memo_report();
+    if (!ok) return ok;
+    if (back > 0x2400u || back > op0) { s_memo_outside++; return ok; }
+    const uint32_t out_len = ctx->gpr[16]._u32[0] - op0;
+    /* Keep it only if the output sits clear of the window and of the end. */
+    if (out_len > 0x40000u || op0 + out_len > SPU_LS_SIZE || (op0 < we && op0 + out_len > ws)) { s_memo_overlap++; return ok; }
+    s_memo_stored++;
+    uint8_t* b = (uint8_t*)realloc(m->bytes, (size_t)win_len + out_len + back);
+    if (!b) return ok;
+    m->bytes = b;
+    memcpy(b, ls + ws, win_len);
+    memcpy(b + win_len, ls + op0, out_len);
+    memcpy(b + win_len + out_len, ls + op0 - back, back);
+    m->hash = h; m->in_off = in_off; m->span = span; m->win_len = win_len;
+    m->out_len = out_len; m->stop = *out_tokens; m->back = back;
+    for (int k = 0; k < 4; k++) {
+        m->d16[k] = ctx->gpr[16]._u32[k] - r16_0._u32[k];
+        m->d17[k] = ctx->gpr[17]._u32[k] - r17_0._u32[k];
+    }
+    return ok;
+}
+
+static int lzf_decode_native(spu_context* ctx, uint32_t* out_tokens, uint32_t* back)
+{
+    uint8_t* ls = ctx->ls;
+    const uint32_t op_start = ctx->gpr[16]._u32[0];
+    *back = 0;
     const uint32_t end = ctx->gpr[23]._u32[0];
     uint32_t ip = ctx->gpr[17]._u32[0];
     /* Pass 1: where are the last literal run and the last back-reference? */
@@ -178,6 +288,7 @@ static int lzf_token_native(spu_context* ctx, uint32_t* out_tokens)
             uint32_t len = c >> 5, q = ip + 1;
             if (len == 7) { len += ls[q & SPU_LS_MASK]; q++; }
             const uint32_t ref = op - ((c & 31u) << 8) - 1u - ls[q & SPU_LS_MASK];
+            if (ref < op_start && op_start - ref > *back) *back = op_start - ref;   /* reads the output before this one */
             for (uint32_t k = 0; k < 4; k++) {
                 const uint32_t r8 = ls_line_byte(ls, ip, k) >> 5;
                 const uint32_t cnt = r8 != 7 ? r8 : (uint32_t)ls_line_byte(ls, ip + 1, k) + 7u;
