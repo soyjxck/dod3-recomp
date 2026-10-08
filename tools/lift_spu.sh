@@ -52,6 +52,8 @@ EXTRA="$EXTRA --native-hook spurs_job_01785E00=0x6A0:dod3_spu_patch_loop_hook"
 # loops that were half of the mixer task's time.
 EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39350:dod3_msdsp_biquad_a_hook"
 EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39630:dod3_msdsp_biquad_b_hook"
+# The MP3 decoder's decodeFrame, natively (src/dod3_mp3_native.c).
+EXTRA="$EXTRA --native-hook spu_ovl_mp3_1A900=0x21D20:dod3_mp3_decode_hook"
 $PY $T/build_spu_workloads.py --images spu/images --lifted spu \
     --out spu/spu_workloads.c --register-fn dod3_spu_register_all \
     --constructor --title dod3 $EXTRA

@@ -151,7 +151,9 @@ if(PORT_ENABLE_SPU)
         list(APPEND SPU_SOURCES ${SPU_LIFTED}
              "${PS3RECOMP_DIR}/runtime/spu/spu_dispatch_mt.c"
              "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_spu_hooks.c"     # --native-hook targets
-             "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_msdsp_hooks.c")
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_msdsp_hooks.c"
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_mp3_native.c"
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_mp3dec.c")
         # Generated beside the lift; each is present only once its generator
         # has been run, so each is included only if it is actually here.
         foreach(gen IN ITEMS spu_workloads.c spu_overlays.c jobmods_register.c taskset_policy_bytes.c)
