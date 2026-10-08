@@ -33,7 +33,8 @@ app="$out/$product.app"
 # find_library) so nothing in the binary needs a newer macOS than the target.
 mkdir -p "$build"
 PKG_CONFIG_LIBDIR="$deps/lib/pkgconfig" PKG_CONFIG_PATH="" \
-cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release -DDOD3_EBOOT=101 \
+cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DDOD3_EBOOT=101 -DRECOMP_DIR="$PWD/recompiled_101" \
     -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET="$target" \
     -DCMAKE_PREFIX_PATH="$deps" -DCMAKE_IGNORE_PREFIX_PATH="/opt/homebrew;/usr/local" \
     -DCMAKE_FIND_FRAMEWORK=LAST > "$build/package-configure.log"

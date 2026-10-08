@@ -117,7 +117,10 @@ cmake --build build
 
 A clean build takes about 15 minutes, nearly all of it the lifted translation
 units; a header every lifted unit includes (`ppu_recomp.h`, `ppu_vm_fast.h`)
-rebuilds all of them. CMake options:
+rebuilds all of them. A build folder keeps `RECOMP_DIR` in its cache, so one
+configured for the other version must be removed, or given `-DRECOMP_DIR=`
+explicitly (the scripts do); CMake refuses a lift that is not the version's.
+CMake options:
 
 | Option | Default | |
 |---|---|---|

@@ -12,8 +12,10 @@ set ACTION=%1
 if "%ACTION%"=="" set ACTION=all
 set BDIR=build
 set EBOOT_ARG=-DDOD3_EBOOT=101
+set RECOMP=recompiled_101
 if "%DOD3_EBOOT%"=="100" set BDIR=build_100
 if "%DOD3_EBOOT%"=="100" set EBOOT_ARG=-DDOD3_EBOOT=100
+if "%DOD3_EBOOT%"=="100" set RECOMP=recompiled
 if not defined VCPKG_ROOT set VCPKG_ROOT=C:\vcpkg
 
 set VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe
@@ -31,7 +33,9 @@ if not exist "%CMAKE%" echo build_win: cmake was not found & exit /b 1
 
 cd /d "%~dp0.."
 if "%ACTION%"=="build" goto build
-"%CMAKE%" -S . -B %BDIR% -G Ninja %EBOOT_ARG% ^
+rem RECOMP_DIR is passed every time: a build folder's cache would otherwise
+rem keep the other version's lift.
+"%CMAKE%" -S . -B %BDIR% -G Ninja %EBOOT_ARG% -DRECOMP_DIR="%CD:\=/%/%RECOMP%" ^
   -DCMAKE_BUILD_TYPE=Release ^
   -DCMAKE_C_COMPILER="%CLANGCL:\=/%" ^
   -DCMAKE_CXX_COMPILER="%CLANGCL:\=/%" ^

@@ -66,6 +66,21 @@ if(NOT EXISTS "${RECOMP_DIR}/ppu_recomp.h")
         "tools/ppu_lifter.py writes. Run the lifter, drop its output there, "
         "or point -DRECOMP_DIR= at wherever it already is.")
 endif()
+# The lift must be the version's. A build folder keeps RECOMP_DIR in its
+# cache, so one configured for the other version would build 1.01 code
+# against the 1.00 lift and fail at link; the hooked functions' lifted
+# bodies tell the two apart.
+if(DOD3_EBOOT STREQUAL "101")
+    set(_dod3_lift_mark "func_00EE7728_lifted")
+else()
+    set(_dod3_lift_mark "func_00EE6538_lifted")
+endif()
+file(STRINGS "${RECOMP_DIR}/ppu_recomp.h" _dod3_lift_hit REGEX "${_dod3_lift_mark}")
+if(NOT _dod3_lift_hit)
+    message(FATAL_ERROR
+        "${RECOMP_DIR} is not a ${DOD3_EBOOT} lift: no ${_dod3_lift_mark} in its ppu_recomp.h. "
+        "Pass -DRECOMP_DIR=<the ${DOD3_EBOOT} lift>, or configure a fresh build folder.")
+endif()
 
 # The lifted translation units. A game's lift is hundreds of generated files,
 # so they are globbed rather than listed; re-run CMake after a fresh lift.
