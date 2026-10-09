@@ -14,7 +14,8 @@ Windows:
   dispatch relies on `musttail`, and the lifted code uses Clang builtins).
 - CMake 3.20 or later, Ninja, Python 3.11 or later, Git for Windows (the
   `tools/*.sh` scripts run under Git Bash).
-- vcpkg with `zlib:x64-windows` (`VCPKG_ROOT`, or `C:\vcpkg`).
+- vcpkg with `zlib:x64-windows` and `sdl2:x64-windows` (`VCPKG_ROOT`, or
+  `C:\vcpkg`). SDL2 reads the controllers.
 - Optional: the Vulkan SDK (`VULKAN_SDK`) for the Vulkan renderer.
 
 macOS (Apple silicon):

@@ -20,7 +20,7 @@ out=dist/$name
 rm -rf "$out" "dist/$name.zip"
 mkdir -p "$out"
 
-cp "$build/dod3.exe" "$build/zlib1.dll" "$out/"
+cp "$build/dod3.exe" "$build/zlib1.dll" "$build/SDL2.dll" "$out/"
 crt=$(ls -d /c/Program\ Files*/Microsoft\ Visual\ Studio/*/*/VC/Redist/MSVC/*/x64/Microsoft.VC143.CRT 2>/dev/null | sort | tail -1)
 [ -n "$crt" ] || { echo "package_win: the Visual C++ redistributable folder was not found"; exit 1; }
 for dll in msvcp140.dll vcruntime140.dll vcruntime140_1.dll; do cp "$crt/$dll" "$out/"; done

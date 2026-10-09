@@ -125,11 +125,15 @@ folder above). It explains each setting:
 
 ## Controls
 
-Windows: an Xbox-compatible (XInput) controller. A PlayStation controller
-works through Steam Input or DS4Windows.
+Xbox, PlayStation (DualShock 4, DualSense) and Switch Pro controllers,
+wired or over Bluetooth, plugged in before or during the game; the first
+one connected is player 1. The buttons follow their positions, so the
+bottom face button is Cross whatever the pad prints on it.
 
-macOS: Xbox, PlayStation (DualShock 4, DualSense) and Switch Pro
-controllers, wired or over Bluetooth; the keyboard as a fallback.
+Without a controller the keyboard stands in: arrows move, Z/X/A/S are
+Cross/Circle/Square/Triangle, Q/W L1/R1, 1/2 L2/R2, Enter Start, Tab
+Select (on macOS the arrows are the left stick, TFGH the d-pad and IJKL
+the right stick).
 
 
 ## Japanese voices

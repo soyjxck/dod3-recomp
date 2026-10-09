@@ -117,6 +117,13 @@ option(DOD3_SYMBOLS "Debug info for the host code (Windows: /Z7 + /DEBUG)" ON)
 if(WIN32 AND DOD3_SYMBOLS)
     set(PS3RECOMP_DEBUG_INFO ON CACHE BOOL "Compile the runtime with debug info" FORCE)
 endif()
+# Controllers through SDL2 on Windows as well. The runtime's default there is
+# XInput, which sees Xbox-type pads only; SDL2 adds DualShock 4, DualSense,
+# Switch Pro and the rest, wired or over Bluetooth, on the code path macOS
+# already uses. SDL2.dll comes from vcpkg (sdl2:x64-windows).
+if(WIN32)
+    set(PS3RECOMP_PAD_SDL2 ON CACHE BOOL "Windows: read controllers through SDL2 instead of XInput" FORCE)
+endif()
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 

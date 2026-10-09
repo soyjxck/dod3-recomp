@@ -6,7 +6,7 @@ rem builds the disc version (recompiled/, unmaintained) into build_100.
 rem
 rem Needs Visual Studio 2022 or newer (the Build Tools are enough), LLVM with
 rem clang-cl (on PATH, or in C:\Program Files\LLVM), CMake and Ninja, and
-rem vcpkg with zlib:x64-windows (VCPKG_ROOT, or C:\vcpkg).
+rem vcpkg with zlib:x64-windows and sdl2:x64-windows (VCPKG_ROOT, or C:\vcpkg).
 setlocal
 set ACTION=%1
 if "%ACTION%"=="" set ACTION=all
