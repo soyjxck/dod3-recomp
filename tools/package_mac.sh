@@ -52,6 +52,17 @@ cp "$bin" "$app/Contents/MacOS/dod3"
 cp "$deps/lib/libSDL2-2.0.0.dylib" "$app/Contents/Frameworks/"
 install_name_tool -add_rpath @executable_path/../Frameworks "$app/Contents/MacOS/dod3"
 cp dod3.ini "$app/Contents/Resources/dod3.ini"
+# The shader cache of a playthrough (cache/msl: translated shaders keyed on
+# their source; cache/pipelines.list: every pipeline built; the compiled
+# archive is per machine and not shipped). At first launch the game warms
+# every listed pipeline up from the MSL on all cores, before the title
+# screen, instead of compiling each in play. Seeded into the data folder by
+# the first-run setup (src/setup_mac.mm) from Contents/Resources/cache.
+if [ -d cache/msl ] && [ -f cache/pipelines.list ]; then
+    mkdir -p "$app/Contents/Resources/cache"
+    cp -r cache/msl "$app/Contents/Resources/cache/"
+    cp cache/pipelines.list "$app/Contents/Resources/cache/"
+fi
 
 # The icon: tools/make_icon.py's drawing (an original), at every size an
 # .icns holds.

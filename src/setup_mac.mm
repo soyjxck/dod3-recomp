@@ -16,6 +16,7 @@
 #import <AppKit/AppKit.h>
 #include <stdio.h>
 #include <string>
+#include <thread>
 #include <unistd.h>
 
 namespace {
@@ -75,8 +76,17 @@ extern "C" void dod3_mac_log_to_file(void)
 {
     if (isatty(STDERR_FILENO)) return;
     rename("dod3.log", "dod3.prev.log");
-    if (freopen("dod3.log", "w", stderr)) setvbuf(stderr, NULL, _IOLBF, 0);
+    /* A 1 MB buffer, written out by a thread of its own every 200 ms: a log
+     * line is otherwise a write() by whichever thread logs it, and the render
+     * walker was caught in one for hundreds of milliseconds (a hitch). A crash
+     * can lose the last 200 ms of the log; the Windows build does the same. */
+    static char buf[1 << 20];
+    if (freopen("dod3.log", "w", stderr)) setvbuf(stderr, buf, _IOFBF, sizeof buf);
     freopen("dod3.log", "a", stdout);
+    std::thread([] {
+        pthread_setname_np("log flush");
+        for (;;) { usleep(200 * 1000); fflush(stderr); fflush(stdout); }
+    }).detach();
 }
 
 /* 0 when the game's files are in place under base (running the installer
@@ -91,6 +101,21 @@ extern "C" int dod3_setup_mac(const char* base_dir, int force)
         if (!fs::exists(base / "dod3.ini", ec)) {
             NSString* def = [NSBundle.mainBundle pathForResource:@"dod3" ofType:@"ini"];
             if (def) fs::copy_file(fs::path(def.fileSystemRepresentation), base / "dod3.ini", ec);
+        }
+        /* The shader cache the package ships (tools/package_mac.sh): the
+         * translated shaders and the pipeline list of a playthrough, so the
+         * first launch warms up instead of compiling in play. Files the
+         * player already has are left alone; the compiled archive is theirs. */
+        if (NSString* res = NSBundle.mainBundle.resourcePath) {
+            const fs::path shipped = fs::path(res.fileSystemRepresentation) / "cache";
+            if (fs::is_directory(shipped, ec)) {
+                fs::create_directories(base / "cache/msl", ec);
+                for (const auto& f : fs::directory_iterator(shipped / "msl", ec))
+                    if (!fs::exists(base / "cache/msl" / f.path().filename(), ec))
+                        fs::copy_file(f.path(), base / "cache/msl" / f.path().filename(), ec);
+                if (!fs::exists(base / "cache/pipelines.list", ec))
+                    fs::copy_file(shipped / "pipelines.list", base / "cache/pipelines.list", ec);
+            }
         }
         if (installed(base).ready() && !force) return 0;
         const int r = run_installer(base);
