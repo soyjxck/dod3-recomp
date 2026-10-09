@@ -61,7 +61,7 @@ check mode that runs both and compares:
 | The garbage collector's reachability pass (`func_00EE6538`): a statement-for-statement translation; phase 2 on 8 worker threads; the periodic purge moved into the frame limiter's sleep | `src/patches/gc.cpp`, `src/patches/gc_native.cpp` | `DOD3_GC_NATIVE=check` |
 | ShaderPatching's LZF decoder (an SPU job run ~200 times a frame on the render thread): the copy loops, whole tokens, and a memo of decoded shaders | `src/patches/spu_hooks.c` | `DOD3_SPU_NATIVE_CHECK=1` |
 | MultiStream's DSP biquads (half of the audio SPU task) | `src/apu/msdsp_hooks.c` | `DOD3_SPU_NATIVE_CHECK=1` |
-| The MP3 decoder MultiStream loads from the PS3's `flashMP3.pic`: a native decoder (`src/apu/mp3dec.c`) behind a stand-in image the runtime loads instead | `src/apu/mp3_native.c`, `tools/make_spu_overlays.py` | `DOD3_MP3_CHECK=1` |
+| The MP3 decoder MultiStream loads from the console's firmware: a native decoder (`src/apu/mp3dec.c`) behind a stand-in image of our own that the runtime serves in its place | `src/apu/mp3_native.c`, `tools/make_spu_overlays.py` | `DOD3_MP3_CHECK=1` |
 | The package inflate the game sends to an SPU zlib task through a SPURS LFQueue | `src/patches/edgezlib.cpp` | each chunk's Adler-32 |
 | The SPURS queue and LFQueue paths, lifted from libsre at build time (the HLE's own were not enough for this game) | `src/kernel/spurs_queue.cpp`, `src/kernel/spurs_lfqueue.cpp`, `tools/gen_libsre.py` | |
 
