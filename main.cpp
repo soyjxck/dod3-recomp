@@ -738,6 +738,9 @@ static void* cpu_watch(void*)
  *            lands / the fence at once (RSX_QUERY_NOSYNC: objects flicker)
  *   jcpar    SPURS job chains: jobs on 4 pool workers / one after another
  *            on the calling thread (SPURS_JC_PAR)
+ *   mstwin   MSAA: snapshots read the multisampled twin and passes without
+ *            a depth target draw into it / the twin resolved first and those
+ *            passes single-sampled (RSX_MS_TWIN)
  *   none     nothing: the control, which has to report no difference
  * On Windows each report also gives the CPU time per frame of the busiest
  * threads in either state (thread cycle counters, so exact): a switch that
@@ -774,6 +777,8 @@ static void ab_vcwatch(int on) { g_eng_vc_watch = on; }
 #ifdef _WIN32
 extern "C" int g_rsx_snap_incr;   /* rsx_d3d12_engine.c: own-target snapshots by copy draws */
 static void ab_snapincr(int on) { g_rsx_snap_incr = on; }
+extern "C" int g_rsx_ms_twin;     /* rsx_d3d12_engine.c: MSAA twins read by snapshots, drawn by passes without depth */
+static void ab_mstwin(int on) { g_rsx_ms_twin = on; }
 #endif
 #if defined(_WIN32) || defined(__APPLE__)
 extern "C" int g_eng_aniso_on;    /* rsx_d3d12_engine.c, rsx_metal_backend.m: RSX_ANISO on game textures */
@@ -793,7 +798,7 @@ static const struct {
     { "kickbusy", ab_kickbusy },   { "msdsp", ab_msdsp },     { "texwatch", ab_texwatch },
     { "patchhook", ab_patchhook }, { "lzfmemo", ab_lzfmemo }, { "vcwatch", ab_vcwatch },
 #ifdef _WIN32
-    { "snapincr", ab_snapincr },
+    { "snapincr", ab_snapincr }, { "mstwin", ab_mstwin },
 #endif
 #if defined(_WIN32) || defined(__APPLE__)
     { "aniso", ab_aniso },

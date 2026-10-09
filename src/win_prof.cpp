@@ -154,9 +154,12 @@ static bool is_wait_leaf(const Sym& s)
 {
     const char* n = s.name.c_str();
     if (strncmp(n, "Nt", 2) && strncmp(n, "Zw", 2)) return false;
+    /* win32u's message waits too (NtUserGetMessage, NtUserMsgWaitForMultipleObjectsEx,
+     * NtUserWaitMessage): SDL's joystick thread sits in GetMessage and read
+     * as a whole core on-CPU. */
     return strstr(n, "Wait") || strstr(n, "Delay") || strstr(n, "RemoveIoCompletion") || strstr(n, "SignalAndWait") ||
            strstr(n, "WorkerFactory") || strstr(n, "YieldExecution") || strstr(n, "ReadFile") ||
-           strstr(n, "DeviceIoControl") || strstr(n, "ReplyWaitReceivePort");
+           strstr(n, "DeviceIoControl") || strstr(n, "ReplyWaitReceivePort") || strstr(n, "GetMessage");
 }
 
 static std::string thread_name(HANDLE h, DWORD tid)
