@@ -94,7 +94,7 @@ relative to the read index.
 | `DOD3_GC_PAR=<n>` | worker threads for the collector's mark phase (8; 0 serial); `DOD3_GC_DEFER=0` collects where the game asks instead of in the limiter's sleep; `DOD3_GC_PREFETCH=0` |
 | `DOD3_SPU_NATIVE=0` | the SPU hooks off; `DOD3_SPU_NATIVE_CHECK=1` runs each hooked stretch twice and compares every register and the local store |
 | `DOD3_SPU_PATCH_HOOK=0`, `DOD3_LZF_MEMO=0` (`DOD3_LZF_MEMO_LOG=1`), `DOD3_MSDSP_NATIVE=0` | one path at a time |
-| `DOD3_MP3_NATIVE=0` | the console's MP3 decoder instead of ours (needs its `flashMP3.pic` in `fw/dev_flash/sys/external`); `DOD3_MP3_CHECK=1` runs both |
+| `DOD3_MP3_NATIVE=0` | the original SPU MP3 decoder instead of ours, for comparison (not shipped); `DOD3_MP3_CHECK=1` runs both |
 | `DOD3_ZLIB_NATIVE=0` | the SPU zlib task instead of the native inflate |
 | `DOD3_MENU_PATCH=0` | the game's own Settings menu, unpatched |
 
