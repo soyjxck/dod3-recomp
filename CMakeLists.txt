@@ -496,6 +496,12 @@ endif()
 #     for a build that runs on anything.
 if(MSVC)
     set(_recomp_opts "/w;/bigobj")
+    # DOD3_RECOMP_OPT: extra options for the lifted TUs alone (a compile
+    # experiment: -DDOD3_RECOMP_OPT=/clang:-O3 in a build folder of its own).
+    set(DOD3_RECOMP_OPT "" CACHE STRING "Extra compile options for the lifted PPU code")
+    if(DOD3_RECOMP_OPT)
+        list(APPEND _recomp_opts ${DOD3_RECOMP_OPT})
+    endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
         set(DOD3_X86_LEVEL "x86-64-v3" CACHE STRING
             "-march for the lifted PPU code on x86-64 (empty: baseline x86-64)")
