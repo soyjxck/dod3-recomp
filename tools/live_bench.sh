@@ -66,6 +66,10 @@ t0=$(date +%s)
 while kill -0 $game 2>/dev/null && [ $(( $(date +%s) - t0 )) -lt "$secs" ]; do sleep 5; done
 kill $auto 2>/dev/null
 if [ -n "$win" ]; then taskkill //IM "$(basename "$bin")" //F >/dev/null 2>&1; else kill $game 2>/dev/null; fi
+# A game that does not leave on SIGTERM (a 22-minute "180 s" run once) is
+# killed outright after a grace period, or the wait below never returns.
+for i in 1 2 3 4 5 6 7 8 9 10; do kill -0 $game 2>/dev/null || break; sleep 1; done
+kill -0 $game 2>/dev/null && { echo "$tag: WARNING -- game ignored SIGTERM, SIGKILL"; kill -9 $game 2>/dev/null; }
 wait 2>/dev/null
 sleep 1
 grep -q "gameplay (HUD up)" "out/bench/$tag.autoplay.log" || echo "$tag: WARNING -- autoplay never saw the battle HUD"
