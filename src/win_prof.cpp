@@ -270,7 +270,11 @@ static void refresh_threads()
                            te.th32ThreadID);
         if (h) fresh.push_back({ te.th32ThreadID, h });
     }
+    const DWORD err = GetLastError();
     CloseHandle(snap);
+    if (fresh.size() < 8)
+        fprintf(stderr, "[prof] thread snapshot: %zu threads (last error %lu) from thread %lu\n", fresh.size(),
+                (unsigned long)err, (unsigned long)self);
     for (auto& t : s_threads)
         if (t.h) CloseHandle(t.h);   /* gone */
     s_threads.swap(fresh);
@@ -398,14 +402,23 @@ static void report(double secs, long interval_ms)
     s_passes = 0;
 }
 
+static DWORD s_prof_tid;   /* the sampler's thread: never suspended by the stall dump */
 static void dump_all_stacks(FILE* out, const char* why)
 {
     refresh_threads();
-    fprintf(out, "%s\n", why);
+    fprintf(out, "%s (%zu threads)\n", why, s_threads.size());
+    /* The list skips whoever built it, which may have been the sampler: a
+     * thread that suspends itself never resumes (the dump stopped at its
+     * fifth thread, this one, whenever the sampler ran). */
+    const DWORD self = GetCurrentThreadId();
     for (auto& t : s_threads) {
+        if (t.tid == s_prof_tid || t.tid == self) continue;
         uint64_t fr[48];
+        /* The id first, flushed: a walk that never returns names its thread. */
+        fprintf(out, "  thread %lu ", (unsigned long)t.tid);
+        fflush(out);
         const int n = walk(t.h, fr, 48);
-        fprintf(out, "  thread %lu \"%s\":\n", (unsigned long)t.tid, thread_name(t.h, t.tid).c_str());
+        fprintf(out, "\"%s\":\n", thread_name(t.h, t.tid).c_str());
         for (int i = 0; i < n; i++) {
             const Sym& s = symbolize(fr[i]);
             fprintf(out, "    %2d  %s +0x%llx\n", i, s.name.c_str(), (unsigned long long)(fr[i] - s.base));
@@ -452,11 +465,15 @@ static DWORD WINAPI prof_thread(LPVOID arg)
             win_prof_slow_frame(s_sf_start, s_sf_end, s_sf_ms);
             InterlockedExchange(&s_sf_pending, 0);
         }
-        refresh_threads();
+        /* Under the lock: the stall thread's dump walks the same list, and
+         * a refresh under its feet left it four threads of sixty. */
         AcquireSRWLockExclusive(&s_dbg);
+        refresh_threads();
         s_passes++;
         const uint64_t pass_us = dod3_now_us();
+        const DWORD self = GetCurrentThreadId();   /* the stall thread may have built the list */
         for (auto& t : s_threads) {
+            if (t.tid == self) continue;
             ThreadStat& st = s_stats[t.tid];
             if (st.name.empty() || st.name.compare(0, 4, "tid ") == 0) st.name = thread_name(t.h, t.tid);
             uint64_t fr[64];
@@ -718,7 +735,7 @@ extern "C" void win_prof_start(void)
         long ms = atol(prof);
         if (ms < 1) ms = 2;
         if (ms > 50) ms = 50;
-        CreateThread(NULL, 1u << 20, prof_thread, (LPVOID)(intptr_t)ms, 0, NULL);
+        CreateThread(NULL, 1u << 20, prof_thread, (LPVOID)(intptr_t)ms, 0, &s_prof_tid);
         fprintf(stderr, "[prof] sampling every %ld ms\n", ms);
     }
     if (stall_dir || stall_ms) {
