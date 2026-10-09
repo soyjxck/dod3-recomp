@@ -1423,6 +1423,34 @@ static void win_stdio_to(HANDLE h)
     setvbuf(stderr, NULL, _IONBF, 0);
 }
 
+/* A log on disk or in a pipe is buffered, a megabyte per stream, and flushed
+ * by a thread of its own every 200 ms. Unbuffered -- the default for stderr,
+ * and what win_stdio_to set -- every line was a WriteFile on the thread that
+ * printed it, and the RSX walker sat in one for 173 ms and 385 ms in a play
+ * session, dod3.log open under the antivirus's real-time scan. A console
+ * keeps its line-by-line output. On a kill, up to 200 ms of lines are lost;
+ * the crash handler flushes. */
+static DWORD WINAPI win_stdio_flusher(LPVOID)
+{
+    SetThreadDescription(GetCurrentThread(), L"log flush");
+    for (;;) {
+        Sleep(200);
+        fflush(stderr);
+        fflush(stdout);
+    }
+}
+static void win_stdio_buffer(void)
+{
+    const HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+    if (!h || h == INVALID_HANDLE_VALUE) return;
+    const DWORD t = GetFileType(h);
+    if (t != FILE_TYPE_DISK && t != FILE_TYPE_PIPE) return;
+    setvbuf(stderr, NULL, _IOFBF, 1u << 20);
+    setvbuf(stdout, NULL, _IOFBF, 1u << 20);
+    HANDLE th = CreateThread(NULL, 0, win_stdio_flusher, NULL, 0, NULL);
+    if (th) CloseHandle(th);
+}
+
 static void win_stdio_init(void)
 {
     const HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
@@ -1620,6 +1648,7 @@ int main(int argc, char** argv)
      * thing. POSIX timers are already fine-grained. */
     timeBeginPeriod(1);
     setvbuf(stdout, NULL, _IONBF, 0);   /* unbuffered: do not lose prints on a kill */
+    win_stdio_buffer();                 /* ...except into a file or a pipe: buffered, flushed every 200 ms */
 #endif
 
     printf("=== Drakengard 3 Recompiled %s (BLUS31197 %s) ===\n", DOD3_VERSION_STRING, DOD3_EBOOT_NAME);

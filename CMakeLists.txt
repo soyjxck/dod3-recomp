@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 project(dod3
-    VERSION 0.1.0
+    VERSION 0.1.1
     LANGUAGES C CXX
     DESCRIPTION "Drakengard 3 (PS3) recompiled for Windows and macOS"
 )
 # The port's own version, apart from the game's (the 1.01 update): the
 # numbers above go into the Windows version block, and this label is what
 # people see -- the installer, the log's first line, the release name.
-set(DOD3_VERSION_LABEL "0.1 alpha")
+set(DOD3_VERSION_LABEL "0.1.1 alpha")
 if(APPLE)
     enable_language(OBJCXX)   # src/setup_mac.mm
 endif()

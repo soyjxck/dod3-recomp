@@ -25,6 +25,10 @@ crt=$(ls -d /c/Program\ Files*/Microsoft\ Visual\ Studio/*/*/VC/Redist/MSVC/*/x6
 [ -n "$crt" ] || { echo "package_win: the Visual C++ redistributable folder was not found"; exit 1; }
 for dll in msvcp140.dll vcruntime140.dll vcruntime140_1.dll; do cp "$crt/$dll" "$out/"; done
 cp dod3.ini "$out/"
+# The shader cache of a playthrough (cache/dxbc, bytecode keyed on the shader
+# text this build generates): most pipelines are never compiled on a player's
+# machine. The game reads it from cache/dxbc beside the executable.
+if [ -d cache/dxbc ]; then mkdir -p "$out/cache"; cp -r cache/dxbc "$out/cache/"; fi
 # Windows line endings, for Notepad.
 sed 's/$/\r/' docs/PLAYING.md > "$out/README.txt"
 sed 's/$/\r/' LICENSE > "$out/LICENSE.txt"
