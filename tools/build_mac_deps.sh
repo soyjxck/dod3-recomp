@@ -33,9 +33,12 @@ fetch KhronosGroup/SPIRV-Tools     "$SRC/glslang/External/spirv-tools"          
 fetch KhronosGroup/SPIRV-Headers   "$SRC/glslang/External/spirv-tools/external/spirv-headers" "$KHR_TAG"
 fetch KhronosGroup/SPIRV-Cross     "$SRC/SPIRV-Cross"                                     "$KHR_TAG"
 
+# -ffile-prefix-map: __FILE__ in the libraries' asserts and logs would otherwise
+# carry this machine's source directory (a home directory) into what ships.
 common=(-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
         -DCMAKE_OSX_DEPLOYMENT_TARGET="$TARGET" -DCMAKE_INSTALL_PREFIX="$PREFIX"
-        -DCMAKE_PREFIX_PATH="$PREFIX" -DCMAKE_FIND_FRAMEWORK=LAST)
+        -DCMAKE_PREFIX_PATH="$PREFIX" -DCMAKE_FIND_FRAMEWORK=LAST
+        -DCMAKE_C_FLAGS="-ffile-prefix-map=$SRC=." -DCMAKE_CXX_FLAGS="-ffile-prefix-map=$SRC=.")
 build() {   # name source-dir cmake-args...
     local name=$1 src=$2; shift 2
     echo "== $name"

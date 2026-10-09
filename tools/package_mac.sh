@@ -51,6 +51,19 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" "$app/Contents/Resourc
 cp "$bin" "$app/Contents/MacOS/dod3"
 cp "$deps/lib/libSDL2-2.0.0.dylib" "$app/Contents/Frameworks/"
 install_name_tool -add_rpath @executable_path/../Frameworks "$app/Contents/MacOS/dod3"
+# The build's own load paths: CMAKE_PREFIX_PATH makes CMake record deps/lib
+# as an rpath, an absolute path under this machine's home directory. Every
+# absolute rpath goes; the package fails if any absolute path is left in the
+# binary, so a home directory cannot ship again.
+otool -l "$app/Contents/MacOS/dod3" | awk '/LC_RPATH/{f=1} f&&/path /{print $2; f=0}' | while read -r rp; do
+    case "$rp" in /*) install_name_tool -delete_rpath "$rp" "$app/Contents/MacOS/dod3";; esac
+done
+if otool -l "$app/Contents/MacOS/dod3" | awk '/LC_RPATH/{f=1} f&&/path /{print $2; f=0}' | grep -q '^/'; then
+    echo "package_mac: an absolute rpath is left in the binary"; exit 1
+fi
+if grep -q -e "/Users/" -e "$HOME" "$app/Contents/MacOS/dod3"; then
+    echo "package_mac: a home directory path is in the binary"; exit 1
+fi
 cp dod3.ini "$app/Contents/Resources/dod3.ini"
 # The shader cache of a playthrough (cache/msl: translated shaders keyed on
 # their source; cache/pipelines.list: every pipeline built; the compiled
@@ -101,6 +114,9 @@ EOF
 
 # Ad-hoc signatures, inside out. No hardened runtime: its library validation
 # refuses dylibs without a Team ID, which ad-hoc signing does not give.
+if grep -rq -e "/Users/" -e "$HOME" "$app"; then
+    echo "package_mac: a home directory path is in the bundle:"; grep -rl -e "/Users/" -e "$HOME" "$app"; exit 1
+fi
 codesign --force -s - "$app/Contents/Frameworks/libSDL2-2.0.0.dylib"
 codesign --force -s - "$app"
 codesign --verify --deep --strict "$app"
