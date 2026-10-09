@@ -56,7 +56,7 @@ executable when it has no console; the previous run is `dod3.prev.log`.
 
 ## Profiling
 
-- `DOD3_PROF=<ms>` (Windows, `src/win_prof.cpp`): an in-process sampling
+- `DOD3_PROF=<ms>` (Windows, `src/os/win32/prof.cpp`): an in-process sampling
   profiler. Every `DOD3_PROF_REPORT` seconds (5), each busy thread's CPU
   share, its hottest functions and where it waits; lifted PPU code is named
   through the function table (`ppu:<address>`), the rest through the PDB.

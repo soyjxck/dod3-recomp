@@ -6,7 +6,7 @@
 # Contents: "Drakengard 3 Recompiled.app" (the game and its installer, SDL2
 # inside it, the default dod3.ini, an icon drawn by tools/make_icon.py), the
 # player guide as README.txt and the licences. Nothing from the game: the
-# player's own files are installed by the app's setup (src/setup_wizard.cpp)
+# player's own files are installed by the app's setup (src/ui/wizard.cpp)
 # into ~/Library/Application Support.
 #
 # It builds its own Release tree, build-macos-release/ -- the 1.01 build, from
@@ -57,7 +57,7 @@ cp dod3.ini "$app/Contents/Resources/dod3.ini"
 # archive is per machine and not shipped). At first launch the game warms
 # every listed pipeline up from the MSL on all cores, before the title
 # screen, instead of compiling each in play. Seeded into the data folder by
-# the first-run setup (src/setup_mac.mm) from Contents/Resources/cache.
+# the first-run setup (src/os/macos/setup_mac.mm) from Contents/Resources/cache.
 if [ -d cache/msl ] && [ -f cache/pipelines.list ]; then
     mkdir -p "$app/Contents/Resources/cache"
     cp -r cache/msl "$app/Contents/Resources/cache/"

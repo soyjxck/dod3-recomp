@@ -70,9 +70,9 @@ Any other decrypted copy of the update's EBOOT.BIN with that hash works too
 - `--nonvolatile-locals` keeps the guest registers in C locals between calls;
   the port is tuned for it.
 - The three `--hook`s are required: those functions are supplied natively
-  (the garbage collector and its reachability pass, `src/dod3_gc.cpp` and
-  `src/dod3_gc_native.cpp`; the collision test's timing wrapper,
-  `src/dod3_hot.cpp`) and the lifted bodies are emitted as
+  (the garbage collector and its reachability pass, `src/patches/gc.cpp` and
+  `src/patches/gc_native.cpp`; the collision test's timing wrapper,
+  `src/cpu/hot.cpp`) and the lifted bodies are emitted as
   `func_<addr>_lifted`. A lift without them fails to link.
 
 The lift takes a few minutes and writes about 550 MB of C++ (14 translation
@@ -125,7 +125,7 @@ CMake options:
 
 | Option | Default | |
 |---|---|---|
-| `DOD3_EBOOT` | 101 | the version the lift is from. 100 builds the disc version instead (`elf/EBOOT.ELF`, `recompiled/`, `src/dod3_eboot.h`'s other column); kept for comparison, not maintained |
+| `DOD3_EBOOT` | 101 | the version the lift is from. 100 builds the disc version instead (`elf/EBOOT.ELF`, `recompiled/`, `src/cpu/eboot.h`'s other column); kept for comparison, not maintained |
 | `RECOMP_DIR` | `recompiled_101` | the lifted PPU C++ |
 | `DOD3_X86_LEVEL` | x86-64-v3 | the lifted code's x86 level (clang-cl); empty for the baseline. The default needs AVX2, FMA and BMI2, and the executable checks for them at start |
 | `DOD3_INLINE_VM` | ON | inline the guest-memory fast path into the lifted code |
@@ -175,7 +175,7 @@ Both refuse to package anything of the game's.
 
 | File | Tool |
 |---|---|
-| `src/dod3_menu_patch_data_101.h` | `python tools/menu_patch.py --eboot=101 --header=src/dod3_menu_patch_data_101.h` (`src/dod3_menu_patch_data.h` without `--eboot`, for 1.00) |
-| `src/dod3_mp3dec_tables.h` | `python tools/gen_mp3_tables.py <minimp3.h> > src/dod3_mp3dec_tables.h` |
-| `src/dod3_mp3_standin.h` | `tools/lift_spu.sh` (through `tools/make_spu_overlays.py standin`) |
-| `assets/app.ico` | `python tools/make_icon.py assets/app.ico` |
+| `src/patches/menu_patch_data_101.h` | `python tools/menu_patch.py --eboot=101 --header=src/patches/menu_patch_data_101.h` (`src/patches/menu_patch_data.h` without `--eboot`, for 1.00) |
+| `src/apu/mp3dec_tables.h` | `python tools/gen_mp3_tables.py <minimp3.h> > src/apu/mp3dec_tables.h` |
+| `src/apu/mp3_standin.h` | `tools/lift_spu.sh` (through `tools/make_spu_overlays.py standin`) |
+| `src/res/app.ico` | `python tools/make_icon.py src/res/app.ico` |

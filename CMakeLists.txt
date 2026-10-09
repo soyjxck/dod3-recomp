@@ -9,7 +9,7 @@ project(dod3
 # people see -- the installer, the log's first line, the release name.
 set(DOD3_VERSION_LABEL "0.1.1 alpha")
 if(APPLE)
-    enable_language(OBJCXX)   # src/setup_mac.mm
+    enable_language(OBJCXX)   # src/os/macos/setup_mac.mm
 endif()
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ get_filename_component(PS3RECOMP_DIR "${PS3RECOMP_DIR}" ABSOLUTE)
 # The EBOOT the lift is from: 101 (the 1.01 update, lifted into
 # recompiled_101/; the default, and the version the port is built and tested
 # for) or 100 (BLUS31197 1.00, the disc, recompiled/; kept for comparison,
-# not maintained). src/dod3_eboot.h holds every address the port's own code
+# not maintained). src/cpu/eboot.h holds every address the port's own code
 # knows, per version. A 1.00 build sits beside the 1.01 one:
 #   cmake -B build_100 -G Ninja -DDOD3_EBOOT=100
 set(DOD3_EBOOT 101 CACHE STRING "EBOOT version the lift is from: 101 or 100")
@@ -110,7 +110,7 @@ message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 # Winsock/XInput imports -- the link then fails on every platform for a
 # different reason. add_subdirectory hands all of that over with the target.
 # Symbols for the host code on Windows (DOD3_PROF, DOD3_STALL_MS in
-# src/win_prof.cpp, and crash backtraces). The runtime's own option has to be
+# src/os/win32/prof.cpp, and crash backtraces). The runtime's own option has to be
 # in the cache before its CMakeLists reads it, hence here; the port's sources
 # get /Z7 further down and the link gets /DEBUG.
 option(DOD3_SYMBOLS "Debug info for the host code (Windows: /Z7 + /DEBUG)" ON)
@@ -192,10 +192,10 @@ if(PORT_ENABLE_SPU)
         # page a few thousand iterations in.
         list(APPEND SPU_SOURCES ${SPU_LIFTED}
              "${PS3RECOMP_DIR}/runtime/spu/spu_dispatch_mt.c"
-             "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_spu_hooks.c"     # --native-hook targets
-             "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_msdsp_hooks.c"
-             "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_mp3_native.c"
-             "${CMAKE_CURRENT_SOURCE_DIR}/src/dod3_mp3dec.c")
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/patches/spu_hooks.c"     # --native-hook targets
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/apu/msdsp_hooks.c"
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/apu/mp3_native.c"
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/apu/mp3dec.c")
         # Generated beside the lift; each is present only once its generator
         # has been run, so each is included only if it is actually here.
         foreach(gen IN ITEMS spu_workloads.c spu_overlays.c jobmods_register.c taskset_policy_bytes.c)
@@ -213,7 +213,7 @@ endif()
 # ---------------------------------------------------------------------------
 # Parts of libsre (SPURS LFQueue push, SPURS queue), lifted at build time
 # ---------------------------------------------------------------------------
-# src/spurs_lfqueue.cpp and src/spurs_queue.cpp drive Sony's own code out of
+# src/kernel/spurs_lfqueue.cpp and src/kernel/spurs_queue.cpp drive Sony's own code out of
 # libsre.prx; tools/gen_libsre.py lifts it into the build tree. The result is
 # firmware-derived, so it is generated, never committed.
 set(LIBSRE_PRX "${PS3RECOMP_DIR}/fw_spu/libsre.prx" CACHE FILEPATH
@@ -240,26 +240,26 @@ add_custom_command(
 set_source_files_properties("${LIBSRE_LIFTED_CPP}" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off")
 
 if(WIN32)
-    list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/win_prof.cpp"
-                                 "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_win.cpp")
+    list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/os/win32/prof.cpp"
+                                 "${CMAKE_CURRENT_SOURCE_DIR}/src/os/win32/setup_win.cpp")
 elseif(APPLE)
     # What main.cpp needs from AppKit (the data folder, the log file, Option
-    # held at launch) and the setup's alert: the counterpart of setup_win.cpp.
-    list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_mac.mm")
-    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/setup_mac.mm"
+    # held at launch) and the setup's alert: the counterpart of os/win32/setup_win.cpp.
+    list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/os/macos/setup_mac.mm")
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/os/macos/setup_mac.mm"
         PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
 endif()
 
-# The installer (src/setup_install.h): the core on every platform; the pages
-# (src/setup_wizard.cpp) in Dear ImGui (third_party/imgui, v1.92.9b), in a
-# window from one layer per platform (src/setup_ui.h).
+# The installer (src/install/install.h): the core on every platform; the pages
+# (src/ui/wizard.cpp) in Dear ImGui (third_party/imgui, v1.92.9b), in a
+# window from one layer per platform (src/ui/ui.h).
 set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui")
 set(SETUP_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_install.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_pkg.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_crypto.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_self.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_keys.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/install/install.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/install/pkg.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/install/crypto.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/install/self.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/install/keys.cpp")
 set(IMGUI_SOURCES
     "${IMGUI_DIR}/imgui.cpp"
     "${IMGUI_DIR}/imgui_draw.cpp"
@@ -270,20 +270,20 @@ if(WIN32)
         "${IMGUI_DIR}/backends/imgui_impl_win32.cpp"
         "${IMGUI_DIR}/backends/imgui_impl_dx12.cpp")
     list(APPEND SETUP_SOURCES
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_wizard.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_ui_win.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/wizard.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ui_win.cpp"
         ${IMGUI_SOURCES})
 elseif(APPLE)
-    # The Mac's window layer (src/setup_ui_mac.mm): a window with a Metal
+    # The Mac's window layer (src/ui/ui_mac.mm): a window with a Metal
     # view, ImGui's OSX and Metal backends (Objective-C++, ARC).
     list(APPEND IMGUI_SOURCES
         "${IMGUI_DIR}/backends/imgui_impl_osx.mm"
         "${IMGUI_DIR}/backends/imgui_impl_metal.mm")
     list(APPEND SETUP_SOURCES
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_wizard.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_ui_mac.mm"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/wizard.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ui_mac.mm"
         ${IMGUI_SOURCES})
-    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_ui_mac.mm"
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ui_mac.mm"
                         "${IMGUI_DIR}/backends/imgui_impl_osx.mm"
                         "${IMGUI_DIR}/backends/imgui_impl_metal.mm"
                  APPEND PROPERTY COMPILE_OPTIONS "-fobjc-arc")
@@ -303,28 +303,37 @@ file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/gen/ps3recomp_pkg_key.h" CONTENT
 static const unsigned char k_ps3recomp_pkg_key[16] = {${_pkgkey_c}};
 ")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_pkg_py}")
-set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/setup_pkg.cpp" APPEND PROPERTY INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/gen")
+set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/install/pkg.cpp" APPEND PROPERTY INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/gen")
 set_property(SOURCE ${SETUP_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${IMGUI_DIR}")
 # third-party code: its warnings are not ours to act on
 set_property(SOURCE ${IMGUI_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "-w")
 
-# The port's own sources, on every platform (the SPU-side ones are in
+# The port's own sources, on every platform, one list per module under src/
+# (the SPU-side ones -- src/patches/spu_hooks.c and src/apu -- are in
 # SPU_SOURCES, with the lifted SPU code's options).
+set(PORT_CPU_SOURCES                 # the lifted code's glue
+    src/cpu/hot.cpp)
+set(PORT_KERNEL_SOURCES              # the port's own HLE
+    src/kernel/hle.cpp
+    src/kernel/spurs_lfqueue.cpp
+    src/kernel/spurs_queue.cpp
+    src/kernel/dlc.cpp)
+set(PORT_PATCH_SOURCES               # native replacements of the game's own code
+    src/patches/edgezlib.cpp
+    src/patches/gc.cpp
+    src/patches/gc_native.cpp
+    src/patches/menu_patch.cpp
+    src/patches/sysset.cpp)
+set(PORT_UI_SOURCES                  # the in-game settings pages
+    src/ui/settings_menu.cpp)
 set(PORT_SOURCES
-    main.cpp
-    src/dod3_hle.cpp
-    src/spurs_lfqueue.cpp
-    src/spurs_queue.cpp
-    src/dod3_edgezlib.cpp
-    src/dod3_gc.cpp
-    src/dod3_gc_native.cpp
-    src/dod3_hot.cpp
-    src/dod3_settings_menu.cpp
-    src/dod3_menu_patch.cpp
-    src/dod3_dlc.cpp
-    src/dod3_sysset.cpp
-    src/dod3_util.cpp
-    src/setup_iso.cpp
+    src/main.cpp
+    src/util.cpp
+    src/install/iso.cpp              # the disc reader, which the game uses too
+    ${PORT_CPU_SOURCES}
+    ${PORT_KERNEL_SOURCES}
+    ${PORT_PATCH_SOURCES}
+    ${PORT_UI_SOURCES}
 )
 
 add_executable(${PROJECT_NAME}
@@ -363,8 +372,19 @@ if(SPU_SOURCES)
     endif()
 endif()
 
+# The port's sources include one another by module path ("install/pkg.h",
+# "cpu/eboot.h"): src/ is their include root. Scoped to them, as the SPU
+# include directory is above, so the lifted TUs' compile commands stay as
+# they are.
+set_property(SOURCE ${PORT_SOURCES} ${PORT_PLATFORM_SOURCES} ${SETUP_SOURCES}
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/patches/spu_hooks.c"
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/apu/msdsp_hooks.c"
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/apu/mp3_native.c"
+             "${CMAKE_CURRENT_SOURCE_DIR}/src/apu/mp3dec.c"
+             APPEND PROPERTY INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
 # /Z7 on everything but the lifted PPU TUs, /DEBUG at link. The lifted code
-# is named through its function table instead (src/win_prof.cpp), so the PDB
+# is named through its function table instead (src/os/win32/prof.cpp), so the PDB
 # stays a few tens of MB and the link fast.
 if(WIN32 AND DOD3_SYMBOLS)
     set_source_files_properties(${PORT_SOURCES} ${PORT_PLATFORM_SOURCES} ${PS3RECOMP_SCAFFOLD} ${HLE_NID_TABLE}
@@ -395,10 +415,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/gen")
 # app.rc carries the icon and the version block, and needs a resource
 # compiler. Listing it as a source on a host that has none is not a link
 # error, it is a "no rule to make" for a file nothing can consume.
-if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
-    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/app.rc"
-        PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/gen")
-    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app.rc")
+if(WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/res/app.rc")
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/res/app.rc"
+        PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_BINARY_DIR}/gen;${CMAKE_CURRENT_SOURCE_DIR}/src/res")
+    target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/res/app.rc")
 endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE DOD3_EBOOT=${DOD3_EBOOT})
@@ -419,7 +439,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 target_link_libraries(${PROJECT_NAME} PRIVATE
     ps3recomp_runtime
 )
-# The installer's window on the Mac (src/setup_ui_mac.mm): MetalKit's view,
+# The installer's window on the Mac (src/ui/ui_mac.mm): MetalKit's view,
 # pads for ImGui through GameController, file types for the open panels.
 if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -509,7 +529,7 @@ if(MSVC)
             list(APPEND _recomp_opts "-march=${DOD3_X86_LEVEL}"
                  "/clang:-ffp-contract=off" "/clang:-fno-math-errno")
             if(DOD3_X86_LEVEL MATCHES "v3|v4|haswell|skylake|znver")
-                set_property(SOURCE main.cpp APPEND PROPERTY COMPILE_DEFINITIONS DOD3_X86_V3)
+                set_property(SOURCE src/main.cpp APPEND PROPERTY COMPILE_DEFINITIONS DOD3_X86_V3)
             endif()
         endif()
     endif()

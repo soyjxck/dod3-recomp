@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Draw the application icon (an original design, no game artwork).
 
-    python tools/make_icon.py assets/app.ico [preview.png]
+    python tools/make_icon.py src/res/app.ico [preview.png]
 
 A six-petal crimson flower on a dark rounded square, drawn at 1024 px and
 scaled down, written as an .ico with 256, 128, 64, 48, 32 and 16 pixel sizes
-(needs Pillow: tools/requirements.txt). app.rc embeds assets/app.ico as the
+(needs Pillow: tools/requirements.txt). app.rc embeds src/res/app.ico as the
 Windows executable's icon, which its windows load at run time;
 tools/package_mac.sh renders the same drawing into the app's .icns.
 """

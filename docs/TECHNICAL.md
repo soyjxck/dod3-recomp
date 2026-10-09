@@ -10,7 +10,7 @@ the game's own code done natively where the lifted version was too slow, the
 settings menu, the installer, and the toolkit changes in the `ps3recomp/`
 fork.
 
-## The runner (`main.cpp`)
+## The runner (`src/main.cpp`)
 
 - **Boot.** The guest address space is one flat 4 GB mapping (reserved on
   Windows and committed on first touch by a vectored exception handler, so
@@ -58,12 +58,12 @@ check mode that runs both and compares:
 
 | What | Where | Check |
 |---|---|---|
-| The garbage collector's reachability pass (`func_00EE6538`): a statement-for-statement translation; phase 2 on 8 worker threads; the periodic purge moved into the frame limiter's sleep | `src/dod3_gc.cpp`, `src/dod3_gc_native.cpp` | `DOD3_GC_NATIVE=check` |
-| ShaderPatching's LZF decoder (an SPU job run ~200 times a frame on the render thread): the copy loops, whole tokens, and a memo of decoded shaders | `src/dod3_spu_hooks.c` | `DOD3_SPU_NATIVE_CHECK=1` |
-| MultiStream's DSP biquads (half of the audio SPU task) | `src/dod3_msdsp_hooks.c` | `DOD3_SPU_NATIVE_CHECK=1` |
-| The MP3 decoder MultiStream loads from the PS3's `flashMP3.pic`: a native decoder (`src/dod3_mp3dec.c`) behind a stand-in image the runtime loads instead | `src/dod3_mp3_native.c`, `tools/make_spu_overlays.py` | `DOD3_MP3_CHECK=1` |
-| The package inflate the game sends to an SPU zlib task through a SPURS LFQueue | `src/dod3_edgezlib.cpp` | each chunk's Adler-32 |
-| The SPURS queue and LFQueue paths, lifted from libsre at build time (the HLE's own were not enough for this game) | `src/spurs_queue.cpp`, `src/spurs_lfqueue.cpp`, `tools/gen_libsre.py` | |
+| The garbage collector's reachability pass (`func_00EE6538`): a statement-for-statement translation; phase 2 on 8 worker threads; the periodic purge moved into the frame limiter's sleep | `src/patches/gc.cpp`, `src/patches/gc_native.cpp` | `DOD3_GC_NATIVE=check` |
+| ShaderPatching's LZF decoder (an SPU job run ~200 times a frame on the render thread): the copy loops, whole tokens, and a memo of decoded shaders | `src/patches/spu_hooks.c` | `DOD3_SPU_NATIVE_CHECK=1` |
+| MultiStream's DSP biquads (half of the audio SPU task) | `src/apu/msdsp_hooks.c` | `DOD3_SPU_NATIVE_CHECK=1` |
+| The MP3 decoder MultiStream loads from the PS3's `flashMP3.pic`: a native decoder (`src/apu/mp3dec.c`) behind a stand-in image the runtime loads instead | `src/apu/mp3_native.c`, `tools/make_spu_overlays.py` | `DOD3_MP3_CHECK=1` |
+| The package inflate the game sends to an SPU zlib task through a SPURS LFQueue | `src/patches/edgezlib.cpp` | each chunk's Adler-32 |
+| The SPURS queue and LFQueue paths, lifted from libsre at build time (the HLE's own were not enough for this game) | `src/kernel/spurs_queue.cpp`, `src/kernel/spurs_lfqueue.cpp`, `tools/gen_libsre.py` | |
 
 Hooks into lifted SPU code are declared in `tools/lift_spu.sh`
 (`--native-hook`): a hook is called first thing in a lifted function and
@@ -102,17 +102,17 @@ Advanced Graphics. The menu is UnrealScript in `SQEX03GAME.XXX`;
 `tools/menu_patch.py` rewrites 18 script functions (the root list, an unused
 page the title shipped with its layout, the title's page chain for skip
 intro, the camera for the field of view) and records them as edits of the
-original functions in `src/dod3_menu_patch_data*.h`: ranges copied from the
+original functions in `src/patches/menu_patch_data*.h`: ranges copied from the
 original body plus the new bytes. Nothing of the game's bytecode is in the
 repository.
 
-At boot, `src/dod3_menu_patch.cpp` checks the player's package against the
+At boot, `src/patches/menu_patch.cpp` checks the player's package against the
 hash the EBOOT carries for it, applies the edits, writes the patched package
 to an overlay folder the file system lays over the disc (`game/patch101`),
 and writes the patched hash into the EBOOT's own table (the engine checks
 loaded packages against it). The pages reach the port through two natives
 the script already had (`GetString`, `UpdateDisplayParam`), whose exec
-thunks `src/dod3_settings_menu.cpp` replaces; it owns the rows, the values
+thunks `src/ui/settings_menu.cpp` replaces; it owns the rows, the values
 and the `dod3.ini` writer.
 
 ## The 1.01 update
@@ -123,7 +123,7 @@ replaced packages. Its native code is the same compiler's build of the same
 source with 452 of 30,134 functions changed (the Japanese voice DLC, French
 text, fixes) and the rest moved; `tools/eboot_diff.py`, `tools/addr_map.py`
 and `tools/data_map.py` found the 1.01 column of every address the port's
-code knows (`src/dod3_eboot.h`). The SPU programs are byte-identical.
+code knows (`src/cpu/eboot.h`). The SPU programs are byte-identical.
 
 The update installs whole under `game/disc/game/BLES00000`, and a 1.01 build
 boots the title as its update (`PS3_GAME_PATCH`): cellGame reports the
@@ -136,18 +136,18 @@ The 20 PSN packs install as a PS3 installs them, under
 `game/disc/game/NPUB31251/USRDIR`, where the disc title looks for them at
 boot. Their content is plain UE3 packages; the few licence-bound files are
 not read, except the Japanese voice pack's two file lists, which the port
-writes itself from the installed files (`src/dod3_dlc.cpp`).
+writes itself from the installed files (`src/kernel/dlc.cpp`).
 
 ## The installer
 
 `src/setup_*.cpp`, one Dear ImGui wizard for both platforms over a small
-platform layer (`setup_ui.h`: Win32 + Direct3D 12, or Cocoa + Metal). Each
+platform layer (`ui/ui.h`: Win32 + Direct3D 12, or Cocoa + Metal). Each
 file the player adds is recognised by itself: the disc by its PARAM.SFO and
-the hash of its EBOOT.BIN (`setup_iso.cpp`, an ISO 9660 reader), the update
+the hash of its EBOOT.BIN (`install/iso.cpp`, an ISO 9660 reader), the update
 and the DLC by their package content IDs and footer checksums
-(`setup_pkg.cpp`). Each part is unpacked into a staging folder and moved
+(`install/pkg.cpp`). Each part is unpacked into a staging folder and moved
 into place whole, so a failure leaves nothing half-installed. The game's
-executable is made from the update's EBOOT.BIN (`setup_self.cpp`) and
+executable is made from the update's EBOOT.BIN (`install/self.cpp`) and
 checked by its hash. The title's own first-boot copy of 5 GB of game data
 is laid out as links onto the disc instead (`gamedata_layout`), at install
 and at every boot.

@@ -50,16 +50,16 @@ EXTRA=$($PY tools/make_spu_overlays.py wrap)
 EXTRA="$EXTRA --extra-funcs spu_0018_at_0186C400=0x3288,0x3298,0xF9E8,0x10000,0x10008,0x170E0,0x17420"
 EXTRA="$EXTRA --extra-funcs spu_0015_at_01842000=0x10000"
 EXTRA="$EXTRA --extra-funcs spu_0000_at_01782D80=0x505C"
-# Native fast paths (src/dod3_spu_hooks.c): ShaderPatching's LZF copy loops.
+# Native fast paths (src/patches/spu_hooks.c): ShaderPatching's LZF copy loops.
 EXTRA="$EXTRA --native-hook spurs_job_01787480=0x528:dod3_spu_lzf_literal_hook"
 EXTRA="$EXTRA --native-hook spurs_job_01787480=0x638:dod3_spu_lzf_match_hook"
 EXTRA="$EXTRA --native-hook spurs_job_01787480=0x560:dod3_spu_lzf_token_hook"
 EXTRA="$EXTRA --native-hook spurs_job_01787480=0x6A0:dod3_spu_patch_loop_hook"
-# MultiStream's DSP plugin block (src/dod3_msdsp_hooks.c): the two biquad
+# MultiStream's DSP plugin block (src/apu/msdsp_hooks.c): the two biquad
 # loops that are half of the mixer task's time.
 EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39350:dod3_msdsp_biquad_a_hook"
 EXTRA="$EXTRA --native-hook spu_ovl_msdsp_37000=0x39630:dod3_msdsp_biquad_b_hook"
-# The MP3 decoder, natively (src/dod3_mp3_native.c): the stand-in
+# The MP3 decoder, natively (src/apu/mp3_native.c): the stand-in
 # flashMP3.pic's entry, and the console decoder's decodeFrame when it is lifted.
 EXTRA="$EXTRA --native-hook spu_ovl_mp3native_1A900=0x1A910:dod3_mp3_standin_hook"
 EXTRA="$EXTRA --native-hook spu_ovl_mp3_1A900=0x21D20:dod3_mp3_decode_hook"
