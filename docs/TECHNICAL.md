@@ -143,6 +143,15 @@ SPIR-V). What this game needed from the engine:
   chunks, where it used to be one arena grown by copying it out of
   write-combined memory. That frame went from 0.84 s to 0.2 s, the
   renderer's share of it from 0.68 s to 0.07 s.
+- **Pipeline states built ahead**: a draw whose pipeline state the driver is
+  still compiling is skipped, so the first sight of an effect came in late.
+  The D3D12 engine records every state it builds in
+  `cache/dxbc/pipelines.bin` (the programs by checksum, the state's values)
+  and builds the listed ones on low-priority threads at start-up. The
+  release ships the list its play-throughs recorded beside the bytecode it
+  names, and a player's sessions add to it. `tools/shader_cache.py` builds
+  the bytecode cache from shader dumps (`PS3RECOMP_SHADER_DUMP`) and checks
+  and merges lists.
 
 The replay tool (`rsx_replay`) replays captured command streams
 (`RSX_CAPTURE`) headlessly through the engine: the rendering regression.
