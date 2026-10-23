@@ -4,6 +4,17 @@ pipeline list.
 
     python tools/shader_cache.py build <cache-dir> <dump-dir or run dir>... [--check DIR] [--jobs N]
     python tools/shader_cache.py list <pipelines.bin>... [--cache DIR] [--merge OUT]
+    python tools/shader_cache.py remap <cache-dir>
+
+After a change to the shader decompilers, the cache is made again from what the
+game itself sent, without playing: the engine records every pipeline's guest
+programs and inputs in the cache directory (guest_pipelines.txt,
+guest_programs.bin), and a start with RSX_GUEST_REBUILD=1 runs them through the
+current decompilers and pipeline code -- new bytecode, new pipeline states --
+then exits, writing guest_remap.txt (old and new HLSL hashes of each pipeline
+that now translates differently). remap then carries the rest of the old list
+over: the states the engine adds in play (multisampled builds, snapshot copies)
+are rewritten from the old programs to the new ones.
 
 build: every program in the shader dumps (PS3RECOMP_SHADER_DUMP's
 <vp|fp>_<text hash>.hlsl; a directory holding an hlsl/ folder is looked into)
@@ -199,6 +210,52 @@ def cmd_list(a):
     return 0
 
 
+def dxbc_id(cache, what, text_hash):
+    """The checksum of the cache file for a program's HLSL hash, or None."""
+    p = os.path.join(cache, cache_name(f"{what}_{text_hash:016x}.hlsl"))
+    try:
+        with open(p, "rb") as f:
+            h = f.read(20)
+    except OSError:
+        return None
+    return h[4:20] if len(h) == 20 and h[:4] == b"DXBC" else None
+
+
+def cmd_remap(a):
+    """Old pipeline states onto the programs a guest rebuild made of the same pipelines."""
+    pairs = {}
+    path = os.path.join(a.cache, "guest_remap.txt")
+    for line in open(path):
+        f = line.split()
+        if len(f) != 4:
+            continue
+        ovs, nvs, ops, nps = (int(x, 16) for x in f)
+        for what, o, n in (("vp", ovs, nvs), ("fp", ops, nps)):
+            if o == n:
+                continue
+            oid, nid = dxbc_id(a.cache, what, o), dxbc_id(a.cache, what, n)
+            if oid and nid and oid != nid:
+                pairs[oid] = nid
+    lst = os.path.join(a.cache, "pipelines.bin")
+    recs = read_list(lst)
+    have = {r[1:] for r in recs}
+    added = []
+    for r in recs:
+        vs, ps = struct.pack("<4I", *r[1:5]), struct.pack("<4I", *r[5:9])
+        if vs not in pairs and ps not in pairs:
+            continue
+        nv, np_ = pairs.get(vs, vs), pairs.get(ps, ps)
+        new = (r[0],) + struct.unpack("<4I", nv) + struct.unpack("<4I", np_) + r[9:]
+        if new[1:] not in have:
+            have.add(new[1:])
+            added.append(new)
+    with open(lst, "ab") as f:
+        for r in added:
+            f.write(struct.pack(f"<{PSO_WORDS}I", *r))
+    print(f"{len(pairs)} programs changed; {len(added)} states carried over onto them ({len(recs)} were listed)")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -211,8 +268,10 @@ def main():
     l.add_argument("lists", nargs="+", help="pipelines.bin files")
     l.add_argument("--cache", help="the bytecode cache the states' programs should be in")
     l.add_argument("--merge", help="write the states of all the lists to this file")
+    m = sub.add_parser("remap", help="carry a pipeline list over to the programs a guest rebuild made")
+    m.add_argument("cache", help="the cache directory (pipelines.bin, guest_remap.txt, both programs' files)")
     a = ap.parse_args()
-    return cmd_build(a) if a.cmd == "build" else cmd_list(a)
+    return {"build": cmd_build, "list": cmd_list, "remap": cmd_remap}[a.cmd](a)
 
 
 if __name__ == "__main__":

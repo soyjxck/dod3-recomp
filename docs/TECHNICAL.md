@@ -152,6 +152,14 @@ SPIR-V). What this game needed from the engine:
   names, and a player's sessions add to it. `tools/shader_cache.py` builds
   the bytecode cache from shader dumps (`PS3RECOMP_SHADER_DUMP`) and checks
   and merges lists.
+- **The cache made again without playing**: both lists above hold what the
+  decompilers made, so a decompiler change leaves them stale. The draw
+  engine also records what the game gave -- each pipeline's programs and
+  every input to the decompilers, in `cache/dxbc/guest_pipelines.txt` and
+  `guest_programs.bin` -- and a start with `RSX_GUEST_REBUILD=1` translates
+  that list again with the current code, compiles it and exits (one level's
+  328 pipelines: 11 s). `tools/shader_cache.py remap` then carries over the
+  states only play adds (multisampled builds, snapshot copies).
 
 The replay tool (`rsx_replay`) replays captured command streams
 (`RSX_CAPTURE`) headlessly through the engine: the rendering regression.
