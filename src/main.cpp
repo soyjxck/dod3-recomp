@@ -1965,6 +1965,11 @@ int main(int argc, char** argv)
      * thread, and the threads contend for the FILE lock. Quiet unless asked
      * (PS3_VERBOSE=1); the port's own milestone lines are not gated by it. */
     dod3_setenv("PS3_VERBOSE", "0", 0);
+    /* The console language. With PS3_LANG unset the toolkit answers the host's
+     * UI language; this title has always been told English (US), and the DLC
+     * English switch and the Spanish mod were made for that answer. An explicit
+     * PS3_LANG still picks another. */
+    dod3_setenv("PS3_LANG", "en", 0);
     /* The one firmware file the title loads: MultiStream fetches its MP3
      * decoder from /dev_flash/sys/external/flashMP3.pic when the first MP3
      * stream starts (without it the audio SPU task dies and the game hangs on
