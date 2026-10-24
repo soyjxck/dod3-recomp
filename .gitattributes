@@ -6,3 +6,5 @@
 
 *.ico binary
 *.png binary
+*.dxbc binary
+shaders/dxbc/pipelines.bin binary

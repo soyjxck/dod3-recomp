@@ -26,10 +26,13 @@ crt=$(ls -d /c/Program\ Files*/Microsoft\ Visual\ Studio/*/*/VC/Redist/MSVC/*/x6
 for dll in msvcp140.dll vcruntime140.dll vcruntime140_1.dll; do cp "$crt/$dll" "$out/"; done
 # the default settings as committed (a local dod3.ini may hold your own)
 git show HEAD:dod3.ini > "$out/dod3.ini"
-# The shader cache of a playthrough (cache/dxbc, bytecode keyed on the shader
-# text this build generates): most pipelines are never compiled on a player's
-# machine. The game reads it from cache/dxbc beside the executable.
-if [ -d cache/dxbc ]; then mkdir -p "$out/cache"; cp -r cache/dxbc "$out/cache/"; fi
+# The shader cache a release ships (shaders/dxbc: the bytecode of a sweep of
+# the whole game, keyed on the shader text this build generates, and the
+# pipeline list the game builds ahead at start-up): most shaders are never
+# compiled on a player's machine. The game reads it from cache/dxbc beside
+# the executable.
+mkdir -p "$out/cache/dxbc"
+cp shaders/dxbc/*.dxbc shaders/dxbc/pipelines.bin "$out/cache/dxbc/"
 # Windows line endings, for Notepad.
 sed 's/$/\r/' docs/PLAYING.md > "$out/README.txt"
 sed 's/$/\r/' LICENSE > "$out/LICENSE.txt"
@@ -39,7 +42,7 @@ sed 's/$/\r/' third_party/imgui/LICENSE.txt > "$out/LICENSE-imgui.txt"
 sed 's/$/\r/' third_party/fonts/inter/LICENSE.txt > "$out/LICENSE-inter.txt"
 
 # Nothing the player supplies, and no build leftovers.
-for bad in EBOOT.ELF EBOOT_101.ELF EBOOT.BIN flashMP3.pic PARAM.SFO keys.txt; do
+for bad in EBOOT.ELF EBOOT_101.ELF EBOOT.BIN flashMP3.pic PARAM.SFO keys.txt guest_programs.bin; do
   if find "$out" -iname "$bad" | grep -q .; then echo "package_win: $bad in the package"; exit 1; fi
 done
 

@@ -66,9 +66,10 @@ Windows:
    Files / Add Folder; each one is
    recognised by itself, in any order. Then Install. The game's files are
    copied next to dod3.exe into the "game" folder (a few minutes).
-4. Play. The first minutes of the first launch stutter while graphics
-   shaders are compiled; they are kept in the "cache" folder, so later
-   launches are smooth. From then on dod3.exe opens the launcher (below).
+4. Play. The graphics shaders come compiled, in the "cache" folder, and
+   the game prepares them for your graphics card in the background at
+   start-up; a scene they miss may stutter the first time only. From then
+   on dod3.exe opens the launcher (below).
 
 macOS:
 
@@ -300,8 +301,9 @@ dod3.exe (on a Mac, in the Application Support folder). Back that folder up
 to keep your progress.
 
 To update to a new release, unzip it into a new folder and move these into
-it from the old one: game (the installed game), gamedata (saves), dod3.ini
-(your settings) and cache (compiled shaders; optional). Unzipping it over
+it from the old one: game (the installed game), gamedata (saves) and
+dod3.ini (your settings). Leave cache behind: a Windows release brings its
+own compiled shaders, newer than the old folder's. Unzipping it over
 the old folder works too, but the release's dod3.ini (the default
 settings) then replaces yours: keep a copy and put it back. To uninstall,
 delete the folder.

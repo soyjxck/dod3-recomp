@@ -149,19 +149,26 @@ SPIR-V). What this game needed from the engine:
   still compiling is skipped, so the first sight of an effect came in late.
   The D3D12 engine records every state it builds in
   `cache/dxbc/pipelines.bin` (the programs by checksum, the state's values)
-  and builds the listed ones on low-priority threads at start-up. The
-  release ships the list its play-throughs recorded beside the bytecode it
-  names, and a player's sessions add to it. `tools/shader_cache.py` builds
-  the bytecode cache from shader dumps (`PS3RECOMP_SHADER_DUMP`) and checks
-  and merges lists.
+  and builds the listed ones on low-priority threads at start-up. A Windows
+  release ships `shaders/dxbc` as its `cache/dxbc`: the bytecode and the
+  list that a sweep of the whole game recorded (every part the book opens,
+  chapters, branches, requests and DLC, played and with its cutscenes run:
+  1,720 programs, 2,037 states). A player's machine then compiles no shader
+  the sweep met, and builds the states before they are needed; a player's
+  sessions add what the sweep missed. `tools/shader_cache.py` builds the
+  bytecode cache from shader dumps (`PS3RECOMP_SHADER_DUMP`) and checks and
+  merges lists.
 - **The cache made again without playing**: both lists above hold what the
   decompilers made, so a decompiler change leaves them stale. The draw
   engine also records what the game gave -- each pipeline's programs and
   every input to the decompilers, in `cache/dxbc/guest_pipelines.txt` and
   `guest_programs.bin` -- and a start with `RSX_GUEST_REBUILD=1` translates
-  that list again with the current code, compiles it and exits (one level's
-  328 pipelines: 11 s). `tools/shader_cache.py remap` then carries over the
-  states only play adds (multisampled builds, snapshot copies).
+  that list again with the current code, compiles it and exits (the sweep's
+  1,897 pipelines: 22 s). `tools/shader_cache.py remap` then carries over
+  the states only play adds (multisampled builds, snapshot copies). The
+  guest list holds the game's own programs, so it stays out of the
+  repository and the release; the maintainers keep the sweep's, and refresh
+  `shaders/dxbc` from it when the decompilers change.
 
 The replay tool (`rsx_replay`) replays captured command streams
 (`RSX_CAPTURE`) headlessly through the engine: the rendering regression.

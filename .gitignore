@@ -11,6 +11,8 @@ elf/
 *.rap
 *.edat
 *.EDAT
+# ...but the pipeline list of the shader cache a release ships is the port's
+!shaders/dxbc/pipelines.bin
 
 # Written by the game and the installer
 gamedata/
