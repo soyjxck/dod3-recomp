@@ -991,6 +991,9 @@ static void* cpu_watch(void*)
  *            / every unit that is switched on (RSX_BIND_UNREAD)
  *   kickhr   (Windows) the walker's wait between drains on an event and a
  *            high-resolution timer / on the condition variable
+ *   earlysubmit  (Windows) the recorded draws handed to the GPU every
+ *            RSX_SUBMIT_EVERY records (default 256) / at fences and the
+ *            present only
  *   none     nothing: the control, which has to report no difference
  * On Windows each report also gives the CPU time per frame of the busiest
  * threads in either state (thread cycle counters, so exact): a switch that
@@ -1008,6 +1011,16 @@ static void ab_icall(int on) { g_ppu_icall_full = on ? 0 : 1; }
 static void ab_labelwake(int on) { s_label_wake.store(on); }
 extern "C" int g_rsx_query_nosync;
 static void ab_querysync(int on) { g_rsx_query_nosync = on ? 0 : 1; }
+#ifdef _WIN32   /* rsx_d3d12_engine.c */
+extern "C" int g_eng_submit_every;
+/* earlysubmit: RSX_SUBMIT_EVERY when set, else 256 records (the default). */
+static void ab_earlysubmit(int on)
+{
+    static int n = -1;
+    if (n < 0) { const char* e = getenv("RSX_SUBMIT_EVERY"); n = e && atoi(e) > 0 ? atoi(e) : 256; }
+    g_eng_submit_every = on ? n : 0;
+}
+#endif
 extern "C" int g_spurs_jc_par;
 static void ab_jcpar(int on) { g_spurs_jc_par = on ? 4 : 0; }
 #ifdef _WIN32   /* the D3D12 engine's buffer pool (rsx_d3d12_engine.c is Windows-only) */
@@ -1073,7 +1086,7 @@ static const struct {
     { "texreads", ab_texreads },
 #ifdef _WIN32
     { "snapincr", ab_snapincr }, { "mstwin", ab_mstwin }, { "usleepspin", ab_usleepspin },
-    { "kickhr", ab_kickhr },
+    { "kickhr", ab_kickhr }, { "earlysubmit", ab_earlysubmit },
 #endif
 #if defined(_WIN32) || defined(__APPLE__)
     { "aniso", ab_aniso },

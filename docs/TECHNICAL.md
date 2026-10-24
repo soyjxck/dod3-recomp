@@ -125,7 +125,9 @@ SPIR-V). What this game needed from the engine:
   haze samples the scene ~95 times a frame): kept incrementally, by
   redrawing only the draws since the last snapshot with a copy shader.
 - **Occlusion queries** with their GPU round trip before the fence the game
-  waits on (without it, objects flicker and are culled).
+  waits on (without it, objects flicker and are culled). The frame goes to
+  the GPU in pieces while it is recorded (`RSX_SUBMIT_EVERY`, 256 records),
+  so the round trip waits for the end of the frame's work, not all of it.
 - **Internal resolution** (`RSX_SCALE`): every target is scaled except the
   small ones (the colour-grading lookup table is built texel by texel from
   WPOS), with viewports, scissors, clears, occlusion counts and WPOS scaled
@@ -345,9 +347,20 @@ chapter 1 battle 179 → 208 fps, main thread 4.6 → 2.9 ms, render thread
 the CR fields as locals, no thread-local guards, one page test for a run of
 accesses, SSE forms of the AltiVec loops.
 
+A sweep of every part of the game (the 100% save, each part loaded from
+the book and played for two minutes) found the slowest ones -- 77 to 105 fps
+against the 120 cap -- held up in one place: the walker waiting 2-5 ms a
+frame at the fence after the occlusion queries, for a frame of GPU work it
+had handed over only at that fence. Handing it over every 256 records
+instead, paired in one run: one of them 95 → 109 fps (91 → 107 at 4K), the
+heaviest 77 → 89, a part at the cap unchanged. The present's pacing had to count presents
+rather than submits for it (a fence two submits back was this frame's own).
+Skipping the sync altogether reaches the cap there but flickers; holding the
+fence back while the walker goes on gains nothing, because the game waits
+for those counts before its next queries.
+
 Measured as no gain, so nobody repeats them: pinning to the P-cores, EcoQoS
-opt-out, skipping the occlusion-query sync (`RSX_QUERY_NOSYNC`, also
-flickers), submitting partial batches early, parallel job-chain workers
+opt-out, parallel job-chain workers
 (`SPURS_JC_PAR`: the jobs are too small), vsync off at a cap, the five-test
 inline store path, `-O3` on the lifted units (byte-identical objects),
 profile-guided optimisation of the lifted units (`DOD3_PGO`, an IR profile

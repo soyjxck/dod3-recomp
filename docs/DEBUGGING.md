@@ -32,7 +32,8 @@ executable when it has no console; the previous run is `dod3.prev.log`.
   `collnative`, `fifofast` (the walker's bulk constant/program uploads),
   `engslow` (the draw engine's old per-draw paths; on means slow),
   `icallflat`, `usleepspin`, `pumpsleep`, `kickhr`, `hleindex`, `texreads`
-  (only the texture units a fragment program samples bound), `none` (the control,
+  (only the texture units a fragment program samples bound), `earlysubmit`
+  (the frame to the GPU every `RSX_SUBMIT_EVERY` records), `none` (the control,
   which must report no difference). `DOD3_AB_FROM=<s>` skips the boot and
   menus (default 70).
 - `tools/replay_regress.sh`: the rendering regression. Replays RSX captures
@@ -168,6 +169,8 @@ sleep), `RSX_SNAP_INCR=0` (full snapshot copies),
 `SPU_TASK_POOL=0` (a thread per
 task), `SPURS_TASKSET_SERIAL=01AA7700` (PhysX one task at a time),
 `RSX_ASYNC_SHADERS=0` (build shaders on the walker), `RSX_QUERY_NOSYNC=1`,
+`RSX_SUBMIT_EVERY=0` (the frame to the GPU at fences and the present only;
+`<n>`: every n records, default 256),
 `DOD3_PACE=vblank`, `DOD3_VBLANK_MULT=<n>` / `DOD3_VBLANK_HZ=<hz>`,
 `DOD3_FIFO_SLEEP_MS=<n>`, `DOD3_FAST_POLL_LR=<hex>` (0 for none),
 `PS3RECOMP_RSX_ENGINE=vtable` (the toolkit's old RSX path),
