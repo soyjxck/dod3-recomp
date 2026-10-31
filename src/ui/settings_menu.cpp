@@ -1,5 +1,5 @@
-/* The Graphics Settings, System Settings and Advanced Graphics pages in the
- * title's own Settings menu.
+/* The Graphics Settings, System Settings, Advanced Graphics and Picture
+ * Settings pages in the title's own Settings menu.
  *
  * tools/menu_patch.py rewrites a few script functions in SQEX03GAME.XXX (the
  * copy served through PS3_VFS_OVERLAY): the Settings root gets two more
@@ -14,6 +14,7 @@
  *     MAGIC+0 / +1         Graphics Settings: the root entry's label / description
  *     MAGIC+2 / +3         System Settings: the same
  *     MAGIC+4 / +5         Advanced Graphics (rows from src/patches/sysset.cpp)
+ *     MAGIC+6 / +7         Picture Settings
  *     MAGIC+100+row        a row's label (of the open page)
  *     MAGIC+200+row        its value (the one being edited)
  *     MAGIC+300+row        its description
@@ -24,7 +25,8 @@
  *     page then hands straight to "Press START": no company, middleware
  *     or UE3 logos, no opening movie; DOD3_SKIP_INTRO=0 keeps them)
  *     7 open(root entry): 3 Graphics, 4 System, 5 Advanced Graphics,
- *     6 Restore Defaults (the reset and apply that follow cover every page)
+ *     6 Picture, 7 Restore Defaults (the reset and apply that follow cover
+ *     every page)
  *     8 the page's rows
  *     9 the camera's FOV   10 is the Graphics page on screen? (in play,
  *     the pause screen's dimming and frost are then left out)
@@ -194,6 +196,12 @@ const struct {
     { "Advanced Graphics", "Gráficos avanzados" },
     { "Adjust the engine's shadows, motion blur and post-processing.",
       "Ajustes de sombras, desenfoque de movimiento y posprocesado." },
+    { "Picture Settings", "Ajustes de imagen" },
+    { "Adjust the post-processing quality and HDR.", "Ajustes de la calidad del posprocesado y del HDR." },
+    /* Picture Settings */
+    { "Post-Processing Quality", "Calidad del posprocesado" },
+    { "High: depth of field and bloom drawn smoothly above 720p.",
+      "Alta: profundidad de campo y resplandor suaves por encima de 720p." },
     /* what rows add */
     { " Applies after a restart.", " Se aplica al reiniciar." },
     { " (next start)", " (al reiniciar)" },
@@ -293,12 +301,12 @@ struct Row {
     bool live;                /* applied at once (else on the next start) */
     int running, saved, pending;   /* choice indices; -1 = a value not in the list */
     std::string other;        /* that value */
-    int page;                 /* PAGE_GRAPHICS, PAGE_SYSTEM, PAGE_ADVANCED */
+    int page;                 /* PAGE_GRAPHICS, PAGE_SYSTEM, PAGE_ADVANCED, PAGE_PICTURE */
     void (*apply_fn)(const char* value);   /* a live row's own apply (src/patches/sysset.cpp) */
 };
 
 std::vector<Row> s_rows;            /* every page's */
-const int NPAGES = 3;
+const int NPAGES = 4;
 std::vector<int> s_page_rows[NPAGES];   /* each page's, in order */
 int s_page;                         /* the page open; -1: every page (Restore Defaults) */
 bool s_init;
@@ -544,6 +552,15 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
                      PAGE_SYSTEM });
     /* Advanced Graphics: the engine's own switches (src/patches/sysset.cpp) */
     dod3_sysset_rows(rows);
+    /* Picture Settings */
+    rows.push_back({ "DOD3_POSTFX_QUALITY",
+                     "Post-Processing Quality",
+                     "High: depth of field and bloom drawn smoothly above 720p.",
+                     { { NULL, "Original" }, { "high", "High" } },
+                     0,
+                     false,
+                     nullptr,
+                     PAGE_PICTURE });
 }
 
 void init_rows()
@@ -589,6 +606,7 @@ bool menu_text(int i, std::string& out)
         "Graphics Settings", "Adjust settings related to graphics and the display.",
         "System Settings",   "Adjust the start-up, focus, prompt, mouse and renderer options.",
         "Advanced Graphics", "Adjust the engine's shadows, motion blur and post-processing.",
+        "Picture Settings",  "Adjust the post-processing quality and HDR.",
     };
     if (k >= 0 && k < (int)std::size(kRoot))
         out = tr(kRoot[k]);
@@ -699,7 +717,7 @@ int bridge(int cmd, int a, int b)
     }
     case CMD_GRAPHICS_SHOWN:   /* is a graphics page on screen? The pause screen's dimming and
                                 * frost are left out while it is, so changes can be seen. */
-        return ((s_page == PAGE_GRAPHICS || s_page == PAGE_ADVANCED) &&
+        return ((s_page == PAGE_GRAPHICS || s_page == PAGE_ADVANCED || s_page == PAGE_PICTURE) &&
                 std::chrono::steady_clock::now() - s_page_drawn < std::chrono::milliseconds(250))
                    ? 1
                    : 0;

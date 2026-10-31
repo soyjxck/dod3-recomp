@@ -175,8 +175,8 @@ The replay tool (`rsx_replay`) replays captured command streams
 
 ## The settings menu
 
-The game's own Settings menu gains Graphics Settings, System Settings and
-Advanced Graphics. The menu is UnrealScript in `SQEX03GAME.XXX`;
+The game's own Settings menu gains Graphics Settings, System Settings,
+Advanced Graphics and Picture Settings. The menu is UnrealScript in `SQEX03GAME.XXX`;
 `tools/menu_patch.py` rewrites 18 script functions (the root list, an unused
 page the title shipped with its layout, the title's page chain for skip
 intro, the camera for the field of view) and records them as edits of the

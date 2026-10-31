@@ -6,7 +6,7 @@
 #include <vector>
 
 /* The in-game Settings pages a row is on. */
-enum { PAGE_GRAPHICS, PAGE_SYSTEM, PAGE_ADVANCED };
+enum { PAGE_GRAPHICS, PAGE_SYSTEM, PAGE_ADVANCED, PAGE_PICTURE };
 
 struct Dod3RowSpec {
     const char* key;      /* the dod3.ini key */

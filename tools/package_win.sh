@@ -33,6 +33,10 @@ git show HEAD:dod3.ini > "$out/dod3.ini"
 # the executable.
 mkdir -p "$out/cache/dxbc"
 cp shaders/dxbc/*.dxbc shaders/dxbc/pipelines.bin "$out/cache/dxbc/"
+# Our own versions of a few of the title's shaders (Post-Processing
+# Quality, High: src/main.cpp), beside the executable.
+mkdir -p "$out/shaders/override"
+cp shaders/override/*.hlsl "$out/shaders/override/"
 # Windows line endings, for Notepad.
 sed 's/$/\r/' docs/PLAYING.md > "$out/README.txt"
 sed 's/$/\r/' LICENSE > "$out/LICENSE.txt"

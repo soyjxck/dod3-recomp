@@ -153,13 +153,14 @@ anti-aliasing (FXAA, or MSAA 2x/4x/8x), texture filtering and field of
 view. Settings > System Settings sets whether the logos and opening movie
 are skipped, what the game does while its window is in the background
 (keep running, mute, or pause), which controller's buttons the game shows,
-the mouse's sensitivity, and the renderer. Settings > Advanced
-Graphics sets the aspect ratio and the engine's own shadow quality, motion
-blur, post-processing, draw distance and tree detail. Confirm with X to save
-them; everything but the renderer, Skip Intro and Shadow Quality changes
-at once (a second of black while the resolution or display mode switches;
-Tree Detail in the next area the game loads), those three the next time
-the game starts.
+the mouse's sensitivity, the renderer and the blood on the screen.
+Settings > Advanced Graphics sets the aspect ratio and the engine's own
+shadow quality, motion blur, post-processing, depth of field, draw distance
+and tree detail. Settings > Picture Settings sets the post-processing
+quality. Confirm with X to save them; everything but the renderer, Skip
+Intro, Shadow Quality and Post-Processing Quality changes at once (a second
+of black while the resolution or display mode switches; Tree Detail in the
+next area the game loads), those four the next time the game starts.
 
 The first start adds the pages to the game's menu, which takes a second or
 two. The game's own files are not changed.
@@ -182,6 +183,7 @@ folder above). It explains each setting:
 | DOD3_MOTION_BLUR | 0 turns motion blur off |
 | DOD3_POSTFX | 0 turns off depth of field, bloom and the colour grading |
 | DOD3_DOF | 0 turns off only the depth of field, the blur of what is near and far; the bloom and the colour grading stay |
+| DOD3_POSTFX_QUALITY | high: above 1280x720, the depth of field and bloom are drawn smoothly, and what is out of focus stays soft instead of showing sharp detail through the blur (the port's own version of the game's post-processing shader). The same picture as Original at 1280x720. Unset is the original. From the next start |
 | DOD3_SCREEN_BLOOD | Blood over the screen in combat: border leaves out the splashes and keeps the blood around the edges at low health, a warning; 0 leaves out both. Unset is the original |
 | DOD3_DRAW_DISTANCE | 2, 3, 5 or 10: props, bushes and small trees are drawn from that many times as far away; unset is the original |
 | DOD3_TREE_LOD | 2, 3, 5 or 10: the large trees are drawn, and stay their full models, that many times as far away; unset is the original. From the next area loaded |
@@ -323,8 +325,8 @@ A mod copied into the update's folder by hand
 (game/disc/game/BLES00000/USRDIR/PATCH next to dod3.exe) is played as it
 is. If it replaces the game's script package (SQEX03GAME.XXX), the port's
 additions to the Settings menu are not there, because they are made to
-that package: the Graphics Settings, System Settings and Advanced Graphics
-pages, and what works through them (the wider field of view, the Aspect
+that package: the Graphics Settings, System Settings, Advanced Graphics and
+Picture Settings pages, and what works through them (the wider field of view, the Aspect
 Ratio setting's wider view, skipping the intro). dod3.ini still sets the
 resolution, the display mode, the frame rate and the anti-aliasing.
 Running the setup again with the update package puts the update's own

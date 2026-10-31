@@ -76,6 +76,10 @@ if [ -d cache/msl ] && [ -f cache/pipelines.list ]; then
     cp -r cache/msl "$app/Contents/Resources/cache/"
     cp cache/pipelines.list "$app/Contents/Resources/cache/"
 fi
+# Our own versions of a few of the title's shaders (Post-Processing
+# Quality, High: src/main.cpp finds them in Contents/Resources).
+mkdir -p "$app/Contents/Resources/shaders/override"
+cp shaders/override/*.hlsl "$app/Contents/Resources/shaders/override/"
 
 # The icon: tools/make_icon.py's drawing (an original), at every size an
 # .icns holds.

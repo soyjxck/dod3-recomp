@@ -8,8 +8,8 @@ The overlay is for testing (PS3_VFS_OVERLAY=<dir> and DOD3_SHA_OVERRIDE from
 --eboot=101 patches the 1.01 update's package instead (its PATCH folder,
 game/disc/game/BLES00000/USRDIR/PATCH; header src/patches/menu_patch_data_101.h).
 
-Settings root: PAGES more entries, "Graphics Settings", "System Settings"
-and "Advanced Graphics", from the empty row between Audio Settings and
+Settings root: PAGES more entries, "Graphics Settings", "System Settings",
+"Advanced Graphics" and "Picture Settings", from the empty row between Audio Settings and
 Restore Defaults down (Restore Defaults moves below them). All open the title's unused
 Display page (Sqex03GameHUDOptionDisplay, layout
 HUD_Pause.menu.select_option_display), rewritten as a list of rows whose
@@ -20,7 +20,7 @@ count, text and values come from the port -- the root tells it which page:
                                   the port's settings bridge (the native's
                                   only caller was this page)
 Text: MAGIC+2p/+2p+1 page p's root label and description (0 Graphics, 1
-System, 2 Advanced Graphics),
+System, 2 Advanced Graphics, 3 Picture),
 MAGIC+100+row row label, MAGIC+200+row value, MAGIC+300+row row description.
 Bridge: 0 begin (pending = current), 1 change(row, dir), 2 is-default(row),
 3 reset (pending = defaults), 4 apply, 5 changed?, 6 skip the intro?,
@@ -76,7 +76,7 @@ from ue3.script import Node
 
 MAGIC = 900000
 MAX_ROWS = 7     # the layout's
-PAGES = 3        # our root entries: Graphics, System, Advanced Graphics
+PAGES = 4        # our root entries: Graphics, System, Advanced Graphics, Picture
 CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO, CMD_OPEN, CMD_ROWS, CMD_FOV, \
     CMD_GRAPHICS_SHOWN, CMD_CAM_DT, CMD_CAM_ACTIVE, CMD_CAM_AXIS, CMD_CAM_VIEW, \
     CMD_ASPECT, CMD_ASPECT_FOV, CMD_HUD, CMD_DLC_JPVOICE = range(19)

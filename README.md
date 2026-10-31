@@ -89,7 +89,7 @@ Linux (x86-64; the Steam Deck included), experimental:
 Settings (resolution, display mode, frame-rate cap, anti-aliasing, field of
 view, draw distance, skipping the intro, the keyboard's keys) are in the
 launcher's Settings, in the game's own Settings menu (Graphics Settings,
-System Settings and Advanced Graphics), or in `dod3.ini`.
+System Settings, Advanced Graphics and Picture Settings), or in `dod3.ini`.
 [docs/PLAYING.md](docs/PLAYING.md) has the controls, the saves, the Japanese
 voices, and what to do if something goes wrong.
 
@@ -197,8 +197,8 @@ anisotropic filtering, a wider field of view, sharper shadows, a longer draw
 distance for scenery and for trees, skipping the intro logos and movie,
 pausing or muting when the window is in the background, keyboard and mouse,
 and the button prompts of the pad you hold -- set in the launcher, or in a
-Graphics Settings, a System Settings and an Advanced Graphics page added to
-the game's own Settings menu. The launcher also installs your DLC and two
+Graphics Settings, a System Settings, an Advanced Graphics and a Picture
+Settings page added to the game's own Settings menu. The launcher also installs your DLC and two
 fan-made mods: the Spanish translation (the added pages are in Spanish with
 it) and the DLC Undub.
 

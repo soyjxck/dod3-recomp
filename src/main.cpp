@@ -83,6 +83,7 @@
 extern char** environ;
 extern "C" {   /* src/os/macos/setup_mac.mm */
 const char* dod3_mac_data_dir(void);
+const char* dod3_mac_resources_dir(void);
 void dod3_mac_log_to_file(void);
 int dod3_setup_mac(const char* base_dir, int force);
 }
@@ -2222,6 +2223,30 @@ int main(int argc, char** argv)
      * resolution, at any scale. With 640x360 left alone as well (400) a seam
      * runs down the foliage of the open levels, so that one still scales. */
     dod3_setenv("RSX_SCALE_MIN", "200", 0);
+    /* Post-Processing Quality, High (DOD3_POSTFX_QUALITY=high): the title's
+     * depth-of-field and bloom composite (fp-struct a3e8d0b0476b7c09) drawn
+     * by our own version of it, shaders/override (RSX_FP_OVERRIDE_DIR). Its
+     * blur and bloom are quarter-size targets stretched over the picture --
+     * three times as far at 4K, where one bilinear tap shows their texels --
+     * and it keeps the full-size picture where a pixel is half out of focus:
+     * at 4K that was sharp detail laid over the blur, at 1280x720 a picture
+     * as soft as its pixels. Ours reads the two smoothly and softens the
+     * picture as far as the pixel is out of focus; at 1280x720 it is the
+     * title's own. The folder: the app's Resources on a Mac, else beside the
+     * executable, else the working folder's. */
+    if (const char* q = getenv("DOD3_POSTFX_QUALITY"); q && !strcmp(q, "high")) {
+        static std::string dir = "shaders/override";
+        std::vector<std::string> where;
+#ifdef __APPLE__
+        if (const char* res = dod3_mac_resources_dir()) where.push_back(std::string(res) + "/shaders/override");
+#endif
+        const size_t slash = s_exe_path.find_last_of("/\\");
+        if (slash != std::string::npos) where.push_back(s_exe_path.substr(0, slash + 1) + "shaders/override");
+        std::error_code ec;
+        for (const std::string& w : where)
+            if (std::filesystem::is_directory(std::filesystem::u8path(w), ec)) { dir = w; break; }
+        dod3_setenv("RSX_FP_OVERRIDE_DIR", dir.c_str(), 0);
+    }
     /* Translated shaders survive between runs (see rsx_metal_backend.m). */
     dod3_setenv("PS3RECOMP_MSL_CACHE", "cache/msl", 0);
     /* ...and compiled DXBC on Windows (rsx_d3d12_engine.c). */

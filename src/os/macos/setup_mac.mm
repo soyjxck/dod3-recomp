@@ -73,6 +73,21 @@ extern "C" const char* dod3_mac_data_dir(void)
     return dir.c_str();
 }
 
+/* The app's Contents/Resources (what it ships: shaders/override, the
+ * shader cache the first run copies); NULL outside a bundle. */
+extern "C" const char* dod3_mac_resources_dir(void)
+{
+    static std::string dir;
+    if (dir.empty()) {
+        @autoreleasepool {
+            NSString* r = NSBundle.mainBundle.resourcePath;
+            if (!r) return NULL;
+            dir = r.fileSystemRepresentation;
+        }
+    }
+    return dir.c_str();
+}
+
 /* Started from Finder there is no terminal: the log goes to dod3.log in the
  * data folder (the current directory by now); the run before is kept as
  * dod3.prev.log, as on Windows. */
