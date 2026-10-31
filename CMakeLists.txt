@@ -661,10 +661,13 @@ if(_native_fp_opts)
 endif()
 # PPU_INLINE_VM: the lifted code's loads and stores inline the runtime's fast
 # path (ps3recomp/runtime/ppu/ppu_vm_fast.h) instead of calling vm_read*/
-# vm_write*. The render thread spent ~60% of its time in those calls.
+# vm_write*. The render thread spent ~60% of its time in those calls. The
+# lifted libsre too: it includes the game's ppu_recomp.h, and since the v0.18
+# lifter, code lifted without PPU_INLINE_VM needs that header's per-function
+# memory model, which a header from an older lift does not have.
 option(DOD3_INLINE_VM "Inline the guest-memory fast path into the lifted code" ON)
 if(DOD3_INLINE_VM)
-    set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS PPU_INLINE_VM)
+    set_property(SOURCE ${RECOMP_SOURCES} "${LIBSRE_LIFTED_CPP}" APPEND PROPERTY COMPILE_DEFINITIONS PPU_INLINE_VM)
 endif()
 set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/ppu")
 
