@@ -28,6 +28,9 @@
  *       play and in cutscenes DepthOfField is set back to 1 every frame
  *       (func_00A54B58, through the setter's vtable slot 0x38C), so an Off
  *       held only until the next frame; now it is kept.
+ *   DOD3_DOF=0               depth of field alone off, the bloom and the colour
+ *       grade kept: the blur amounts of the frame's depth-of-field proxy
+ *       zeroed as it is made (below; live)
  *   DOD3_DRAW_DISTANCE=<x>   MaxDrawDistanceScale: the scene renderer
  *       multiplies every primitive's own cull distance by it, each frame
  *       (func_0061D538 squares it against MaxDrawDistanceSquared; live).
@@ -39,6 +42,9 @@
  *   DOD3_TREE_LOD=<x>        the distances at which a tree gives way to a
  *       flat picture of itself and then to nothing, times x (the tree detail
  *       section below; from the next level loaded)
+ * and the System Settings page one:
+ *   DOD3_SCREEN_BLOOD=border|0  blood over the screen in combat: no splashes,
+ *       or no splashes and no near-death border (below; live)
  * Tried and left out: Bloom, AmbientOcclusion, LensFlares, light shafts,
  * FogVolumes, Distortion, decals, DetailMode, the LOD biases (no visible
  * change in play; the detail settings are already at their highest),
@@ -350,6 +356,90 @@ void hook_set_dof(ppu_context* ctx) { keep_off(ctx, DOD3_FN_SET_DEPTH_OF_FIELD, 
 void hook_flip_dof(ppu_context* ctx) { keep_off(ctx, DOD3_FN_FLIP_DEPTH_OF_FIELD, 0x03C, s_dof_off, "DepthOfField"); }
 #endif
 
+/* ---- depth of field on its own --------------------------------------------
+ * DepthOfField (Post-Processing above) gates the whole post pass. The blur
+ * alone: every frame, the post-process chain's effect makes its scene proxy
+ * from the frame's FPostProcessSettings (CreateSceneProxy, a virtual: the
+ * title's UberPostProcessEffect, func_00306728, and DOFAndBloomEffect's,
+ * func_001B1B64). The depth-of-field part of that proxy (constructor
+ * func_001B1770) keeps MaxNearBlurAmount and MaxFarBlurAmount at +0x14 and
+ * +0x1C, and zeroes both itself when the settings' bEnableDOF is clear --
+ * the engine's own way to switch the blur off and leave the bloom, which
+ * the same proxy computes, and the colour grade as they are. So with
+ * DOD3_DOF=0 both are zeroed in the proxy the effect returns. */
+std::atomic<bool> s_dof_blur_off{ false };
+#ifdef DOD3_FN_UBER_CREATE_PROXY
+void zero_dof_blur(ppu_context* ctx, void (*lifted)(ppu_context*))
+{
+    lifted(ctx);
+    dod3_drain(ctx);
+    const uint32_t proxy = (uint32_t)ctx->gpr[3];
+    if (!proxy || !s_dof_blur_off.load(std::memory_order_relaxed)) return;
+    vm_write32(proxy + DOD3_O_DOF_PROXY_BLUR_NEAR, 0);          /* 0.0f */
+    vm_write32(proxy + DOD3_O_DOF_PROXY_BLUR_NEAR + 8u, 0);
+    static bool said;
+    if (!said) {
+        said = true;
+        fprintf(stderr, "[sysset] depth of field off: the post-process proxy's blur zeroed\n");
+    }
+}
+void hook_uber_create_proxy(ppu_context* ctx) { zero_dof_blur(ctx, DOD3_FN_UBER_CREATE_PROXY); }
+void hook_dofbloom_create_proxy(ppu_context* ctx) { zero_dof_blur(ctx, DOD3_FN_DOFBLOOM_CREATE_PROXY); }
+#endif
+void set_dof(const char* v) { s_dof_blur_off = off(v); }
+
+/* ---- blood on the screen ----------------------------------------------------
+ * Two layers of the HUD put blood over the picture in combat:
+ *   - splashes: USqex03GameHUDBlood (its e_blood_01..07 materials), given
+ *     them by SetBloodSplash -> SetBlood (func_009E4558) and fading in its
+ *     Update. The title has a switch for these, Sqex03GameOption.
+ *     m_bScreenBlood, which SetBlood tests first, but only a debug menu sets
+ *     it. Its Draw (func_009E5150, the vtable's slot 0x160) only draws the
+ *     blood materials, and is skipped instead, so nothing of it reaches the
+ *     player's save.
+ *   - the near-death border: USqex03GameHUDDying draws pl_hinshi, blotches
+ *     of blood around the edges, while the player's health is low. Its Draw
+ *     is UnrealScript and draws nothing while m_fFrameColor (+0xB4) is 0;
+ *     its native Update (func_009E8028, slot 0x154) sets that each frame,
+ *     and the value is zeroed after it.
+ * DOD3_SCREEN_BLOOD=border leaves out the splashes and keeps the border, a
+ * warning; =0 leaves out both. Both take effect at once. */
+std::atomic<int> s_blood_mode{ 0 };   /* 0 as the title, 1 no splashes, 2 neither */
+#ifdef DOD3_FN_HUD_BLOOD_DRAW
+void hook_hud_blood_draw(ppu_context* ctx)
+{
+    if (s_blood_mode.load(std::memory_order_relaxed) >= 1) {   /* void: its exec thunk has read its argument */
+        static bool said;
+        if (!said) {
+            said = true;
+            fprintf(stderr, "[sysset] blood on screen: the splashes are not drawn\n");
+        }
+        return;
+    }
+    DOD3_FN_HUD_BLOOD_DRAW(ctx);
+    dod3_drain(ctx);
+}
+void hook_hud_dying_update(ppu_context* ctx)
+{
+    const uint32_t self = (uint32_t)ctx->gpr[3];
+    DOD3_FN_HUD_DYING_UPDATE(ctx);
+    dod3_drain(ctx);
+    if (s_blood_mode.load(std::memory_order_relaxed) < 2 || !self) return;
+    if (vm_read32(self + DOD3_O_HUD_DYING_ALPHA)) {
+        static bool said;
+        if (!said) {
+            said = true;
+            fprintf(stderr, "[sysset] blood on screen off: the near-death border is not drawn\n");
+        }
+    }
+    vm_write32(self + DOD3_O_HUD_DYING_ALPHA, 0);   /* 0.0f */
+}
+#endif
+void set_screen_blood(const char* v)
+{
+    s_blood_mode = !v || !*v ? 0 : !strcmp(v, "border") ? 1 : off(v) ? 2 : 0;
+}
+
 void set_draw_distance(const char* v)
 {
     const double x = v ? atof(v) : 1.0;
@@ -430,6 +520,8 @@ void apply_player_settings()
             if (!strcmp(v, p[0])) apply_list(p[1], ',');
     if (const char* v = getenv("DOD3_MOTION_BLUR")) set_motion_blur(v);
     if (const char* v = getenv("DOD3_POSTFX")) set_postfx(v);
+    if (const char* v = getenv("DOD3_DOF")) set_dof(v);
+    if (const char* v = getenv("DOD3_SCREEN_BLOOD")) set_screen_blood(v);
     if (const char* v = getenv("DOD3_DRAW_DISTANCE")) set_draw_distance(v);
     if (const char* v = getenv("DOD3_TREE_LOD")) set_tree_lod(v);
 }
@@ -459,6 +551,15 @@ void dod3_sysset_rows(std::vector<Dod3RowSpec>& rows)
                      0,
                      true,
                      set_postfx });
+#ifdef DOD3_FN_UBER_CREATE_PROXY
+    rows.push_back({ "DOD3_DOF",
+                     "Depth of Field",
+                     "The blur of what is near and far. Off keeps the bloom.",
+                     { { nullptr, "On" }, { "0", "Off" } },
+                     0,
+                     true,
+                     set_dof });
+#endif
     rows.push_back({ "DOD3_DRAW_DISTANCE",
                      "Draw Distance",
                      "How far away props, plants and other scenery are drawn.",
@@ -475,6 +576,16 @@ void dod3_sysset_rows(std::vector<Dod3RowSpec>& rows)
                      true,
                      set_tree_lod });
 #endif
+#ifdef DOD3_FN_HUD_BLOOD_DRAW
+    rows.push_back({ "DOD3_SCREEN_BLOOD",
+                     "Blood on Screen",
+                     "Blood splashes and the low-health border over the screen.",
+                     { { nullptr, "On" }, { "border", "Border Only" }, { "0", "Off" } },
+                     0,
+                     true,
+                     set_screen_blood,
+                     PAGE_SYSTEM });
+#endif
 }
 
 extern "C" void ppu_register_function(uint64_t addr, void (*fn)(ppu_context*));
@@ -489,6 +600,14 @@ void dod3_sysset_install()
     ppu_register_function(DOD3_A_FLIP_MOTION_BLUR, hook_flip_motion_blur);
     ppu_register_function(DOD3_A_SET_DEPTH_OF_FIELD, hook_set_dof);
     ppu_register_function(DOD3_A_FLIP_DEPTH_OF_FIELD, hook_flip_dof);
+#endif
+#ifdef DOD3_FN_UBER_CREATE_PROXY
+    ppu_register_function(DOD3_A_UBER_CREATE_PROXY, hook_uber_create_proxy);
+    ppu_register_function(DOD3_A_DOFBLOOM_CREATE_PROXY, hook_dofbloom_create_proxy);
+#endif
+#ifdef DOD3_FN_HUD_BLOOD_DRAW
+    ppu_register_function(DOD3_A_HUD_BLOOD_DRAW, hook_hud_blood_draw);
+    ppu_register_function(DOD3_A_HUD_DYING_UPDATE, hook_hud_dying_update);
 #endif
 }
 
