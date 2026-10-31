@@ -49,6 +49,7 @@
 #define DOD3_FN_TREE_CREATE_PROXY      func_00817FD4 /* USpeedTreeComponent::CreateSceneProxy (patches/sysset.cpp) */
 #define DOD3_FN_CANVAS_PROJECT         func_00643480 /* UCanvas::execProject (patches/hud_aspect.cpp) */
 #define DOD3_FN_HUD_CALC_TRANSFORM     func_009DEAB8 /* ASqex03GameHUD::CalcTransformPosition (patches/hud_aspect.cpp) */
+#define DOD3_FN_SONG_JUDGE             func_0091D8F0 /* the note judge of branch D's final song (patches/song_autoplay.cpp) */
 /* code addresses */
 #define DOD3_A_EXEC_GETSTRING    0x0145E274u
 #define DOD3_A_EXEC_BRIDGE       0x013F43A0u
@@ -78,6 +79,7 @@
 #define DOD3_A_TREE_CREATE_PROXY    0x00817FD4u
 #define DOD3_A_CANVAS_PROJECT       0x00643480u
 #define DOD3_A_HUD_CALC_TRANSFORM   0x009DEAB8u
+#define DOD3_A_SONG_JUDGE           0x0091D8F0u
 #define DOD3_O_HUD_CANVAS           0x414u /* ASqex03GameHUD: AHUD::Canvas */
 #define DOD3_O_HUD_SCREEN_POS       0x748u /* ASqex03GameHUD: CalcTransformPosition's results, a TArray of (x, y) */
 #define DOD3_A_TREE_PROXY_VTABLE    0x016E8C34u /* FSpeedTreeSceneProxy */

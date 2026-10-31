@@ -35,6 +35,7 @@
 #include "ui/setup_shared.h"   /* the files added and the install, on their own threads */
 #include "install/install.h"
 #include "patches/sysset.h"    /* Dod3RowSpec, dod3_setting_rows */
+#include "cpu/eboot.h"         /* what this EBOOT's build can patch */
 #include "util.h"
 #include "app_version.h"       /* generated: the port's version label */
 
@@ -88,6 +89,12 @@ void extra_rows(std::vector<Dod3RowSpec>& rows)
                      .label = "Camera Speed",
                      .desc = "Console keeps the stick's speed at any frame rate.",
                      .choices = { { nullptr, "Console" }, { "original", "Original" } } });
+#ifdef DOD3_FN_SONG_JUDGE
+    rows.push_back({ .key = "DOD3_SONG_AUTOPLAY",
+                     .label = "Final Song Auto-Play",
+                     .desc = "Branch D's final song presses every note for you, on its time.",
+                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+#endif
     rows.push_back({ .key = "DOD3_LAUNCHER",
                      .label = "Launcher at Start",
                      .desc = "Open this at start. Hold Shift (Option on a Mac) to open it anyway.",
@@ -105,7 +112,7 @@ const struct {
     { "RSX_AA", kGraphics },        { "RSX_ANISO", kGraphics },      { "DOD3_FOV", kGraphics },
     { "DOD3_PROMPTS", kControls },  { "DOD3_MOUSE", kControls },     { "DOD3_MOUSE_SENS", kControls },
     { "DOD3_CAMERA_SPEED", kControls }, { "DOD3_SKIP_INTRO", kSystem }, { "DOD3_UNFOCUSED", kSystem },
-    { "RSX_BACKEND", kSystem },     { "DOD3_LAUNCHER", kSystem },
+    { "DOD3_SONG_AUTOPLAY", kSystem }, { "RSX_BACKEND", kSystem },  { "DOD3_LAUNCHER", kSystem },
 };
 
 int place_of(const char* key)
