@@ -157,7 +157,7 @@ the mouse's sensitivity, the renderer and the blood on the screen.
 Settings > Advanced Graphics sets the aspect ratio and the engine's own
 shadow quality, motion blur, post-processing, depth of field, draw distance
 and tree detail. Settings > Picture Settings sets the post-processing
-quality. Confirm with X to save them; everything but the renderer, Skip
+quality and HDR (Windows). Confirm with X to save them; everything but the renderer, Skip
 Intro, Shadow Quality and Post-Processing Quality changes at once (a second
 of black while the resolution or display mode switches; Tree Detail in the
 next area the game loads), those four the next time the game starts.
@@ -183,6 +183,8 @@ folder above). It explains each setting:
 | DOD3_MOTION_BLUR | 0 turns motion blur off |
 | DOD3_POSTFX | 0 turns off depth of field, bloom and the colour grading |
 | DOD3_DOF | 0 turns off only the depth of field, the blur of what is near and far; the bloom and the colour grading stay |
+| RSX_HDR | Windows, Direct3D 12: 1 shows the game in HDR on a display that has HDR on in Windows (Settings > Display > Use HDR). The game's picture is SDR: HDR shows it at the brightness below with the shadows as an SDR display shows them, instead of Windows' own conversion, which washes out the dark parts. Unset is SDR |
+| RSX_HDR_WHITE | The brightness of white in HDR, in nits (100 to 400). Unset follows Windows' SDR content brightness slider |
 | DOD3_POSTFX_QUALITY | high: above 1280x720, the depth of field and bloom are drawn smoothly, and what is out of focus stays soft instead of showing sharp detail through the blur (the port's own version of the game's post-processing shader). The same picture as Original at 1280x720. Unset is the original. From the next start |
 | DOD3_SCREEN_BLOOD | Blood over the screen in combat: border leaves out the splashes and keeps the blood around the edges at low health, a warning; 0 leaves out both. Unset is the original |
 | DOD3_DRAW_DISTANCE | 2, 3, 5 or 10: props, bushes and small trees are drawn from that many times as far away; unset is the original |

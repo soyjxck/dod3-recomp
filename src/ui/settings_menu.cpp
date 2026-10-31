@@ -199,6 +199,10 @@ const struct {
     { "Picture Settings", "Ajustes de imagen" },
     { "Adjust the post-processing quality and HDR.", "Ajustes de la calidad del posprocesado y del HDR." },
     /* Picture Settings */
+    { "On a display with HDR on in Windows. Direct3D 12.", "En una pantalla con el HDR activado en Windows. Direct3D 12." },
+    { "HDR Brightness", "Brillo del HDR" },
+    { "How bright white is in HDR. Auto: as Windows' SDR content.",
+      "El brillo del blanco en HDR. Auto: como el contenido SDR de Windows." },
     { "Post-Processing Quality", "Calidad del posprocesado" },
     { "High: depth of field and bloom drawn smoothly above 720p.",
       "Alta: profundidad de campo y resplandor suaves por encima de 720p." },
@@ -553,6 +557,30 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
     /* Advanced Graphics: the engine's own switches (src/patches/sysset.cpp) */
     dod3_sysset_rows(rows);
     /* Picture Settings */
+#ifdef _WIN32
+    rows.push_back({ "RSX_HDR",
+                     "HDR",
+                     "On a display with HDR on in Windows. Direct3D 12.",
+                     { { NULL, "Off" }, { "1", "On" } },
+                     0,
+                     LIVE_DISPLAY,
+                     nullptr,
+                     PAGE_PICTURE });
+    rows.push_back({ "RSX_HDR_WHITE",
+                     "HDR Brightness",
+                     "How bright white is in HDR. Auto: as Windows' SDR content.",
+                     { { NULL, "Auto" },
+                       { "100", "100 nits" },
+                       { "150", "150 nits" },
+                       { "200", "200 nits" },
+                       { "250", "250 nits" },
+                       { "300", "300 nits" },
+                       { "400", "400 nits" } },
+                     0,
+                     LIVE_DISPLAY,
+                     nullptr,
+                     PAGE_PICTURE });
+#endif
     rows.push_back({ "DOD3_POSTFX_QUALITY",
                      "Post-Processing Quality",
                      "High: depth of field and bloom drawn smoothly above 720p.",
@@ -654,7 +682,8 @@ void apply()
                                                  : 0;
                 display = true;   /* the renderer makes or drops its MSAA targets at the reload */
             }
-            if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE"))
+            if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE") ||
+                !strcmp(r.key, "RSX_HDR") || !strcmp(r.key, "RSX_HDR_WHITE"))
                 display = true;
             if (!strcmp(r.key, "DOD3_FPS")) fps = true;
             if (!strcmp(r.key, "DOD3_UNFOCUSED")) unfocused = true;
