@@ -50,6 +50,10 @@
 #define DOD3_FN_CANVAS_PROJECT         func_00643480 /* UCanvas::execProject (patches/hud_aspect.cpp) */
 #define DOD3_FN_HUD_CALC_TRANSFORM     func_009DEAB8 /* ASqex03GameHUD::CalcTransformPosition (patches/hud_aspect.cpp) */
 #define DOD3_FN_SONG_JUDGE             func_0091D8F0 /* the note judge of branch D's final song (patches/song_autoplay.cpp) */
+#define DOD3_FN_SET_DEPTH_OF_FIELD     func_00A54554 /* the title's own switches of FSystemSettings (patches/sysset.cpp) */
+#define DOD3_FN_SET_MOTION_BLUR        func_00A54578
+#define DOD3_FN_FLIP_DEPTH_OF_FIELD    func_00A54720
+#define DOD3_FN_FLIP_MOTION_BLUR       func_00A5474C
 /* code addresses */
 #define DOD3_A_EXEC_GETSTRING    0x0145E274u
 #define DOD3_A_EXEC_BRIDGE       0x013F43A0u
@@ -80,6 +84,10 @@
 #define DOD3_A_CANVAS_PROJECT       0x00643480u
 #define DOD3_A_HUD_CALC_TRANSFORM   0x009DEAB8u
 #define DOD3_A_SONG_JUDGE           0x0091D8F0u
+#define DOD3_A_SET_DEPTH_OF_FIELD   0x00A54554u
+#define DOD3_A_SET_MOTION_BLUR      0x00A54578u
+#define DOD3_A_FLIP_DEPTH_OF_FIELD  0x00A54720u
+#define DOD3_A_FLIP_MOTION_BLUR     0x00A5474Cu
 #define DOD3_O_HUD_CANVAS           0x414u /* ASqex03GameHUD: AHUD::Canvas */
 #define DOD3_O_HUD_SCREEN_POS       0x748u /* ASqex03GameHUD: CalcTransformPosition's results, a TArray of (x, y) */
 #define DOD3_A_TREE_PROXY_VTABLE    0x016E8C34u /* FSpeedTreeSceneProxy */

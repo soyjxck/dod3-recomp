@@ -24,6 +24,10 @@
  *   DOD3_MOTION_BLUR=0       off (read by the renderer every frame: live)
  *   DOD3_POSTFX=0            the post pass off: depth of field, bloom and the
  *       colour grade together (DepthOfField gates all three; live)
+ *       The title writes both itself (the title's own switches, below): in
+ *       play and in cutscenes DepthOfField is set back to 1 every frame
+ *       (func_00A54B58, through the setter's vtable slot 0x38C), so an Off
+ *       held only until the next frame; now it is kept.
  *   DOD3_DRAW_DISTANCE=<x>   MaxDrawDistanceScale: the scene renderer
  *       multiplies every primitive's own cull distance by it, each frame
  *       (func_0061D538 squares it against MaxDrawDistanceSquared; live).
@@ -308,14 +312,43 @@ const char* const kShadows[][2] = {
 bool s_loaded = false;   /* the INI is in: writes stick */
 
 bool off(const char* v) { return v && v[0] == '0'; }
+std::atomic<bool> s_blur_off{ false }, s_dof_off{ false };   /* the player's Off, kept (below) */
 void set_motion_blur(const char* v)
 {
+    s_blur_off = off(v);
     if (s_loaded) apply_one(std::string("MotionBlur=") + (off(v) ? "0" : "1"));
 }
 void set_postfx(const char* v)
 {
+    s_dof_off = off(v);
     if (s_loaded) apply_one(std::string("DepthOfField=") + (off(v) ? "0" : "1"));
 }
+
+/* The title's own switches: it sets and flips MotionBlur and DepthOfField
+ * itself, through four small functions it reaches by pointer (two set the
+ * switch to r4, two flip it). Seen in chapter 1's play and cutscenes:
+ * DepthOfField set to 1 every frame, MotionBlur set to 0 once (func_00920D70).
+ * Each runs as the title's, and a switch the player has turned off is put
+ * back to off after it. DOD3_SYSSET_LOG=1 says when the title does it. */
+#ifdef DOD3_FN_SET_MOTION_BLUR
+void keep_off(ppu_context* ctx, void (*lifted)(ppu_context*), uint32_t field, bool hold, const char* what)
+{
+    const uint32_t lr = (uint32_t)ctx->lr, was = vm_read32(kData + field), arg = (uint32_t)ctx->gpr[4];
+    lifted(ctx);
+    dod3_drain(ctx);
+    const uint32_t now = vm_read32(kData + field);
+    if (hold && now) vm_write32(kData + field, 0);
+    static int log = -1;
+    if (log < 0) log = getenv("DOD3_SYSSET_LOG") ? 1 : 0;
+    if (log)
+        fprintf(stderr, "[sysset] the title set %s %u -> %u (r4 %u, from %08X)%s\n", what, was, now, arg, lr,
+                hold && now ? ": kept off" : "");
+}
+void hook_set_motion_blur(ppu_context* ctx) { keep_off(ctx, DOD3_FN_SET_MOTION_BLUR, 0x034, s_blur_off, "MotionBlur"); }
+void hook_flip_motion_blur(ppu_context* ctx) { keep_off(ctx, DOD3_FN_FLIP_MOTION_BLUR, 0x034, s_blur_off, "MotionBlur"); }
+void hook_set_dof(ppu_context* ctx) { keep_off(ctx, DOD3_FN_SET_DEPTH_OF_FIELD, 0x03C, s_dof_off, "DepthOfField"); }
+void hook_flip_dof(ppu_context* ctx) { keep_off(ctx, DOD3_FN_FLIP_DEPTH_OF_FIELD, 0x03C, s_dof_off, "DepthOfField"); }
+#endif
 
 void set_draw_distance(const char* v)
 {
@@ -450,6 +483,12 @@ void dod3_sysset_install()
 {
 #ifdef DOD3_FN_TREE_CREATE_PROXY
     ppu_register_function(DOD3_A_TREE_CREATE_PROXY, hook_tree_create_proxy);
+#endif
+#ifdef DOD3_FN_SET_MOTION_BLUR
+    ppu_register_function(DOD3_A_SET_MOTION_BLUR, hook_set_motion_blur);
+    ppu_register_function(DOD3_A_FLIP_MOTION_BLUR, hook_flip_motion_blur);
+    ppu_register_function(DOD3_A_SET_DEPTH_OF_FIELD, hook_set_dof);
+    ppu_register_function(DOD3_A_FLIP_DEPTH_OF_FIELD, hook_flip_dof);
 #endif
 }
 
