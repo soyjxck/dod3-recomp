@@ -17,8 +17,10 @@
 
 #import <AppKit/AppKit.h>
 #include <stdio.h>
+#include <fstream>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <unistd.h>
 
 namespace {
@@ -115,7 +117,11 @@ extern "C" int dod3_setup_mac(const char* base_dir, int force)
         /* The shader cache the package ships (tools/package_mac.sh): the
          * translated shaders and the pipeline list of a playthrough, so the
          * first launch warms up instead of compiling in play. Files the
-         * player already has are left alone; the compiled archive is theirs. */
+         * player already has are left alone; the compiled archive is theirs.
+         * The list's lines the player's list lacks are added to it: an
+         * update's list is in a newer form (0.4.1: two more render-state
+         * words), which the warm-up alone reads, so an old list kept as it
+         * was would have warmed nothing up. */
         if (NSString* res = NSBundle.mainBundle.resourcePath) {
             const fs::path shipped = fs::path(res.fileSystemRepresentation) / "cache";
             if (fs::is_directory(shipped, ec)) {
@@ -123,8 +129,22 @@ extern "C" int dod3_setup_mac(const char* base_dir, int force)
                 for (const auto& f : fs::directory_iterator(shipped / "msl", ec))
                     if (!fs::exists(base / "cache/msl" / f.path().filename(), ec))
                         fs::copy_file(f.path(), base / "cache/msl" / f.path().filename(), ec);
-                if (!fs::exists(base / "cache/pipelines.list", ec))
-                    fs::copy_file(shipped / "pipelines.list", base / "cache/pipelines.list", ec);
+                const fs::path list = base / "cache/pipelines.list";
+                if (!fs::exists(list, ec))
+                    fs::copy_file(shipped / "pipelines.list", list, ec);
+                else {
+                    std::unordered_set<std::string> have;
+                    std::string line;
+                    bool ends_line = true;   /* else the first added line would join the last */
+                    { std::ifstream in(list); while (std::getline(in, line)) have.insert(line); }
+                    { std::ifstream in(list, std::ios::binary);
+                      if (in.seekg(-1, std::ios::end)) ends_line = in.get() == '\n'; }
+                    std::ifstream in(shipped / "pipelines.list");
+                    std::ofstream out(list, std::ios::app);
+                    if (!ends_line) out << '\n';
+                    while (std::getline(in, line))
+                        if (!line.empty() && have.insert(line).second) out << line << '\n';
+                }
             }
         }
         const bool option = dod3_mac_option_held() != 0;   /* read first: it is soon let go of */
