@@ -83,7 +83,11 @@ extern "C" void dod3_mac_log_to_file(void)
      * walker was caught in one for hundreds of milliseconds (a hitch). A crash
      * can lose the last 200 ms of the log; the Windows build does the same. */
     static char buf[1 << 20];
-    if (freopen("dod3.log", "w", stderr)) setvbuf(stderr, buf, _IOFBF, sizeof buf);
+    /* Both streams append: stderr opened "w" wrote at its own offset, over
+     * whatever stdout had added (the version line, every printf), and the
+     * log ended in pieces of lines. */
+    if (FILE* f = fopen("dod3.log", "w")) fclose(f);
+    if (freopen("dod3.log", "a", stderr)) setvbuf(stderr, buf, _IOFBF, sizeof buf);
     freopen("dod3.log", "a", stdout);
     std::thread([] {
         pthread_setname_np("log flush");
