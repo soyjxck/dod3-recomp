@@ -293,6 +293,19 @@ buttons, cards) and share the file checks and the install job
 with `ui/ini.*`, which reads it as the game does (the first of a key set
 twice counts).
 
+On Windows the launcher also looks for a newer release as it opens
+(`install/update.*`): it reads the repository's release list (not GitHub's
+"latest release", which leaves pre-releases out) on a thread nothing waits
+for, and offers the newest one above its own version that has a Windows zip
+with a SHA-256 digest. Install Update downloads the zip into `.update/`
+beside the program, checks its size and digest, unpacks it, and swaps each
+file in: the old one renamed to `<name>.old` (Windows lets a running
+program and its loaded DLLs be renamed), the new one moved into its place;
+a failed swap puts back every file swapped so far. `game/`, `gamedata/` and
+an existing `dod3.ini` are never written. The launcher then starts the new
+`dod3.exe` and closes; the new one's first start removes the `.old` files.
+The approach follows King Kong Recompiled's updater.
+
 Each file the player adds is recognised by itself (`install/install.cpp`):
 the disc by its PARAM.SFO and the hash of its EBOOT.BIN (`install/iso.cpp`,
 an ISO 9660 reader), the update, the DLC and the PSN release's game by their

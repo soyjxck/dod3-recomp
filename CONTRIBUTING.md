@@ -29,7 +29,7 @@ path (`#include "install/pkg.h"`).
 | `src/kernel/` | the port's own HLE: its handler registration, the SPURS queue and LFQueue paths on Sony's lifted code, the installed DLC, the mods' files (`mods.cpp`) |
 | `src/patches/` | the game's own code done natively: the garbage collector and its reachability pass, the Edge zlib inflate, ShaderPatching's LZF loops (`spu_hooks.c`), the settings-menu patch and the engine's graphics switches; and the button prompts in other pads' glyphs (`prompts.cpp`) |
 | `src/apu/` | audio: MultiStream's MP3 decoder and DSP biquads, natively |
-| `src/install/` | the installer's core: disc, package and zip reading, SELF decryption, the keys, installing, switching and removing mods |
+| `src/install/` | the installer's core: disc, package and zip reading, SELF decryption, the keys, installing, switching and removing mods; the launcher's updates from GitHub (`update.*`) |
 | `src/ui/` | the setup (`wizard.cpp`) and the launcher (`launcher.cpp`), Dear ImGui, on shared pieces (`look.*`, `setup_shared.*`) and the window each platform gives them (`ui_win.cpp`, `ui_mac.mm`); reading `dod3.ini` (`ini.*`); the in-game settings pages (`settings_menu.cpp`) |
 | `src/os/win32/`, `src/os/macos/` | the platform layers: first-run setup entry, the Windows profiler, AppKit glue |
 | `src/res/` | the Windows resources (icon and version block) and the button-prompt atlases (`prompts/`) |

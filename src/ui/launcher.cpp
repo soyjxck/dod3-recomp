@@ -14,17 +14,23 @@
  *             one list for both), a few that are only in the file (window size,
  *             mouse camera, camera speed, this launcher) and the keyboard's keys.
  *             A change is saved at once, the file's comments kept (ui/ini.h).
+ *   Update    Windows: a newer release the launcher found on GitHub as it
+ *             opened (install/update.h), offered by a line in the footer:
+ *             its notes, and Install Update, which replaces the program's
+ *             files and starts the new one
  *
  * The look -- Inter, the colours, the art, the widgets -- is the installer's
  * too (ui/look.h). Keyboard, mouse and controller all work (the backends feed
  * ImGui's navigation).
  *
- * Tests: DOD3_LAUNCHER_OPEN=mods|dlc|settings[:<n>] opens a panel at start
+ * Tests: DOD3_LAUNCHER_OPEN=mods|dlc|settings[:<n>]|update opens a panel at start
  * (n: the settings tab, 0 Display to 3 System), DOD3_LAUNCHER_ADD=
  * '<file>|<file>' adds files as Add Files would, and DOD3_SETUP_GRAB=<prefix>
  * saves the window as <prefix>_0.ppm once it has settled (the platform's
  * grab); DOD3_LAUNCHER_AUTO=quit then closes it, =install presses Install (or
- * Remove) and closes it when that is done. DOD3_LAUNCHER_REMOVE=spanish|undub
+ * Remove) and closes it when that is done, =update installs the release the
+ * check finds (install/update.h has its own test switches) and starts it, or
+ * closes on a failure. DOD3_LAUNCHER_REMOVE=spanish|undub
  * starts removing one; DOD3_LAUNCHER_SWITCH=spanish:off|spanish:on switches
  * the translation at start; DOD3_LAUNCHER_KEYS='Down,Down,Space,...' presses
  * those keys, one every 12 frames (a key a player presses, as ImGui gets it
@@ -41,12 +47,17 @@
 
 #include "imgui_internal.h"    /* SetKeyOwner */
 
+#ifdef _WIN32
+#include "install/update.h"    /* the newest release, installed in place */
+#endif
+
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <map>
+#include <memory>
 
 const char* dod3_settings_path_now();   /* main.cpp: the dod3.ini the game will read */
 
@@ -99,6 +110,12 @@ void extra_rows(std::vector<Dod3RowSpec>& rows)
                      .label = "Launcher at Start",
                      .desc = "Open this at start. Hold Shift (Option on a Mac) to open it anyway.",
                      .choices = { { nullptr, "On" }, { "0", "Off" } } });
+#ifdef _WIN32
+    rows.push_back({ .key = "DOD3_UPDATE_CHECK",
+                     .label = "Check for Updates",
+                     .desc = "Ask GitHub for a newer release when this opens; Update, at the bottom, installs it.",
+                     .choices = { { nullptr, "On" }, { "0", "Off" } } });
+#endif
 }
 
 /* Each row's tab, in the order it is shown there; a row not listed goes on
@@ -113,6 +130,7 @@ const struct {
     { "DOD3_PROMPTS", kControls },  { "DOD3_MOUSE", kControls },     { "DOD3_MOUSE_SENS", kControls },
     { "DOD3_CAMERA_SPEED", kControls }, { "DOD3_SKIP_INTRO", kSystem }, { "DOD3_UNFOCUSED", kSystem },
     { "DOD3_SONG_AUTOPLAY", kSystem }, { "RSX_BACKEND", kSystem },  { "DOD3_LAUNCHER", kSystem },
+    { "DOD3_UPDATE_CHECK", kSystem },
 };
 
 int place_of(const char* key)
@@ -212,7 +230,58 @@ const char* key_name(ImGuiKey k)
 
 /* ---- the launcher -------------------------------------------------------------- */
 
-enum class Panel { None, Mods, Dlc, Settings };
+enum class Panel { None, Mods, Dlc, Settings, Update };
+
+#ifdef _WIN32
+/* A release's notes (GitHub Markdown) as the Update panel shows them: one
+ * entry per paragraph, heading or list item; the emphasis and the links'
+ * addresses left out. */
+struct NoteLine {
+    std::string text;
+    bool heading = false, item = false;
+};
+std::vector<NoteLine> note_lines(const std::string& md)
+{
+    std::vector<NoteLine> out;
+    for (size_t at = 0; at < md.size();) {
+        size_t e = md.find('\n', at);
+        if (e == std::string::npos) e = md.size();
+        std::string l = md.substr(at, e - at);
+        at = e + 1;
+        if (!l.empty() && l.back() == '\r') l.pop_back();
+        const size_t s = l.find_first_not_of(" \t");
+        if (s == std::string::npos) continue;
+        l.erase(0, s);
+        NoteLine n;
+        if (!l.compare(0, 2, "- ") || !l.compare(0, 2, "* ")) {
+            n.item = true;
+            l.erase(0, 2);
+        } else if (l[0] == '#') {
+            n.heading = true;
+            l.erase(0, std::min(l.size(), l.find_first_not_of("# ")));
+        } else if (l.size() > 4 && !l.compare(0, 2, "**") && l.find("**", 2) == l.size() - 2) {
+            n.heading = true;   /* a paragraph that is all bold: the notes' section headings */
+        }
+        for (size_t i = 0; i < l.size(); i++) {
+            if (l[i] == '[') {   /* [text](address): the text */
+                const size_t mid = l.find("](", i), end = mid == std::string::npos ? mid : l.find(')', mid);
+                if (end != std::string::npos) {
+                    n.text += l.substr(i + 1, mid - i - 1);
+                    i = end;
+                    continue;
+                }
+            }
+            if (l[i] == '*' && i + 1 < l.size() && l[i + 1] == '*') {   /* **bold** */
+                i++;
+                continue;
+            }
+            if (l[i] != '`') n.text += l[i];
+        }
+        out.push_back(n);
+    }
+    return out;
+}
+#endif
 
 const float kPanelSlide = 0.25f;   /* seconds a panel takes to come in */
 const char kOffNote[] = "Switched off: the game starts without it. Its files are kept, to switch it on again.";
@@ -250,16 +319,38 @@ struct Launcher : Kit {
     int tab = kDisplay;
     int capture = -1, capture_frames = 0;   /* a key binding being set */
 
+#ifdef _WIN32
+    /* updates (install/update.h) */
+    fs::path prog;                     /* the program's own folder: what an update replaces */
+    UpdateCheck upd;
+    std::unique_ptr<UpdateJob> ujob;   /* made again for each try */
+    bool upd_found = false;
+    std::vector<NoteLine> upd_notes;
+#endif
+
     /* tests (the header) */
     struct {
         std::string grab;
-        bool quit = false, install = false;
+        bool quit = false, install = false, update = false;
         std::vector<ImGuiKey> keys;   /* DOD3_LAUNCHER_KEYS */
         size_t next_key = 0;
     } tests;
 
-    bool working() const { return flow == Flow::Working; }
+    bool working() const
+    {
+#ifdef _WIN32
+        if (ujob && ujob->running()) return true;
+#endif
+        return flow == Flow::Working;
+    }
     float panel_in() const { return panel == Panel::None ? 0.0f : ease_out((float)(now - panel_at) / kPanelSlide); }
+
+    void open_panel(Panel p)
+    {
+        panel = p;
+        panel_at = now;
+        focus_panel = ImGui::GetIO().NavVisible;
+    }
 
     void take_focus()
     {
@@ -475,9 +566,7 @@ struct Launcher : Kit {
                 if (!working()) panel = Panel::None;
                 return;
             }
-            panel = p;
-            panel_at = now;
-            focus_panel = ImGui::GetIO().NavVisible;
+            open_panel(p);
         };
         auto back_here = [&](Panel p) {
             if (refocus != p) return;
@@ -507,11 +596,26 @@ struct Launcher : Kit {
         char v[64];
         snprintf(v, sizeof v, "Version %s", DOD3_VERSION_STRING);
         dl->AddText(F.regular, px(13), ImVec2(px(72), y), alpha(kDim, 0.8f), v);
-        const float vw = text_size(F.regular, 13, v).x;
+        float x = px(72) + text_size(F.regular, 13, v).x + px(26);
+#ifdef _WIN32
+        /* a newer release: its Update panel */
+        if (upd_found) {
+            const std::string t = "Update to " + upd.release.label;
+            const ImVec2 us = text_size(F.semibold, 13, t.c_str());
+            ImGui::SetCursorScreenPos(ImVec2(x - px(6), y - px(4)));
+            const bool pressed = hit("##update", ImVec2(us.x + px(26), us.y + px(8)));
+            const bool hot = hot_item();
+            dl->AddCircleFilled(ImVec2(x + px(3), y + us.y / 2), px(3.5f), kAccentHi);
+            dl->AddText(F.semibold, px(13), ImVec2(x + px(14), y), hot ? kText : kAccentHi, t.c_str());
+            if (hot) dl->AddLine(ImVec2(x + px(14), y + us.y + px(1)), ImVec2(x + px(14) + us.x, y + us.y + px(1)), kAccent, px(1.5f));
+            if (pressed && cooldown == 0) open_panel(Panel::Update);
+            x += us.x + px(14) + px(26);
+        }
+#endif
         /* Game Files: the installer, for the disc or the update */
         const char* gf = "Game Files";
         const ImVec2 gs = text_size(F.semibold, 13, gf);
-        const ImVec2 gp(px(72) + vw + px(26), y);
+        const ImVec2 gp(x, y);
         ImGui::SetCursorScreenPos(ImVec2(gp.x - px(6), gp.y - px(4)));
         const bool busy = working() || checks.pending() > 0;
         ImGui::BeginDisabled(busy);
@@ -767,6 +871,118 @@ struct Launcher : Kit {
             result_page();
         ImGui::EndChild();
     }
+
+#ifdef _WIN32
+    /* ---- the Update panel ---- */
+
+    void start_update()
+    {
+        ujob = std::make_unique<UpdateJob>();
+        ujob->start(prog, upd.release);
+    }
+
+    /* the check's answer, and the install's end: a finished install starts
+     * the new dod3.exe and closes this one (*result) */
+    void poll_update(int* result)
+    {
+        if (upd.collect() && upd.found) {
+            upd_found = true;
+            upd_notes = note_lines(upd.release.notes);
+            say(upd.release.label + " is out: Update, at the bottom");
+            if (tests.update) {
+                open_panel(Panel::Update);
+                start_update();
+            }
+        }
+        if (ujob && ujob->collect()) {
+            if (ujob->ok && tests.update) {   /* the new one closes by itself, without a check, its window grabbed apart */
+                _putenv_s("DOD3_LAUNCHER_AUTO", "quit");
+                _putenv_s("DOD3_UPDATE_CHECK", "0");
+                if (!tests.grab.empty()) _putenv_s("DOD3_SETUP_GRAB", (tests.grab + "_after").c_str());
+            }
+            if (ujob->ok && update_restart(prog))
+                *result = kQuit;
+            else if (tests.update) {
+                fprintf(stderr, "[launcher] update %s\n", ujob->ok ? "installed, not restarted" : ujob->error.c_str());
+                *result = kQuit;
+            }
+        }
+    }
+
+    void update_panel(ImVec2 body, ImVec2 size)
+    {
+        const Release& r = upd.release;
+        if (ujob && (ujob->running() || ujob->ok)) {
+            ImGui::SetCursorScreenPos(body);
+            ImGui::BeginChild("##updating", size, ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground);
+            if (ujob->ok) {   /* installed, but the new one could not be started */
+                label(F.semibold, 19, kText, "Installed");
+                ImGui::Dummy(ImVec2(0, px(6)));
+                para(F.regular, 14, kDim, ("Close the launcher and start dod3.exe again to play " + r.label + ".").c_str());
+            } else {
+                const int step = ujob->step;
+                const uint64_t done = ujob->done, total = ujob->total;
+                label(F.semibold, 19, kText, (ujob->what() + "...").c_str());
+                ImGui::Dummy(ImVec2(0, px(14)));
+                progress(total ? (float)((double)done / (double)total) : 0.0f);
+                ImGui::Dummy(ImVec2(0, px(8)));
+                para(F.regular, 13, kDim,
+                     step == UpdateJob::kInstalling ? (std::to_string(done) + " of " + std::to_string(total) + " files").c_str()
+                     : step == UpdateJob::kChecking ? "Its SHA-256 against the one GitHub lists"
+                                                     : (size_text(done) + " of " + size_text(total)).c_str());
+                ImGui::Dummy(ImVec2(0, px(14)));
+                if (step < UpdateJob::kInstalling) {
+                    take_focus();
+                    if (button(ujob->cancel ? "Cancelling..." : "Cancel", 0, ButtonKind::Quiet, !ujob->cancel))
+                        ujob->cancel = true;
+                } else {
+                    para(F.regular, 13, kFaint, "The launcher starts again when it is done.");
+                }
+            }
+            ImGui::EndChild();
+            return;
+        }
+        /* the offer, with a failed try's reason */
+        const float y = body.y + size.y - px(44);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        dl->AddLine(ImVec2(body.x, y - px(16)), ImVec2(body.x + size.x, y - px(16)), kLine);
+        ImGui::SetCursorScreenPos(ImVec2(body.x, y));
+        take_focus();
+        if (button("Install Update", 0, ButtonKind::Main)) start_update();
+        ImGui::SameLine(0, px(10));
+        if (button("Release Page", 0)) open_in_browser(r.page);
+        const float bx = ImGui::GetItemRectMax().x + px(18);
+        dl->AddText(F.regular, px(13), ImVec2(bx, y + px(4)), kDim,
+                    "Your game, saves and settings stay as they are. The launcher starts again when it is done.",
+                    nullptr, body.x + size.x - bx);
+        ImGui::SetCursorScreenPos(body);
+        ImGui::BeginChild("##update", ImVec2(size.x, size.y - px(64)), ImGuiChildFlags_NavFlattened,
+                          ImGuiWindowFlags_NoBackground);
+        label(F.semibold, 19, kText, ("Drakengard 3 Recompiled " + r.label).c_str());
+        std::vector<std::string> about;
+        if (!r.date.empty()) about.push_back("Released " + r.date);
+        if (r.size) about.push_back(size_text(r.size) + " download");
+        about.push_back("you have " + std::string(DOD3_VERSION_STRING));
+        para(F.regular, 13, kDim, join(about).c_str());
+        if (ujob && !ujob->error.empty()) {
+            ImGui::Dummy(ImVec2(0, px(6)));
+            para(F.medium, 14, ujob->cancel ? kDim : kErr, ujob->error.c_str());
+            if (ujob->changed)
+                para(F.regular, 13, kWarn, "Unzip the release from its page into this folder to finish.");
+        }
+        ImGui::Dummy(ImVec2(0, px(10)));
+        for (const NoteLine& n : upd_notes) {
+            if (n.heading) {
+                ImGui::Dummy(ImVec2(0, px(6)));
+                label(F.semibold, 15, kText, n.text.c_str());
+            } else {
+                para(F.regular, 13, n.item ? alpha(kText, 0.82f) : kDim, (n.item ? "\xE2\x80\xA2  " + n.text : n.text).c_str());
+            }
+            ImGui::Dummy(ImVec2(0, px(3)));
+        }
+        ImGui::EndChild();
+    }
+#endif
 
     /* ---- the Settings panel ---- */
 
@@ -1050,21 +1266,35 @@ struct Launcher : Kit {
             if (job.ok) say(!removing.empty() ? "Removed" : "Installed");
         }
 
+        int restart = kGoOn;
+#ifdef _WIN32
+        poll_update(&restart);
+#endif
+
         backdrop(art, 1.0f, panel_in());
         begin_window("##launcher");
         title();
         int result = menu();
         if (const int f = footer(); f != kGoOn) result = f;
+        if (restart != kGoOn) result = restart;
 
         if (panel != Panel::None) {
             ImVec2 body, size;
-            const char* heading = panel == Panel::Mods ? "Mods" : panel == Panel::Dlc ? "DLC" : "Settings";
-            const char* sub = panel == Panel::Mods ? "Fan-made additions, installed beside your own game files."
-                              : panel == Panel::Dlc ? "The downloadable content you own."
-                                                    : "Saved to dod3.ini as you change them; used at the next start.";
+            const char* heading = panel == Panel::Mods       ? "Mods"
+                                  : panel == Panel::Dlc      ? "DLC"
+                                  : panel == Panel::Update   ? "Update"
+                                                             : "Settings";
+            const char* sub = panel == Panel::Mods     ? "Fan-made additions, installed beside your own game files."
+                              : panel == Panel::Dlc    ? "The downloadable content you own."
+                              : panel == Panel::Update ? "A newer release of the port, from its GitHub page."
+                                                       : "Saved to dod3.ini as you change them; used at the next start.";
             const bool close = panel_frame(heading, sub, panel_in(), true, &body, &size);
             if (panel == Panel::Settings)
                 settings_panel(body, size);
+#ifdef _WIN32
+            else if (panel == Panel::Update)
+                update_panel(body, size);
+#endif
             else if (flow != Flow::Idle)
                 flow_page(body, size);
             else if (panel == Panel::Mods)
@@ -1091,11 +1321,13 @@ struct Launcher : Kit {
         if (const char* a = getenv("DOD3_LAUNCHER_AUTO")) {
             tests.quit = !strcmp(a, "quit");
             tests.install = !strcmp(a, "install");
+            tests.update = !strcmp(a, "update");
         }
         if (const char* o = getenv("DOD3_LAUNCHER_OPEN")) {
             panel = !strncmp(o, "mods", 4)       ? Panel::Mods
                     : !strncmp(o, "dlc", 3)      ? Panel::Dlc
                     : !strncmp(o, "settings", 8) ? Panel::Settings
+                    : !strncmp(o, "update", 6)   ? Panel::Update
                                                  : Panel::None;
             if (const char* c = strchr(o, ':')) tab = std::clamp(atoi(c + 1), 0, kTabs - 1);
         }
@@ -1174,6 +1406,16 @@ int run_launcher(const fs::path& base)
     dod3_setting_rows(L.rows);
     extra_rows(L.rows);
     L.read_test_env();
+#ifdef _WIN32
+    {
+        L.prog = update_program_dir();
+        std::string from;
+        if (update_cleanup(L.prog, &from)) L.say("Updated from " + from + " to " + DOD3_VERSION_STRING);
+        const char* e = getenv("DOD3_UPDATE_CHECK");
+        const auto it = L.kv.find("DOD3_UPDATE_CHECK");
+        if (e ? strcmp(e, "0") != 0 : it == L.kv.end() || it->second != "0") L.upd.start();
+    }
+#endif
     int result = kQuit;
     while (ui_frame_begin()) {
         const int r = L.frame();

@@ -97,6 +97,8 @@ art (from your copy of the game):
   system settings, saved to dod3.ini as you change them
 - Game Files, at the bottom: the setup, to install the disc or the update
   again
+- Update to ..., at the bottom (Windows), once a newer release is out: its
+  notes, and Install Update (see Your saves, and updating)
 
 It works with the mouse, the keyboard and a controller (Esc or the pad's
 back button closes a page). To start the game without it, set Settings >
@@ -159,6 +161,7 @@ folder above). It explains each setting:
 | DOD3_TREE_LOD | 2, 3, 5 or 10: the large trees are drawn, and stay their full models, that many times as far away; unset is the original. From the next area loaded |
 | DOD3_SKIP_INTRO | 1 (default) skips the logos and the opening movie at start-up; 0 keeps them |
 | DOD3_LAUNCHER | 0 starts the game straight away, without the launcher; holding Shift (Option on a Mac) while it starts opens the launcher anyway. Unset opens it at every start |
+| DOD3_UPDATE_CHECK | Windows: 0 stops the launcher asking GitHub for a newer release when it opens. In the launcher: Settings > System > Check for Updates. Unset asks |
 | DOD3_UNFOCUSED | While the window is in the background: unset keeps running, mute silences the audio, pause stops the game until you come back |
 | DOD3_SONG_AUTOPLAY | 1 plays the song of branch D's final mission for you: every note is pressed on its time (the RPCS3 patch "Auto Play Song of The D Branch Final Mission", by bucanero). In the launcher: Settings > System > Final Song Auto-Play. Unset is off |
 | DOD3_PROMPTS | The buttons the game shows: unset follows the controller you hold; or ps3, ps4, ps5, xbox, switch, keyboard |
@@ -301,8 +304,16 @@ Saves and the game's own data are in the "gamedata" folder next to
 dod3.exe (on a Mac, in the Application Support folder). Back that folder up
 to keep your progress.
 
-To update to a new release, unzip it into a new folder and move these into
-it from the old one: game (the installed game), gamedata (saves) and
+On Windows the launcher looks for a newer release on GitHub each time it
+opens (Settings > System > Check for Updates turns that off). When there is
+one, "Update to ..." shows at the bottom: it opens the release's notes, and
+Install Update downloads it, checks it against the SHA-256 GitHub lists for
+it, puts its files in place of the old ones and starts the new version. Your
+game, gamedata and dod3.ini are left as they are; if a file cannot be
+replaced (another program has it open), every file is put back as it was.
+
+To update by hand, unzip the new release into a new folder and move these
+into it from the old one: game (the installed game), gamedata (saves) and
 dod3.ini (your settings). Leave cache behind: a Windows release brings its
 own compiled shaders, newer than the old folder's. Unzipping it over
 the old folder works too, but the release's dod3.ini (the default

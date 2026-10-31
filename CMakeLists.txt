@@ -283,6 +283,8 @@ if(WIN32)
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/setup_shared.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/png.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ui_win.cpp"
+        # the launcher's updates from GitHub (WinHTTP; the Mac's app is replaced another way)
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/install/update.cpp"
         ${IMGUI_SOURCES})
 elseif(APPLE)
     # The Mac's window layer (src/ui/ui_mac.mm): a window with a Metal
