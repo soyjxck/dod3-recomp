@@ -368,6 +368,7 @@ set(PORT_PATCH_SOURCES               # native replacements of the game's own cod
     src/patches/prompts.cpp          # the button prompts in the pad's own glyphs
     src/patches/hud_aspect.cpp       # the HUD in a view wider or narrower than 16:9
     src/patches/song_autoplay.cpp    # branch D's final song played for you (DOD3_SONG_AUTOPLAY)
+    src/patches/dragon_cursor.cpp    # the mouse moves the dragon's shooting cursor
     src/patches/sysset.cpp)
 set(PORT_UI_SOURCES                  # the in-game settings pages
     src/ui/settings_menu.cpp

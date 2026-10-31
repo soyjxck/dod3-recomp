@@ -12,3 +12,12 @@ void dod3_camera_view(int pitch, int yaw, int gameplay); /* 14: the view's rotat
 unsigned long long dod3_camera_mouse_time();
 /* DOD3_MOUSE_SENS may have changed (the settings page). */
 void dod3_camera_reload();
+
+/* The dragon's shooting cursor (src/patches/dragon_cursor.cpp), once a frame
+ * while it is on screen: the mouse's motion since the last frame as a move of
+ * the cursor, in fractions of the screen's width and height (false: none, or
+ * no mouse look). The view gets nothing of it meanwhile, except what the
+ * cursor hands back with dod3_camera_cursor_spill: the part of a move that
+ * went past the screen's edge. */
+bool dod3_camera_cursor_motion(float* dx, float* dy);
+void dod3_camera_cursor_spill(float dx, float dy);

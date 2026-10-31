@@ -223,6 +223,12 @@ sets how far the mouse turns the camera; the game's own camera settings
 apply to the mouse as they do to the stick. Escape pauses, so it no longer
 closes the game: Alt+F4 does, or Cmd+Q on a Mac.
 
+On the dragon in the sky, the mouse moves the aiming cursor (the red ring
+of the lock-on) and the cursor stays where you leave it; moving the mouse
+past the edge of the screen turns the view. Hold the left mouse button and
+sweep the cursor over enemies to lock on to them, then let go to fire at
+all of them. W A S D move the cursor too, as the stick does on a pad.
+
 While the game is in front the cursor is hidden and the mouse is the
 game's; switch to another application (Alt+Tab, Cmd+Tab on a Mac) and it
 is yours again. On a Mac the keys are places on the keyboard, the same on

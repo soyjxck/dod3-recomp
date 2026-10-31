@@ -54,6 +54,8 @@
 #define DOD3_FN_SET_MOTION_BLUR        func_00A54578
 #define DOD3_FN_FLIP_DEPTH_OF_FIELD    func_00A54720
 #define DOD3_FN_FLIP_MOTION_BLUR       func_00A5474C
+#define DOD3_FN_DRAGON_SHOOTING_CURSOR func_009D26F8 /* ASqex03GamePawnPlayerDragon::UpdateShootingCursor (patches/dragon_cursor.cpp) */
+#define DOD3_FN_SHOOTING_CURSOR_ON     func_0096B9A8 /* ASqex03GamePawn::IsEnableShootingCursor */
 /* code addresses */
 #define DOD3_A_EXEC_GETSTRING    0x0145E274u
 #define DOD3_A_EXEC_BRIDGE       0x013F43A0u
@@ -88,7 +90,10 @@
 #define DOD3_A_SET_MOTION_BLUR      0x00A54578u
 #define DOD3_A_FLIP_DEPTH_OF_FIELD  0x00A54720u
 #define DOD3_A_FLIP_MOTION_BLUR     0x00A5474Cu
-#define DOD3_O_HUD_CANVAS           0x414u /* ASqex03GameHUD: AHUD::Canvas */
+#define DOD3_A_DRAGON_SHOOTING_CURSOR 0x009D26F8u
+#define DOD3_O_SHOOTING_CURSOR      0x13F4u /* ASqex03GamePawn: m_xTarget.m_xShooting.m_vCurPos, (x, y) of the screen */
+#define DOD3_O_SHOOTING_RECT        0x1448u /* m_xTarget.m_xShooting.m_fShootingRect_Up, _Bottom, _Left, _Right */
+#define DOD3_O_HUD_CANVAS          0x414u /* ASqex03GameHUD: AHUD::Canvas */
 #define DOD3_O_HUD_SCREEN_POS       0x748u /* ASqex03GameHUD: CalcTransformPosition's results, a TArray of (x, y) */
 #define DOD3_A_TREE_PROXY_VTABLE    0x016E8C34u /* FSpeedTreeSceneProxy */
 #else

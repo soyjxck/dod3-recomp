@@ -29,12 +29,18 @@
  * is read off the view's own pitch, which the script reports every frame, so
  * the mouse moves the view evenly until the limit itself.
  *
+ * On the dragon in the sky, while its shooting cursor is on screen, the
+ * mouse moves that cursor instead, and only what goes past the screen's
+ * edge turns the view (src/patches/dragon_cursor.cpp).
+ *
  *   DOD3_MOUSE=0            no mouse look (and the cursor is left alone)
  *   DOD3_MOUSE_SENS=<x>     1 is 0.05 degrees a count (default)
  *   DOD3_CAM_LOG=1          a line a frame: the view's rotation, the stick,
  *                           the mouse's values, the frame's time
  *   DOD3_CAM_TEST_FILE=<path>  "x y" in the file is added to the two values,
  *                           to measure the camera with
+ *   DOD3_MOUSE_TEST_FILE=<path>  "dx dy" in the file is added to the mouse's
+ *                           counts every frame, the window's focus not needed
  *
  * The title's own camera settings (Controller Settings: left/right and
  * up/down inverted, their sensitivities) are applied after this, to the
@@ -85,6 +91,7 @@ bool s_init;
 bool s_mouse = true, s_fps_fix = true, s_log;
 float s_sens = 1.0f;
 const char* s_test_file;
+const char* s_mouse_test_file;
 
 float s_dt = kReferenceFrame;   /* this frame's time, seconds */
 float s_scale = 1.0f;           /* the stick's, for the frame rate */
@@ -94,6 +101,16 @@ float s_stick_x, s_stick_y;     /* the title's own values, as last asked */
 float s_view_pitch;             /* the gameplay view's pitch, degrees */
 uint64_t s_frame_time;
 std::atomic<uint64_t> s_mouse_time{ 0 };
+
+/* The dragon's shooting cursor (src/patches/dragon_cursor.cpp): while it is on
+ * screen, the mouse moves it and only what goes past the screen's edge turns
+ * the view. A count moves it about as far across the screen as it turns the
+ * view (0.05 degrees of a view some 70 degrees wide), the same distance up
+ * as across. */
+const float kCursorPerCount = 0.0007f;   /* of the screen's width, at DOD3_MOUSE_SENS 1 */
+const float kScreenAspect = 16.0f / 9.0f;
+uint64_t s_cursor_time;                  /* when the cursor last took the mouse */
+float s_spill_x, s_spill_y;              /* counts past the screen's edge, for the view */
 
 void read_sensitivity()
 {
@@ -113,6 +130,21 @@ void init()
     if (const char* e = getenv("DOD3_CAMERA_SPEED")) s_fps_fix = strcmp(e, "original") != 0;
     s_log = getenv("DOD3_CAM_LOG") != nullptr;
     s_test_file = getenv("DOD3_CAM_TEST_FILE");
+    s_mouse_test_file = getenv("DOD3_MOUSE_TEST_FILE");
+}
+
+/* The mouse's counts since the last call, and DOD3_MOUSE_TEST_FILE's. */
+void take_mouse(int* dx, int* dy)
+{
+    rsx_host_mouse_take_motion(dx, dy);
+    if (!s_mouse_test_file) return;
+    int a[2] = { 0, 0 };
+    if (FILE* f = fopen(s_mouse_test_file, "r")) {
+        if (fscanf(f, "%d %d", &a[0], &a[1]) < 2) a[0] = a[1] = 0;
+        fclose(f);
+    }
+    *dx += a[0];
+    *dy += a[1];
 }
 
 }  // namespace
@@ -133,7 +165,14 @@ void dod3_camera_frame(float delta, int dragon)
     s_scale = s_fps_fix && !dragon && dt < kReferenceFrame ? kReferenceFrame / dt : 1.0f;
 
     int dx = 0, dy = 0;
-    if (s_mouse) rsx_host_mouse_take_motion(&dx, &dy);
+    if (s_mouse && t - s_cursor_time < 100000) {   /* the dragon's cursor has the mouse: what went past the edge */
+        dx = (int)s_spill_x;
+        dy = (int)s_spill_y;
+        s_spill_x -= (float)dx;
+        s_spill_y -= (float)dy;
+    } else if (s_mouse) {
+        take_mouse(&dx, &dy);
+    }
     if (stale) dx = dy = 0;
     const float degrees = s_sens * kDegreesPerCount;
     s_mouse_x = (float)dx * degrees / (kYaw * dt * dt);
@@ -153,6 +192,32 @@ void dod3_camera_frame(float delta, int dragon)
             s_test_y = a[1];
         }
     }
+}
+
+bool dod3_camera_cursor_motion(float* dx, float* dy)
+{
+    init();
+    *dx = *dy = 0.0f;
+    if (!s_mouse) return false;
+    const uint64_t t = dod3_now_us();
+    const bool fresh = t - s_cursor_time < 250000;   /* at the cursor's first frame, the motion before was the view's */
+    s_cursor_time = t;
+    int mx = 0, my = 0;
+    take_mouse(&mx, &my);
+    if (!fresh) {
+        s_spill_x = s_spill_y = 0.0f;
+        return false;
+    }
+    if (mx || my) s_mouse_time.store(t, std::memory_order_relaxed);
+    *dx = (float)mx * s_sens * kCursorPerCount;
+    *dy = (float)my * s_sens * kCursorPerCount * kScreenAspect;
+    return mx || my;
+}
+
+void dod3_camera_cursor_spill(float dx, float dy)
+{
+    s_spill_x += dx / (s_sens * kCursorPerCount);
+    s_spill_y += dy / (s_sens * kCursorPerCount * kScreenAspect);
 }
 
 int dod3_camera_active() { return s_mouse_x != 0.0f || s_mouse_y != 0.0f || s_test_x != 0.0f || s_test_y != 0.0f; }
