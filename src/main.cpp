@@ -2223,18 +2223,27 @@ int main(int argc, char** argv)
      * resolution, at any scale. With 640x360 left alone as well (400) a seam
      * runs down the foliage of the open levels, so that one still scales. */
     dod3_setenv("RSX_SCALE_MIN", "200", 0);
-    /* Post-Processing Quality, High (DOD3_POSTFX_QUALITY=high): the title's
-     * depth-of-field and bloom composite (fp-struct a3e8d0b0476b7c09) drawn
-     * by our own version of it, shaders/override (RSX_FP_OVERRIDE_DIR). Its
-     * blur and bloom are quarter-size targets stretched over the picture --
-     * three times as far at 4K, where one bilinear tap shows their texels --
-     * and it keeps the full-size picture where a pixel is half out of focus:
-     * at 4K that was sharp detail laid over the blur, at 1280x720 a picture
-     * as soft as its pixels. Ours reads the two smoothly and softens the
-     * picture as far as the pixel is out of focus; at 1280x720 it is the
-     * title's own. The folder: the app's Resources on a Mac, else beside the
-     * executable, else the working folder's. */
-    if (const char* q = getenv("DOD3_POSTFX_QUALITY"); q && !strcmp(q, "high")) {
+    /* Our own version of the title's depth-of-field and bloom composite
+     * (fp-struct a3e8d0b0476b7c09), shaders/override (RSX_FP_OVERRIDE_DIR),
+     * in place of its translation for two settings:
+     *   Post-Processing Quality, High (DOD3_POSTFX_QUALITY=high; its
+     *   POSTFX_HIGH): the composite's blur and bloom are quarter-size
+     *   targets stretched over the picture -- three times as far at 4K,
+     *   where one bilinear tap shows their texels -- and it keeps the
+     *   full-size picture where a pixel is half out of focus: at 4K sharp
+     *   detail laid over the blur, at 1280x720 a picture as soft as its
+     *   pixels. Ours reads the two smoothly and softens the picture as far
+     *   as the pixel is out of focus; at 1280x720 it is the title's own.
+     *   HDR (RSX_HDR, from the start): it also writes the renderer's
+     *   highlight plane, how much brighter each pixel was before the title
+     *   clipped it, which the HDR present shows (switched on later in the
+     *   game, HDR has no highlights until the next start).
+     * The folder: the app's Resources on a Mac, else beside the executable,
+     * else the working folder's. */
+    const char* pq = getenv("DOD3_POSTFX_QUALITY");
+    const char* hdr = getenv("RSX_HDR");
+    const bool postfx_high = pq && !strcmp(pq, "high");
+    if (postfx_high || (hdr && *hdr && hdr[0] != '0')) {
         static std::string dir = "shaders/override";
         std::vector<std::string> where;
 #ifdef __APPLE__
@@ -2246,6 +2255,7 @@ int main(int argc, char** argv)
         for (const std::string& w : where)
             if (std::filesystem::is_directory(std::filesystem::u8path(w), ec)) { dir = w; break; }
         dod3_setenv("RSX_FP_OVERRIDE_DIR", dir.c_str(), 0);
+        if (postfx_high) dod3_setenv("RSX_FP_OVERRIDE_DEFINES", "POSTFX_HIGH", 0);
     }
     /* Translated shaders survive between runs (see rsx_metal_backend.m). */
     dod3_setenv("PS3RECOMP_MSL_CACHE", "cache/msl", 0);

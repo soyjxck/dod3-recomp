@@ -1,9 +1,15 @@
 /* Drakengard 3's depth-of-field and bloom composite (the engine's
  * UberPostProcessEffect; fragment program fp-struct a3e8d0b0476b7c09), in
  * place of its translation when the renderer is given this folder
- * (RSX_FP_OVERRIDE_DIR: Post-Processing Quality, High). The translation as
- * it is at 1280x720; above it, the quarter-size blur and bloom are read
- * smoothly and the full-size picture is softened where it is out of focus. */
+ * (RSX_FP_OVERRIDE_DIR; src/main.cpp). Made from the translation by
+ * tools/make_postfx_override.py: run it again when the decompiler's output
+ * changes.
+ *   POSTFX_HIGH (Post-Processing Quality, High; RSX_FP_OVERRIDE_DEFINES):
+ *     above 1280x720 the quarter-size blur and bloom are read smoothly and
+ *     the full-size picture is softened where it is out of focus; at
+ *     1280x720 the translation as it is.
+ *   Always: the HDR highlight plane at the second target (rsx_hdr_plane),
+ *     which the title's single target leaves unbound unless HDR is on. */
 struct PSInput {
     float4 position : SV_POSITION; float4 col0 : COLOR0; float4 col1 : COLOR1;
     float4 fog : FOG;
@@ -50,7 +56,11 @@ PSOutput main(PSInput input) {
     uint tw, th;
     rsx_tex[0].GetDimensions(tw, th);
     const float k = (float)tw / 1280.0;   /* internal pixels per original pixel */
+#ifdef POSTFX_HIGH
     const bool hi = k > 1.01;              /* at 1280x720, the translation as it is */
+#else
+    const bool hi = false;                 /* Post-Processing Quality: Original */
+#endif
     { float4 _v = (float4)((input.tc1).zwzz); r[0].xy = _v.xy; }
     { float4 _v = (float4)(min(((r[0]).xyzw), ((fp_constants[0]).zwzz))); r[0].xy = _v.xy; }
     { float4 _v = (float4)(max(((r[0]).xyzw), ((fp_constants[1]).xyxx))); r[0].xy = _v.xy; }
@@ -117,7 +127,17 @@ PSOutput main(PSInput input) {
     PSOutput _out;
     float4 _o0 = r[0];
     _out.t0 = (_o0 == _o0) ? _o0 : (float4)0;
-    float4 _o1 = r[2];
-    _out.t1 = (_o1 == _o1) ? _o1 : (float4)0;
+    /* The HDR highlight plane (rsx_hdr_plane: the renderer binds it here, as
+     * the second target, while HDR is on; otherwise nothing is). rgb: what
+     * went to the frame; a: how many times brighter the pixel was, in linear
+     * light, before the clip -- the scene and its bloom (h[2]) through the
+     * title's own encode (its exponents, fp_constants 7, 9 and 8 for red,
+     * green and blue) above 1, then as a display decodes it (2.2). */
+    {
+        const float3 e = pow(max(h[2].xyz, 1e-6), float3(fp_constants[7].x, fp_constants[9].x, fp_constants[8].x));
+        const float over = max(max(e.x, e.y), max(e.z, 1.0));
+        const float4 plane = float4(saturate(r[0].xyz), min(pow(over, 2.2), 64.0));
+        _out.t1 = (plane == plane) ? plane : float4(saturate(r[0].xyz), 1.0);
+    }
     return _out;
 }
