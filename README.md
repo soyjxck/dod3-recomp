@@ -194,14 +194,18 @@ included), windowed, borderless or full-screen display, wider screens (16:10,
 21:9, 32:9), a frame-rate cap of your choice (60 and 120 tested) or one that
 follows the scene, with the frames shown at even intervals, FXAA or MSAA,
 anisotropic filtering, a wider field of view, sharper shadows, a longer draw
-distance for scenery and for trees, skipping the intro logos and movie,
-pausing or muting when the window is in the background, keyboard and mouse,
-trophies (a pop-up as you earn one, and their list in the launcher),
-and the button prompts of the pad you hold -- set in the launcher, or in a
-Graphics Settings, a System Settings, an Advanced Graphics and a Picture
-Settings page added to the game's own Settings menu. The launcher also installs your DLC and two
-fan-made mods: the Spanish translation (the added pages are in Spanish with
-it) and the DLC Undub.
+distance for scenery and for trees, HDR (Windows and macOS: the light the
+game clips at white goes up to your display's peak), a depth of field and
+bloom drawn smoothly at high resolutions, depth of field and the blood on
+the screen each on or off, skipping the intro logos and movie, pausing or
+muting when the window is in the background, keyboard and mouse, trophies
+(a pop-up as you earn one, and their list in the launcher), cheats, and the
+button prompts of the pad you hold -- set in the launcher, or in a Graphics
+Settings, a System Settings, an Advanced Graphics and a Picture Settings
+page added to the game's own Settings menu. The launcher also installs your
+DLC and two fan-made mods (the Spanish translation, with the added pages in
+Spanish, and the DLC Undub), and on Windows updates the port from its
+releases.
 
 Known issues: the game has been tested on few machines, and at 16:10, 21:9
 and 32:9 some of the HUD is still out of place.

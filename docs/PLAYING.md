@@ -116,6 +116,8 @@ art (from your copy of the game):
 - DLC: which of the 20 packs are installed, and Add DLC Packages
 - Settings: the display, graphics, controls (the keyboard's keys too),
   system settings and cheats, saved to dod3.ini as you change them
+- Trophies: the game's trophies, what you have earned and when (see
+  Trophies below)
 - Game Files, at the bottom: the setup, to install the disc or the update
   again
 - Update to ..., at the bottom (Windows), once a newer release is out: its
@@ -143,8 +145,8 @@ without installing anything.
 
 ## Settings
 
-In the launcher: Settings, in four tabs (Display, Graphics, Controls,
-System), sets the settings below and saves them to dod3.ini as you change
+In the launcher: Settings, in five tabs (Display, Graphics, Controls,
+System, Cheats), sets the settings below and saves them to dod3.ini as you change
 them; the game uses them from its next start.
 
 In the game: Settings > Graphics Settings (on the title menu, next to
@@ -205,6 +207,50 @@ folder above). It explains each setting:
 | KEY_CROSS, KEY_MOVE_UP, ... | Windows: the keys for each pad button and stick direction (the file lists them all) |
 | DOD3_CAMERA_SPEED | original gives the camera stick the game's own speed, which falls as the frame rate rises; unset keeps it at the console's |
 | RSX_BACKEND | Windows: vulkan for the Vulkan renderer (experimental); unset is Direct3D 12 |
+
+
+## HDR
+
+On a display that can show HDR, the game can use it: Settings > Picture
+Settings > HDR in the game, or `RSX_HDR = 1` in dod3.ini.
+
+- Windows: turn HDR on for the display in Windows first (Settings > Display
+  > Use HDR). Direct3D 12 and Vulkan both do it.
+- macOS: a display with EDR headroom, such as a MacBook Pro's XDR display,
+  a Pro Display XDR, or an external HDR display with HDR on.
+- Linux: not yet.
+
+The game's picture is made for an SDR screen; in HDR it is shown as an SDR
+screen would show it -- the same colours and the same dark shadows -- at
+the brightness HDR Brightness sets for white, and the light the game itself
+clips at white (the sky, fire, embers, glints on blades) goes on above it,
+up to your display's peak, rolled off smoothly instead of cut. The HUD,
+menus, movies and pop-ups stay at the white you set.
+
+- HDR Brightness: Auto takes Windows' SDR content brightness (on a Mac, the
+  system's normal white). A lower white leaves the highlights more room above
+  it; 200 to 300 nits is a good start in a dim room.
+- Switching HDR on in the game changes the picture at once; the brighter
+  highlights need HDR on when the game starts, so they come at the next
+  start. `RSX_HDR_HIGHLIGHTS = 0` keeps the picture within white.
+- On a Mac the room above white follows the brightness setting, and macOS
+  takes it back while the game's window is covered.
+
+
+## Trophies
+
+The game's 72 trophies are earned as on the console, read from your copy's
+own trophy list, and kept in gamedata/trophies (NPWR04682.json) with your
+saves: back that folder up with them. Trophies earned with earlier versions
+of the port carry over. Nothing goes to PSN or anywhere else.
+
+- In the game: a pop-up at the top right as you earn one, with its icon,
+  name and grade (a platinum follows the trophy that completes it). Windows
+  with Direct3D 12 for now; Settings > System > Trophy Pop-ups in the
+  launcher turns them off.
+- In the launcher: Trophies lists them all with the date you earned each, by
+  grade, filtered by earned or not; hidden trophies keep their secret until
+  earned (Show Hidden reveals them).
 
 
 ## Controls
@@ -343,10 +389,9 @@ files back.
 
 ## Your saves, and updating
 
-Saves and the game's own data are in the "gamedata" folder next to
-dod3.exe (on a Mac, in the Application Support folder; on Linux, next to
-dod3). Back that folder up
-to keep your progress.
+Saves, trophies and the game's own data are in the "gamedata" folder next
+to dod3.exe (on a Mac, in the Application Support folder; on Linux, next to
+dod3). Back that folder up to keep your progress.
 
 On Windows the launcher looks for a newer release on GitHub each time it
 opens (Settings > System > Check for Updates turns that off). When there is
@@ -382,6 +427,11 @@ delete the folder.
 
 - Tested on few machines so far (Windows: i9-13900K with an RTX 4090;
   macOS: M1 Pro). Reports from other hardware are welcome.
+- Trophy pop-ups show on Windows with Direct3D 12 only so far; on Vulkan,
+  macOS and Linux the trophies are earned and listed in the launcher without
+  the pop-up.
+- In HDR the brighter highlights come from the next start after HDR is
+  switched on in the game.
 - At an aspect ratio other than 16:9 (21:9, 32:9, 16:10) the HUD keeps its
   16:9 layout in the middle of the screen, and some of it can still be out
   of place: the pause screen's frosted background stays 16:9, and not every

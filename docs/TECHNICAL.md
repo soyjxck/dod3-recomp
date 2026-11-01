@@ -170,6 +170,42 @@ SPIR-V). What this game needed from the engine:
   guest list holds the game's own programs, so it stays out of the
   repository and the release; the maintainers keep the sweep's, and refresh
   `shaders/dxbc` from it when the decompilers change.
+- **The title's own version of a shader** (`RSX_FP_OVERRIDE_DIR`): a
+  fragment program with a file named after its structure id
+  (`<fp-struct>.hlsl`; `RSX_PIPE_LOG=1` names them) is drawn with that file
+  instead of its translation, written against the translation's bindings.
+  The port ships one, `shaders/override/a3e8d0b0476b7c09.hlsl`, the engine's
+  depth-of-field and bloom composite (UberPostProcessEffect): the game
+  blends a quarter-size blur and bloom over the full-size scene by a focus
+  alpha, which at 4K stretched those layers twelvefold and left sharp detail
+  showing through half-defocused areas. Under `POSTFX_HIGH`
+  (`RSX_FP_OVERRIDE_DEFINES`, Post-Processing Quality High) the layers are
+  read with a cubic B-spline above 1280x720 and the sharp scene is softened
+  by how far out of focus it is; without it the file is the translation as
+  it is. `src/main.cpp` hands the folder to the renderer (beside the
+  executable, or the app's Resources) when High or HDR is on at start;
+  `tools/make_postfx_override.py` writes the file again from a translation
+  dump when the decompiler changes, and its DXBC ships with the cache.
+- **HDR** (`RSX_HDR`): where the display has HDR on -- D3D12: DXGI's colour
+  space for the output under the window, read with Windows' SDR white level
+  and the display's peak by `rsx_hdr_display.c`; Vulkan: the same, with the
+  surface's HDR formats; Metal: the screen's EDR headroom -- the swap chain
+  is scRGB FP16 (Vulkan falls back to HDR10 where the driver has no scRGB;
+  Metal is extended linear sRGB) and the present pass (`kPresentHdrHLSL`)
+  decodes the frame with a 2.2 power before its area average and scales it
+  to the paper white. The highlights come from the override above: its
+  second output writes a host-only FP16 plane (what it drew, and how many
+  times brighter the pixel was before the title clipped it), which a
+  pipeline gets as a second target only while HDR is on; the present
+  brightens a pixel by it where the frame still shows what the plane says
+  (so the HUD drawn over it stays at white) and rolls the light off toward
+  the display's peak above a knee at half of it. The display is checked
+  again as the game runs (HDR switched in Windows, the window moved).
+- **A host overlay** (`rsx_overlay_set`): the port's own layer over each
+  presented frame, drawn with the backend's objects after the frame is in
+  the window (D3D12 so far): the trophy pop-ups. With an HDR back buffer it
+  draws into an RGBA8 target that is then laid over the frame at the paper
+  white, so the overlay sees one format either way.
 
 The replay tool (`rsx_replay`) replays captured command streams
 (`RSX_CAPTURE`) headlessly through the engine: the rendering regression.
@@ -200,6 +236,16 @@ words for the game's menus.
 A script package that is not the update's -- a mod copied over the update
 by hand -- is not patched: its own hash goes into the table instead, so it
 plays as it is, without the pages.
+
+Most rows set the engine's own switches (`src/patches/sysset.cpp`). Two act
+on the game's code: Depth of Field Off zeroes the near and far blur
+amounts of the post-process scene proxies (the uber composite's and the
+depth-of-field/bloom effect's) as `CreateSceneProxy` makes them, so
+everything stays in focus and the bloom and grading are untouched;
+and Blood on Screen skips `USqex03GameHUDBlood::Draw` (the splatter) and,
+for Off, zeroes the low-health border's colour after
+`USqex03GameHUDDying::Update`. Both are virtuals, replaced at run time with
+`ppu_register_function`; no re-lift.
 
 ## Button prompts
 
@@ -286,8 +332,8 @@ writes itself from the installed files (`src/kernel/dlc.cpp`).
 
 `src/ui/wizard.cpp` is the first-run setup and `src/ui/launcher.cpp` the
 launcher every later start opens (Play, Mods, DLC, Settings): Dear ImGui
-over a small platform layer (`ui/ui.h`: Win32 + Direct3D 12, or Cocoa +
-Metal). Both are drawn with the same pieces (`ui/look.*`: the Inter fonts,
+over a small platform layer (`ui/ui.h`: Win32 + Direct3D 12, Cocoa +
+Metal, or SDL2 on Linux). Both are drawn with the same pieces (`ui/look.*`: the Inter fonts,
 the colours, the game's key art from the player's own disc or package,
 buttons, cards) and share the file checks and the install job
 (`ui/setup_shared.*`). The launcher's Settings read and write `dod3.ini`
@@ -306,6 +352,23 @@ a failed swap puts back every file swapped so far. `game/`, `gamedata/` and
 an existing `dod3.ini` are never written. The launcher then starts the new
 `dod3.exe` and closes; the new one's first start removes the `.old` files.
 The approach follows King Kong Recompiled's updater.
+
+The launcher's Trophies page (`ui/trophies.*`) reads the disc's trophy
+pack (`PS3_GAME/TROPDIR/NPWR04682_00/TROPHY.TRP`, through the runtime's
+`trophy_pack.h`) and the unlocks the game wrote (`gamedata/trophies`). In the
+game, the runtime's `sceNpTrophy` (rewritten after RPCS3's: the firmware's
+error codes, hidden trophies, the platinum through its links) keeps the
+unlocks in that file and tells the port of each through `trophy_host.h`;
+`src/ui/overlay.cpp` shows the pop-up through the renderer's host overlay,
+in an ImGui context of its own on the presenting thread.
+
+The Cheats tab's switches (`src/patches/cheats.cpp`), after a PS3 code list
+for the Japanese release, wrap the functions those codes patched, all
+reached by vtable, at run time with `ppu_register_function`: when the game
+sets the player's health or blood gauge it is asked for the largest value
+(the game's own clamp makes it the maximum; only for the pawn the player's
+controller holds, Zero or the dragon), an item's removal takes a count of
+0, and a mission timer's tick gets no time.
 
 Each file the player adds is recognised by itself (`install/install.cpp`):
 the disc by its PARAM.SFO and the hash of its EBOOT.BIN (`install/iso.cpp`,
