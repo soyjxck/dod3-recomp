@@ -8,7 +8,8 @@
  * ppu_sysprx_register, ppu_fs_register, lv2_init_syscalls, ppu_run) is the
  * toolkit's; what is here is the port's own part:
  *   - the frame clock: vblanks, flips and FIFO drains, presented through
- *     D3D12 (Windows), Metal (macOS) or the null backend;
+ *     D3D12 (Windows), Metal (macOS), the draw engine over Vulkan (Linux) or
+ *     the null backend;
  *   - the frame-rate lock (DOD3_FPS) and what happens out of focus
  *     (DOD3_UNFOCUSED);
  *   - the title-specific runtime defaults, in main();
@@ -36,6 +37,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "ps3emu/vm_watch.h"
@@ -72,6 +74,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#ifdef __linux__
+#include <sys/prctl.h>                   /* PR_SET_TIMERSLACK */
+#endif
 #ifdef __APPLE__
 #include <mach/mach.h>
 #include <spawn.h>
@@ -81,6 +86,19 @@ const char* dod3_mac_data_dir(void);
 void dod3_mac_log_to_file(void);
 int dod3_setup_mac(const char* base_dir, int force);
 }
+#endif
+#ifdef __linux__
+#include <SDL2/SDL.h>                     /* the message box when the game cannot load */
+extern "C" {   /* src/os/linux/setup_linux.cpp */
+const char* dod3_linux_data_dir(void);
+const char* dod3_linux_exe_dir(void);
+void dod3_linux_log_to_file(void);
+int dod3_setup_linux(const char* base_dir, int force);
+}
+/* the host thread's name for debuggers and profilers (15 characters at most) */
+#define dod3_name_thread(n) pthread_setname_np(pthread_self(), n)
+#elif defined(__APPLE__)
+#define dod3_name_thread(n) pthread_setname_np(n)
 #endif
 
 void dod3_settings_menu_install();  /* src/ui/settings_menu.cpp: the Graphics Settings page */
@@ -173,6 +191,19 @@ extern "C" int rsx_metal_backend_pump_messages(void);
 #define rsx_backend_present rsx_metal_backend_present
 #define rsx_backend_pump    rsx_metal_backend_pump_messages
 #define RSX_BACKEND_NAME    "Metal"
+#elif defined(PS3RECOMP_VULKAN_ENGINE_SDL)
+/* Linux: the register-file draw engine over Vulkan 1.3 in an SDL2 window
+ * (ps3recomp/libs/video/rsx_vulkan_engine.c), the renderer the Windows build
+ * runs with RSX_BACKEND=vulkan. A present shows the buffer cellGcmSys says
+ * the guest flipped to, as rsx_d3d12_backend_present does under an engine. */
+#include "rsx_vulkan_engine.h"
+extern "C" void rsx_draw_engine_present_buffer(uint32_t buffer_id);
+extern "C" uint32_t cellGcmGetCurrentDisplayBufferId(void);
+static void rsx_vulkan_present(void) { rsx_draw_engine_present_buffer(cellGcmGetCurrentDisplayBufferId()); }
+#define rsx_backend_init    rsx_vulkan_engine_init
+#define rsx_backend_present rsx_vulkan_present
+#define rsx_backend_pump    rsx_vulkan_engine_pump_messages
+#define RSX_BACKEND_NAME    "Vulkan"
 #else
 extern "C" int rsx_null_backend_init(uint32_t w, uint32_t h, const char* title);
 extern "C" void rsx_null_backend_present(void);
@@ -343,8 +374,81 @@ static std::atomic<uint64_t> s_fp_calls{ 0 }, s_fp_early{ 0 }, s_fp_us{ 0 };
  * switches it in a run. */
 static std::atomic<int> s_kick_busy{ 1 };
 static void ab_kickbusy(int on) { s_kick_busy = on; }
+/* Linux: timer slack. The kernel adds up to 50 us to every timed sleep and
+ * wait of a thread (its default timer slack, to batch wake-ups), and the
+ * frame is a hand-off chain of short waits -- the guest's usleeps, its
+ * fence polls, the walker's waits between drains. 1 ns for every thread, set
+ * in main() before any starts (threads inherit it): on a Steam Deck in the
+ * chapter 1 battle, +2.29 +/- 1.27 fps over 24 pairs and half the frames over
+ * 25 ms (17.6 against 38.3 per 1000). DOD3_TIMERSLACK_NS=<n> another value,
+ * 0 the kernel's. DOD3_AB=slack switches 1 ns against 50 us in a run; prctl
+ * sets only the calling thread's, so each thread applies the switch at its
+ * next guest sleep or walker pass. */
+#ifdef __linux__
+static std::atomic<int> s_slack_ns{ 0 };   /* 0: no switch asked for */
+static void slack_apply(void)
+{
+    static thread_local int have = 0;
+    const int want = s_slack_ns.load(std::memory_order_relaxed);
+    if (!want || want == have) return;
+    prctl(PR_SET_TIMERSLACK, (unsigned long)want);
+    have = want;
+}
+static void ab_slack(int on) { s_slack_ns = on ? 1 : 50000; }
+#else
+static void slack_apply(void) {}
+#endif
+
+/* DOD3_USLEEP_SITES=1: guest sleeps counted by caller (the guest lr at the
+ * usleep, so the return address into whoever called appSleep and friends)
+ * and host thread, the top ones printed every 5 s with PPU_WAITPROF's report.
+ * Which loop a sleeping thread polls in, when PPU_WAITPROF only names the
+ * function that makes the syscall. */
+static int s_usleep_sites = -1;
+struct UsleepSite {
+    std::atomic<uint64_t> key{ 0 };   /* lr << 32 | tid, 0 = free */
+    std::atomic<uint64_t> n{ 0 }, us{ 0 };
+};
+static UsleepSite s_us_site[512];
+static void usleep_site_note(uint32_t lr, uint64_t usec)
+{
+    const uint64_t key = ((uint64_t)lr << 32) | (uint32_t)GetCurrentThreadId();
+    for (uint32_t i = (uint32_t)((key * 0x9E3779B97F4A7C15ull) >> 55), k = 0; k < 512; k++, i = (i + 1) & 511) {
+        uint64_t have = s_us_site[i].key.load(std::memory_order_relaxed);
+        if (have == 0 && s_us_site[i].key.compare_exchange_strong(have, key)) have = key;
+        if (have == key) {
+            s_us_site[i].n.fetch_add(1, std::memory_order_relaxed);
+            s_us_site[i].us.fetch_add(usec, std::memory_order_relaxed);
+            return;
+        }
+    }
+}
+static void usleep_site_report(double secs)
+{
+    struct Row { uint32_t lr, tid; uint64_t n, us; };
+    std::vector<Row> rows;
+    for (auto& e : s_us_site) {
+        const uint64_t k = e.key.load(), n = e.n.exchange(0), us = e.us.exchange(0);
+        if (k && n) rows.push_back({ (uint32_t)(k >> 32), (uint32_t)k, n, us });
+    }
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) { return a.n > b.n; });
+    for (size_t i = 0; i < rows.size() && i < 8; i++) {
+        char name[32] = "?";
+#ifdef __linux__
+        char path[64];
+        snprintf(path, sizeof path, "/proc/self/task/%u/comm", rows[i].tid);
+        if (FILE* f = fopen(path, "r")) { if (fgets(name, sizeof name, f)) name[strcspn(name, "\n")] = 0; fclose(f); }
+#endif
+        fprintf(stderr, "[usleep-site] lr %08X  %-16s %7.0f/s  asked %6.1f us avg\n", rows[i].lr, name,
+                rows[i].n / secs, (double)rows[i].us / (double)rows[i].n);
+    }
+}
+
 static int guest_usleep_hook(uint32_t lr, uint64_t usec)
 {
+    slack_apply();
+    if (s_usleep_sites < 0) s_usleep_sites = getenv("DOD3_USLEEP_SITES") ? 1 : 0;
+    if (s_usleep_sites) usleep_site_note(lr, usec);
     if (s_trace) trace(1, lr, (uint32_t)usec);
     if (!s_kick_busy.load(std::memory_order_relaxed) ||
         vm_read32(ppu_hle_inject_base + 0x2000u) != vm_read32(ppu_hle_inject_base + 0x2004u))
@@ -562,6 +666,7 @@ extern "C" uint64_t ppu_timebase_now(void);           /* sys_timer.c: mftb */
 #ifdef __APPLE__
 extern "C" int rsx_metal_backend_window_focused(void);   /* the app active and the window key */
 #endif
+/* Linux: rsx_vulkan_engine_window_focused (rsx_vulkan_engine.h): the SDL window has the keyboard. */
 static bool s_window_up;   /* the backend opened its window */
 
 /* Is the game's window the one in front? DOD3_FOCUS_FILE=<path> (testing):
@@ -580,6 +685,8 @@ static bool window_focused(void)
     return pid == GetCurrentProcessId();
 #elif defined(__APPLE__)
     return !s_window_up || rsx_metal_backend_window_focused();   /* no window: nothing to leave */
+#elif defined(PS3RECOMP_VULKAN_ENGINE_SDL)
+    return !s_window_up || rsx_vulkan_engine_window_focused();
 #else
     return true;
 #endif
@@ -993,7 +1100,9 @@ static void* cpu_watch(void*)
  *            / every unit that is switched on (RSX_BIND_UNREAD)
  *   kickhr   (Windows) the walker's wait between drains on an event and a
  *            high-resolution timer / on the condition variable
- *   earlysubmit  (Windows) the recorded draws handed to the GPU every
+ *   slack    (Linux) every thread's timer slack 1 ns (the default) / the
+ *            kernel's 50 us, applied at each guest sleep and walker pass
+ *   earlysubmit  (Windows, and Linux's Vulkan engine) the recorded draws handed to the GPU every
  *            RSX_SUBMIT_EVERY records (default 256) / at fences and the
  *            present only
  *   none     nothing: the control, which has to report no difference
@@ -1021,6 +1130,14 @@ static void ab_earlysubmit(int on)
     static int n = -1;
     if (n < 0) { const char* e = getenv("RSX_SUBMIT_EVERY"); n = e && atoi(e) > 0 ? atoi(e) : 256; }
     g_eng_submit_every = on ? n : 0;
+}
+#elif defined(PS3RECOMP_VULKAN_ENGINE_SDL)   /* rsx_vulkan_engine.c: off by default there */
+extern "C" int g_vk_submit_every;
+static void ab_earlysubmit(int on)
+{
+    static int n = -1;
+    if (n < 0) { const char* e = getenv("RSX_VK_SUBMIT_EVERY"); n = e && atoi(e) > 0 ? atoi(e) : 256; }
+    g_vk_submit_every = on ? n : 0;
 }
 #endif
 extern "C" int g_spurs_jc_par;
@@ -1088,7 +1205,13 @@ static const struct {
     { "texreads", ab_texreads },
 #ifdef _WIN32
     { "snapincr", ab_snapincr }, { "mstwin", ab_mstwin }, { "usleepspin", ab_usleepspin },
-    { "kickhr", ab_kickhr }, { "earlysubmit", ab_earlysubmit },
+    { "kickhr", ab_kickhr },
+#endif
+#if defined(_WIN32) || defined(PS3RECOMP_VULKAN_ENGINE_SDL)
+    { "earlysubmit", ab_earlysubmit },
+#endif
+#ifdef __linux__
+    { "slack", ab_slack },
 #endif
 #if defined(_WIN32) || defined(__APPLE__)
     { "aniso", ab_aniso },
@@ -1333,8 +1456,11 @@ static void ab_step(uint64_t now_us)
 
 static DWORD WINAPI frame_clock(LPVOID)
 {
-#ifdef __APPLE__
-    pthread_setname_np("rsx walker (main)");
+#if defined(__APPLE__)
+    dod3_name_thread("rsx walker");
+    /* Linux: not renamed. The frame clock runs on the main thread there, and
+     * the main thread's name is the process's (ps, top, Steam's list): it
+     * stays "dod3". */
 #elif defined(_WIN32)
     SetThreadDescription(GetCurrentThread(), L"rsx walker");   /* names it for the profilers */
 #endif
@@ -1415,6 +1541,7 @@ static DWORD WINAPI frame_clock(LPVOID)
             }
         }
         uint64_t now = dod3_now_us();
+        slack_apply();
         fps_install_override();
         dod3_sysset_poll();
         dod3_prompts_poll();
@@ -1429,6 +1556,7 @@ static DWORD WINAPI frame_clock(LPVOID)
             if (!wp_last) wp_last = now;
             if (now - wp_last >= 5000000ull && ppu_waitprof_on()) {
                 ppu_waitprof_report((double)(now - wp_last) / 1e6);
+                if (s_usleep_sites > 0) usleep_site_report((double)(now - wp_last) / 1e6);
                 const uint64_t c = s_fp_calls.exchange(0), e = s_fp_early.exchange(0), u = s_fp_us.exchange(0);
                 fprintf(stderr, "[fast-poll] %llu fence polls, %llu woken by a drain, %.1f us avg; drains %llu\n",
                         (unsigned long long)c, (unsigned long long)e, c ? (double)u / (double)c : 0.0,
@@ -1591,7 +1719,13 @@ static bool alloc_guest_vm(void)
      * ppu_vm_size arms the loader's bounds check for what is left. An mmap
      * rather than the calloc it was: the texture write-watch mprotects pages
      * of it, which wants a page-aligned mapping of its own. */
+#ifdef MAP_NORESERVE
+    /* Linux: not counted against memory up front (the overcommit heuristic
+     * could refuse 3.5 GB at once); only the pages touched are ever backed. */
+    void* m = mmap(nullptr, 0xE0000000u, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0);
+#else
     void* m = mmap(nullptr, 0xE0000000u, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+#endif
     vm_base = (m == MAP_FAILED) ? nullptr : (uint8_t*)m;
     ppu_vm_size = 0xE0000000u;
     if (vm_base) {
@@ -1613,14 +1747,17 @@ static void harness_guest_caller(uint32_t opd, uint64_t a0, uint64_t a1, uint64_
     ppu_guest_call(opd, a0, a1, a2, a3, a4, a5, a6, a7);
 }
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
 static uint32_t s_boot_entry;
 
 /* The guest's half of the Apple split in main(): run the entry OPD, then end
- * the process the way the non-Apple path's return from main() would. */
+ * the process the way the non-Apple path's return from main() would. Linux
+ * splits the same way: the guest's main thread wants the 256 MB stack the
+ * other guest threads get, where the process's own has the 8 MB of
+ * `ulimit -s` (Windows links dod3.exe with a large one). */
 static void* guest_main(void*)
 {
-    pthread_setname_np("main");
+    dod3_name_thread("main");
     int rc = ppu_run(s_boot_entry, STACK_TOP);
     printf("\n[boot] ppu_run returned %d (entry function unwound)\n", rc);
     fflush(stdout);
@@ -1628,6 +1765,19 @@ static void* guest_main(void*)
 }
 #endif
 
+#if defined(DOD3_X86_V3) && defined(__linux__)
+#include <cpuid.h>
+/* As the Windows check below: the same CPUID bits, and the OS saving the AVX
+ * state (XGETBV). */
+__attribute__((target("xsave"))) static bool x86_v3_cpu(void)
+{
+    unsigned a, b, c1, d, b7, c7;
+    if (!__get_cpuid(1, &a, &b, &c1, &d) || !__get_cpuid_count(7, 0, &a, &b7, &c7, &d)) return false;
+    const bool os_avx = (c1 & (1u << 27)) && ((__builtin_ia32_xgetbv(0) & 6) == 6);
+    return os_avx && (c1 & (1u << 12)) /* FMA */ && (c1 & (1u << 22)) /* MOVBE */ &&
+           (b7 & (1u << 5)) /* AVX2 */ && (b7 & (1u << 3)) && (b7 & (1u << 8)) /* BMI1, BMI2 */;
+}
+#endif
 #if defined(DOD3_X86_V3) && defined(_WIN32)
 /* The lifted code is built for x86-64-v3 (CMake DOD3_X86_LEVEL): main says so
  * at start, where the alternative is an illegal-instruction crash somewhere
@@ -1830,14 +1980,18 @@ int main(int argc, char** argv)
 #ifdef _WIN32
     win_stdio_init();
 #endif
-#if defined(DOD3_X86_V3) && defined(_WIN32)
+#if defined(DOD3_X86_V3) && (defined(_WIN32) || defined(__linux__))
     /* Before anything else, setup included: the lifted code uses these. */
     if (!x86_v3_cpu()) {
         static const char msg[] =
             "This build needs a CPU with AVX2, FMA and BMI2 (x86-64-v3: Intel Haswell "
             "or AMD Excavator/Zen and newer). Rebuild with -DDOD3_X86_LEVEL= for older processors.";
         fprintf(stderr, "%s\n", msg);
+#ifdef _WIN32
         MessageBoxA(NULL, msg, "Drakengard 3 Recompiled", MB_OK | MB_ICONERROR);
+#else
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Drakengard 3 Recompiled", msg, NULL);
+#endif
         return 1;
     }
 #endif
@@ -1875,6 +2029,10 @@ int main(int argc, char** argv)
         const std::filesystem::path base(dir);
 #elif defined(__APPLE__)
         const char* data = dod3_mac_data_dir();
+        if (!data) return 1;
+        const std::filesystem::path base(data);
+#elif defined(__linux__)
+        const char* data = dod3_linux_data_dir();
         if (!data) return 1;
         const std::filesystem::path base(data);
 #else
@@ -1920,6 +2078,21 @@ int main(int argc, char** argv)
         }
         dod3_mac_log_to_file();
         if (dod3_setup_mac(data, force_setup ? 1 : 0) != 0) return 1;
+#elif defined(__linux__)
+        /* The executable's folder, as on Windows, unless it cannot be written
+         * to: then ~/.local/share/dod3-recomp (src/os/linux/setup_linux.cpp). */
+        const char* data = dod3_linux_data_dir();
+        /* DOD3_INSTALL_BASE: somewhere else (tests) */
+        if (const char* tb = getenv("DOD3_INSTALL_BASE"))
+            if (*tb) data = tb;
+        if (!data || chdir(data) != 0) {
+            fprintf(stderr, "cannot open the data folder %s\n", data ? data : "(none)");
+            return 1;
+        }
+        dod3_linux_log_to_file();
+        /* dod3.ini is the data folder's from here (the executable's may be read-only) */
+        s_exe_path = std::string(data) + "/dod3";
+        if (dod3_setup_linux(data, force_setup ? 1 : 0) != 0) return 1;
 #else
         if (!dod3setup::installed(".").ready()) {
             printf("usage: %s <PPU ELF>\n(or run it from a folder the installer has set up: %s --install <file>...; "
@@ -1937,6 +2110,14 @@ int main(int argc, char** argv)
         argc = 2;
     }
     load_settings_file();
+#ifdef __linux__
+    /* Timer slack (see slack_apply): before any thread starts, so all inherit it */
+    {
+        const char* e = getenv("DOD3_TIMERSLACK_NS");
+        const long ns = e && *e ? atol(e) : 1;
+        if (ns > 0) prctl(PR_SET_TIMERSLACK, (unsigned long)ns);
+    }
+#endif
 
     if (argc < 2) {
         printf("usage: %s <PPU ELF>\n", argv[0]);
@@ -1950,6 +2131,8 @@ int main(int argc, char** argv)
     timeBeginPeriod(1);
     setvbuf(stdout, NULL, _IONBF, 0);   /* unbuffered: do not lose prints on a kill */
     win_stdio_buffer();                 /* ...except into a file or a pipe: buffered, flushed every 200 ms */
+    pgo_writer_start();                 /* nothing unless DOD3_PGO=generate */
+#else
     pgo_writer_start();                 /* nothing unless DOD3_PGO=generate */
 #endif
 
@@ -2044,6 +2227,12 @@ int main(int argc, char** argv)
     /* ...and compiled DXBC on Windows (rsx_d3d12_engine.c). */
     dod3_setenv("PS3RECOMP_DXBC_CACHE", "cache/dxbc", 0);
     mkdir("cache", 0755);
+#ifdef PS3RECOMP_VULKAN_ENGINE_SDL
+    /* ...and the SPIR-V the guest's programs translate to (rsx_shader_spirv.cpp;
+     * the directory has to exist). */
+    mkdir("cache/spirv", 0755);
+    dod3_setenv("PS3RECOMP_SPIRV_CACHE", "cache/spirv", 0);
+#endif
     /* The sound driver (CDevSd's MultiStream threads and the MultiStream SPU
      * task, image 1 = spu_0000) at user-interactive QoS: at default QoS a
      * busy moment wrote its blocks late, 88 gaps (3.9 s of sound) in a
@@ -2066,6 +2255,13 @@ int main(int argc, char** argv)
                  "set the game up again.",
                  argv[1]);
         MessageBoxA(NULL, msg, "Drakengard 3 Recompiled", MB_OK | MB_ICONERROR);
+#elif defined(__linux__)
+        char msg[512];
+        snprintf(msg, sizeof msg,
+                 "The game's executable (%s) could not be loaded. Run dod3 --setup to "
+                 "set the game up again.",
+                 argv[1]);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Drakengard 3 Recompiled", msg, NULL);
 #endif
         return 1;
     }
@@ -2124,7 +2320,7 @@ int main(int argc, char** argv)
 
     printf("\n[boot] dispatching entry OPD 0x%08X (stack top 0x%08X)\n\n", entry, STACK_TOP);
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     /* AppKit only creates windows on the main thread, and the Metal backend's
      * init dispatch_syncs onto the main queue when called from anywhere else.
      * With the guest occupying the main thread nothing drains that queue and

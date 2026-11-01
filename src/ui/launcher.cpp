@@ -108,7 +108,11 @@ void extra_rows(std::vector<Dod3RowSpec>& rows)
 #endif
     rows.push_back({ .key = "DOD3_LAUNCHER",
                      .label = "Launcher at Start",
+#ifdef __linux__
+                     .desc = "Open this at start. Off, DOD3_LAUNCHER=1 in the environment opens it anyway.",
+#else
                      .desc = "Open this at start. Hold Shift (Option on a Mac) to open it anyway.",
+#endif
                      .choices = { { nullptr, "On" }, { "0", "Off" } } });
 #ifdef _WIN32
     rows.push_back({ .key = "DOD3_UPDATE_CHECK",

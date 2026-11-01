@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.20)
 project(dod3
     VERSION 0.4.1
     LANGUAGES C CXX
-    DESCRIPTION "Drakengard 3 (PS3) recompiled for Windows and macOS"
+    DESCRIPTION "Drakengard 3 (PS3) recompiled for Windows, macOS and Linux"
 )
 # The port's own version, apart from the game's (the 1.01 update): the
 # numbers above go into the Windows version block, and this label is what
@@ -10,6 +10,14 @@ project(dod3
 set(DOD3_VERSION_LABEL "0.4.1 alpha")
 if(APPLE)
     enable_language(OBJCXX)   # src/os/macos/setup_mac.mm
+endif()
+# Linux: the renderer is the draw engine over Vulkan (the runtime's
+# rsx_vulkan_engine.c, the one Windows runs with RSX_BACKEND=vulkan) in an
+# SDL2 window, and the setup's window is SDL2 too (src/ui/ui_linux.cpp).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(DOD3_LINUX ON)
+else()
+    set(DOD3_LINUX OFF)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -124,8 +132,25 @@ endif()
 if(WIN32)
     set(PS3RECOMP_PAD_SDL2 ON CACHE BOOL "Windows: read controllers through SDL2 instead of XInput" FORCE)
 endif()
+# Linux: the Vulkan option builds the draw engine's Vulkan backend there too
+# (it needs the Vulkan headers and glslang with SPIRV-Tools: Debian/Ubuntu
+# libvulkan-dev glslang-dev glslang-tools spirv-tools).
+if(DOD3_LINUX)
+    set(PS3RECOMP_RSX_VULKAN ON CACHE BOOL "Build the Vulkan RSX backend (Linux)" FORCE)
+    # nothing presents through Metal here: no spirv-cross in the release
+    set(PS3RECOMP_MSL OFF CACHE BOOL "Build the HLSL -> MSL translator" FORCE)
+endif()
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
+# (the runtime's public PS3RECOMP_VULKAN_ENGINE_SDL says it built the engine:
+# its option's variables stay in the subdirectory's scope)
+if(DOD3_LINUX)
+    get_target_property(_rt_defs ps3recomp_runtime INTERFACE_COMPILE_DEFINITIONS)
+endif()
+if(DOD3_LINUX AND NOT "PS3RECOMP_VULKAN_ENGINE_SDL=1" IN_LIST _rt_defs)
+    message(FATAL_ERROR "Linux: the renderer needs glslang (with SPIRV-Tools) for the game's shaders; "
+                        "Debian/Ubuntu: apt install glslang-dev glslang-tools spirv-tools libvulkan-dev")
+endif()
 
 # ---------------------------------------------------------------------------
 # The HLE NID table
@@ -254,6 +279,10 @@ elseif(APPLE)
     list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/os/macos/setup_mac.mm")
     set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/os/macos/setup_mac.mm"
         PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+elseif(DOD3_LINUX)
+    # The data folder, the log file and the setup's start: the counterpart of
+    # os/win32/setup_win.cpp and os/macos/setup_mac.mm.
+    list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/os/linux/setup_linux.cpp")
 endif()
 
 # The installer (src/install/install.h): the core on every platform; the pages
@@ -304,6 +333,20 @@ elseif(APPLE)
                         "${IMGUI_DIR}/backends/imgui_impl_osx.mm"
                         "${IMGUI_DIR}/backends/imgui_impl_metal.mm"
                  APPEND PROPERTY COMPILE_OPTIONS "-fobjc-arc")
+elseif(DOD3_LINUX)
+    # Linux's window layer (src/ui/ui_linux.cpp): an SDL2 window drawn with
+    # SDL_Renderer, ImGui's SDL2 and SDL_Renderer2 backends.
+    list(APPEND IMGUI_SOURCES
+        "${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp"
+        "${IMGUI_DIR}/backends/imgui_impl_sdlrenderer2.cpp")
+    list(APPEND SETUP_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/wizard.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/launcher.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/look.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/setup_shared.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/png.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/ui_linux.cpp"
+        ${IMGUI_SOURCES})
 endif()
 # The retail PKG key, read from the submodule's tools/pkg_extract.py
 # (PS3_GPKG_KEY) into a header in the build tree: this repository carries no
@@ -324,7 +367,7 @@ set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/install/pkg.cpp" APPEND PRO
 set_property(SOURCE ${SETUP_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${IMGUI_DIR}")
 # third-party code: its warnings are not ours to act on
 set_property(SOURCE ${IMGUI_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "-w")
-if(WIN32 OR APPLE)
+if(WIN32 OR APPLE OR DOD3_LINUX)
     # the key art's PNG decoder: stb_image, the copy in the runtime's codec
     # library, compiled privately (src/ui/png.cpp)
     set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/png.cpp" APPEND PROPERTY
@@ -510,6 +553,23 @@ if(APPLE)
     target_link_libraries(${PROJECT_NAME} PRIVATE
         "-framework MetalKit" "-framework GameController" "-framework UniformTypeIdentifiers")
 endif()
+# Linux: SDL2 for the setup's window (the runtime links its own use of it
+# privately), and the threads and dlopen the runtime's backends use.
+if(DOD3_LINUX)
+    find_package(SDL2 REQUIRED)
+    find_package(Threads REQUIRED)
+    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2::SDL2 Threads::Threads ${CMAKE_DL_LIBS})
+    # <SDL2/SDL.h>: SDL2::SDL2 exports <prefix>/include/SDL2
+    get_target_property(_sdl2_incs SDL2::SDL2 INTERFACE_INCLUDE_DIRECTORIES)
+    foreach(_inc IN LISTS _sdl2_incs)
+        get_filename_component(_parent "${_inc}" DIRECTORY)
+        target_include_directories(${PROJECT_NAME} PRIVATE "${_parent}")
+    endforeach()
+    # No rpath: everything dod3 links is the system's (tools/package_linux.sh
+    # checks), and an rpath CMake writes empty entries into searches the
+    # current directory.
+    set_target_properties(${PROJECT_NAME} PROPERTIES SKIP_BUILD_RPATH ON)
+endif()
 
 # The runtime is C++, and on Apple also Objective-C. Letting CMake infer the
 # link language from the generated C would leave the C++ standard library out.
@@ -641,8 +701,45 @@ if(MSVC)
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
         COMPILE_OPTIONS "${_recomp_opts}")
 else()
+    set(_recomp_opts "-w;-ffp-contract=off")
+    # Linux on x86-64: the Windows build's level (DOD3_X86_LEVEL, above), for
+    # the same reasons -- fused fmadd, sqrt and trunc as instructions, lzcnt,
+    # pshufb. The Steam Deck's Zen 2 has all of x86-64-v3.
+    if(DOD3_LINUX AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
+        set(DOD3_X86_LEVEL "x86-64-v3" CACHE STRING
+            "-march for the lifted PPU code on x86-64 (empty: baseline x86-64)")
+        if(DOD3_X86_LEVEL)
+            list(APPEND _recomp_opts "-march=${DOD3_X86_LEVEL}" "-fno-math-errno")
+            if(DOD3_X86_LEVEL MATCHES "v3|v4|haswell|skylake|znver")
+                set_property(SOURCE src/main.cpp APPEND PROPERTY COMPILE_DEFINITIONS DOD3_X86_V3)
+            endif()
+        endif()
+    endif()
+    # DOD3_PGO on Linux: as with clang-cl above, in clang's own spelling (the
+    # driver links the profile runtime). generate, then run the game (it
+    # writes LLVM_PROFILE_FILE every 30 s and on exit), then
+    # llvm-profdata merge -o lifted.profdata *.profraw, then use:<profdata>.
+    if(DOD3_LINUX)
+        set(DOD3_PGO "" CACHE STRING "Profile-guided optimisation of the lifted code: generate, or use:<profdata>")
+        if(DOD3_PGO STREQUAL "generate")
+            list(APPEND _recomp_opts "-fprofile-generate")
+            target_link_options(${PROJECT_NAME} PRIVATE -fprofile-generate)
+            set_property(SOURCE src/main.cpp APPEND PROPERTY COMPILE_DEFINITIONS DOD3_PGO_GENERATE)
+            message(STATUS "PGO:             instrumented lifted code")
+        elseif(DOD3_PGO MATCHES "^use:(.+)$")
+            get_filename_component(_profdata "${CMAKE_MATCH_1}" ABSOLUTE)
+            if(NOT EXISTS "${_profdata}")
+                message(FATAL_ERROR "DOD3_PGO=use: no profile at ${_profdata}")
+            endif()
+            list(APPEND _recomp_opts "-fprofile-use=${_profdata}"
+                 "-Wno-profile-instr-unprofiled" "-Wno-profile-instr-out-of-date")
+            message(STATUS "PGO:             lifted code optimised on ${_profdata}")
+        elseif(DOD3_PGO)
+            message(FATAL_ERROR "DOD3_PGO must be empty, generate, or use:<profdata>")
+        endif()
+    endif()
     set_source_files_properties(${RECOMP_SOURCES} PROPERTIES
-        COMPILE_OPTIONS "-w;-ffp-contract=off")
+        COMPILE_OPTIONS "${_recomp_opts}")
 endif()
 # The native collision test (src/patches/collision_native.cpp, generated from
 # the lifted body) must round exactly as the lifted code does: the same
@@ -655,6 +752,9 @@ if(MSVC)
     endif()
 else()
     set(_native_fp_opts "-ffp-contract=off")
+    if(DOD3_LINUX AND DOD3_X86_LEVEL)
+        set(_native_fp_opts "-march=${DOD3_X86_LEVEL};-ffp-contract=off;-fno-math-errno")
+    endif()
 endif()
 if(_native_fp_opts)
     set_property(SOURCE src/patches/collision_native.cpp APPEND PROPERTY COMPILE_OPTIONS "${_native_fp_opts}")

@@ -3,6 +3,7 @@
 #include "util.h"
 
 #include <cstdlib>
+#include <cstring>
 
 namespace dod3setup {
 

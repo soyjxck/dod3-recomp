@@ -520,6 +520,8 @@ void dod3_sysset_poll()
         const long long m = (long long)st.st_mtime * 1000000000ll +
 #ifdef __APPLE__
                             st.st_mtimespec.tv_nsec;
+#elif defined(__linux__)
+                            st.st_mtim.tv_nsec;
 #else
                             0;
 #endif

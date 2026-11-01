@@ -34,7 +34,10 @@
  *
  * Where the keys' state comes from is the one part that differs by platform
  * (a table of names and key_held, below). Windows asks the system for a
- * virtual key. macOS has the Metal window's own record of the key and mouse
+ * virtual key. Linux has the Vulkan window's record of the key and mouse
+ * button events SDL sent it (ps3recomp/libs/video/rsx_vulkan_engine.c), by
+ * SDL scancode -- a place on the keyboard, as on the Mac -- so a key is only
+ * held while the game is in front. macOS has the Metal window's own record of the key and mouse
  * button events it was sent (ps3recomp/libs/video/rsx_metal_backend.m), by
  * virtual keycode -- a place on the keyboard, whatever the layout prints on
  * it -- so a key is only ever held while the game is in front; Alt is the
@@ -55,7 +58,7 @@
 #include "rsx_host_mouse.h"
 #include "util.h"
 
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(PS3RECOMP_VULKAN_ENGINE_SDL)
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -80,6 +83,10 @@ void cellPad_set_host_input(cellPad_host_input_fn fn, void* user);
 /* ps3recomp/libs/video/rsx_metal_backend.h */
 int rsx_metal_backend_key_down(unsigned keycode);
 int rsx_metal_backend_mouse_button_down(unsigned button);
+#elif !defined(_WIN32)
+/* ps3recomp/libs/video/rsx_vulkan_engine.h */
+int rsx_vulkan_engine_key_down(unsigned scancode);
+int rsx_vulkan_engine_mouse_button_down(unsigned button);
 #endif
 }
 
@@ -145,6 +152,52 @@ bool key_held(int k)
     case kNoSuchKey: return false;
     }
     if (k >= kMouseButton) return rsx_metal_backend_mouse_button_down((unsigned)(k - kMouseButton)) != 0;
+    return key((unsigned)k);
+}
+#elif !defined(_WIN32)
+/* Linux: a key is its SDL scancode (SDL_scancode.h: the USB HID usage).
+ * Above those, as on the Mac: the names that mean either of two keys and
+ * the mouse's buttons. */
+const int kEitherShift = 0x200, kEitherCtrl = 0x201, kEitherAlt = 0x202, kEitherEnter = 0x203;
+const int kMouseButton = 0x300;   /* + 0 left, 1 right, 2 middle, 3, 4 */
+const int kNoSuchKey = 0x400;     /* every key here can be read */
+
+const struct {
+    const char* name;
+    int vk;
+} kKeys[] = {
+    { "Space", 44 },          { "Enter", kEitherEnter },  { "Tab", 43 },
+    { "Esc", 41 },            { "Backspace", 42 },        { "Shift", kEitherShift },
+    { "Ctrl", kEitherCtrl },  { "Alt", kEitherAlt },      { "LShift", 225 },
+    { "RShift", 229 },        { "LCtrl", 224 },           { "RCtrl", 228 },
+    { "LAlt", 226 },          { "RAlt", 230 },            { "Up", 82 },
+    { "Down", 81 },           { "Left", 80 },             { "Right", 79 },
+    { "Insert", 73 },         { "Delete", 76 },           { "Home", 74 },
+    { "End", 77 },            { "PageUp", 75 },           { "PageDown", 78 },
+    { "CapsLock", 57 },       { "Minus", 45 },            { "Equals", 46 },
+    { "LBracket", 47 },       { "RBracket", 48 },         { "Semicolon", 51 },
+    { "Quote", 52 },          { "Comma", 54 },            { "Period", 55 },
+    { "Slash", 56 },          { "Backslash", 49 },        { "Grave", 53 },
+    { "Mouse1", kMouseButton + 0 }, { "Mouse2", kMouseButton + 1 }, { "Mouse3", kMouseButton + 2 },
+    { "Mouse4", kMouseButton + 3 }, { "Mouse5", kMouseButton + 4 }, { "WheelUp", kWheelUp },
+    { "WheelDown", kWheelDown },
+};
+
+/* SDL_SCANCODE_A = 4 .. Z = 29; 1 = 30 .. 9 = 38, 0 = 39 */
+int letter_key(char c) { return c >= 'A' ? 4 + (c - 'A') : c == '0' ? 39 : 30 + (c - '1'); }
+int function_key(int n) { return 58 + n - 1; }                 /* F1 = 58 .. F12 = 69 */
+int numpad_key(int n) { return n == 0 ? 98 : 89 + (n - 1); }    /* KP_1 = 89 .. KP_9 = 97, KP_0 = 98 */
+bool key_held(int k)
+{
+    const auto key = [](unsigned sc) { return rsx_vulkan_engine_key_down(sc) != 0; };
+    switch (k) {
+    case kEitherShift: return key(225) || key(229);
+    case kEitherCtrl: return key(224) || key(228);
+    case kEitherAlt: return key(226) || key(230);
+    case kEitherEnter: return key(40) || key(88);   /* Return, and the keypad's Enter */
+    case kNoSuchKey: return false;
+    }
+    if (k >= kMouseButton) return rsx_vulkan_engine_mouse_button_down((unsigned)(k - kMouseButton)) != 0;
     return key((unsigned)k);
 }
 #else
@@ -328,10 +381,44 @@ int host_input(void*, int focused, CellPadHostInput* out)
 
 }  // namespace
 
+#ifdef __linux__
+/* A Steam Deck (its DMI board: Valve's Jupiter, or Galileo for the OLED). */
+static bool on_steam_deck()
+{
+    auto read = [](const char* path) {
+        std::string v;
+        if (FILE* f = fopen(path, "r")) {
+            char b[64] = {};
+            if (fgets(b, sizeof b, f)) v = b;
+            fclose(f);
+        }
+        while (!v.empty() && (v.back() == '\n' || v.back() == ' ')) v.pop_back();
+        return v;
+    };
+    const std::string vendor = read("/sys/class/dmi/id/board_vendor"), product = read("/sys/class/dmi/id/product_name");
+    return vendor == "Valve" && (product == "Jupiter" || product == "Galileo");
+}
+#endif
+
 void dod3_kbm_install()
 {
     if (const char* e = getenv("DOD3_KEYBOARD"))
         if (!strcmp(e, "0")) return;
+#ifdef __linux__
+    /* A Steam Deck, started outside Steam (Desktop Mode, from a terminal or
+     * the file manager): Steam's Desktop Configuration turns the Deck's own
+     * buttons into keys and its trackpad into the mouse, so every press came
+     * twice -- once from the pad, once as Esc or Enter, which is Start -- and
+     * the pause menu kept opening. The pad alone, then, unless DOD3_KEYBOARD=1
+     * asks for the keys (a real keyboard plugged in). Started from Steam (a
+     * non-Steam shortcut too), Steam gives the game a pad layout instead and
+     * the keys are the player's. */
+    if (!getenv("DOD3_KEYBOARD") && !getenv("SteamGameId") && !getenv("SteamAppId") && on_steam_deck()) {
+        fprintf(stderr, "[kbm] Steam Deck outside Steam: keyboard and mouse off, the pad alone "
+                        "(DOD3_KEYBOARD=1 for a keyboard of your own)\n");
+        return;
+    }
+#endif
     for (int b = 0; b < kBinds; b++) {
         const char* e = getenv(kBind[b].key);
         parse(b, e && *e ? e : kBind[b].defaults);

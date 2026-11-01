@@ -81,8 +81,9 @@ bool dod3_menus_spanish();                                        /* src/kernel/
 void dod3_fps_reload();             /* main.cpp: DOD3_FPS again */
 void dod3_unfocused_reload();       /* main.cpp: DOD3_UNFOCUSED again */
 extern "C" volatile int g_rsx_display_reload;   /* rsx_draw_engine.c: the renderer re-reads its display settings */
-#if defined(_WIN32) || defined(__APPLE__)
-extern "C" int g_rsx_aniso;         /* the live anisotropy level: rsx_d3d12_engine.c, rsx_metal_backend.m */
+#if defined(_WIN32) || defined(__APPLE__) || defined(PS3RECOMP_VULKAN_ENGINE_SDL)
+extern "C" int g_rsx_aniso;         /* the live anisotropy level: rsx_d3d12_engine.c, rsx_metal_backend.m,
+                                       rsx_vulkan_engine.c (Linux) */
 #endif
 extern "C" int g_rsx_aa;            /* rsx_draw_engine.c: 1 = FXAA at present */
 
@@ -376,7 +377,7 @@ void read_current(Row& r, int& idx)
 /* The renderer applies RSX_DISPLAY / RSX_VSYNC / RSX_SCALE changes at its
  * next window pump (g_rsx_display_reload); the Direct3D 12, Vulkan and
  * Metal engines do. */
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(PS3RECOMP_VULKAN_ENGINE_SDL)
 #define LIVE_DISPLAY true
 #else
 #define LIVE_DISPLAY false
@@ -527,8 +528,10 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
                      "The graphics API the game is drawn with.",
 #ifdef _WIN32
                      { { NULL, "Direct3D 12" }, { "vulkan", "Vulkan" } },
-#else
+#elif defined(__APPLE__)
                      { { NULL, "Metal" } },
+#else
+                     { { NULL, "Vulkan" } },
 #endif
                      0,
                      false,
@@ -616,7 +619,7 @@ void apply()
             else
                 dod3_unsetenv(r.key);
             r.running = r.pending;
-#if defined(_WIN32) || defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__) || defined(PS3RECOMP_VULKAN_ENGINE_SDL)
             if (!strcmp(r.key, "RSX_ANISO")) g_rsx_aniso = v ? atoi(v) : 16;
 #endif
             if (!strcmp(r.key, "RSX_AA")) {
