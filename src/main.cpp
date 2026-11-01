@@ -2262,6 +2262,10 @@ int main(int argc, char** argv)
         std::vector<std::string> where;
 #ifdef __APPLE__
         if (const char* res = dod3_mac_resources_dir()) where.push_back(std::string(res) + "/shaders/override");
+#elif defined(__linux__)
+        /* the release's folder, which is not the data folder when that is
+         * ~/.local/share/dod3-recomp (src/os/linux/setup_linux.cpp) */
+        where.push_back(std::string(dod3_linux_exe_dir()) + "/shaders/override");
 #endif
         const size_t slash = s_exe_path.find_last_of("/\\");
         if (slash != std::string::npos) where.push_back(s_exe_path.substr(0, slash + 1) + "shaders/override");
