@@ -107,6 +107,7 @@ void dod3_settings_menu_install();  /* src/ui/settings_menu.cpp: the Graphics Se
 void dod3_hud_aspect_install();     /* src/patches/hud_aspect.cpp */
 void dod3_song_autoplay_install();  /* src/patches/song_autoplay.cpp */
 void dod3_dragon_cursor_install();  /* src/patches/dragon_cursor.cpp */
+void dod3_archive_native_install(); /* src/patches/archive_native.cpp */
 void dod3_dlc_prepare();            /* src/kernel/dlc.cpp: the installed DLC's file lists */
 void dod3_mods_prepare();           /* src/kernel/mods.cpp: the mods' files, the DLC chapters' voices */
 bool dod3_menu_patch_prepare();     /* src/patches/menu_patch.cpp: the script patch that adds it */
@@ -484,6 +485,11 @@ static int guest_usleep_hook(uint32_t lr, uint64_t usec)
         (uint64_t)std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
     return 1;
 }
+extern "C" void dod3_load_log_start(void);
+extern "C" void dod3_boot_mark(const char* what);
+#ifdef __APPLE__
+extern "C" void mac_prof_start(void);
+#endif
 extern "C" int ppu_waitprof_on(void);
 extern "C" void ppu_waitprof_report(double window_s);
 
@@ -1469,7 +1475,9 @@ static DWORD WINAPI frame_clock(LPVOID)
     const char* title = getenv("PS3_TITLE");
     if (!title || !*title) title = "ps3recomp";
 
+    dod3_boot_mark("the renderer's start");
     int rsx_ok = (rsx_backend_init(WINDOW_WIDTH, WINDOW_HEIGHT, title) == 0);
+    dod3_boot_mark("the renderer up");
     s_window_up = rsx_ok != 0;
     fprintf(stderr, "[rsx] %s backend init %s\n", RSX_BACKEND_NAME, rsx_ok ? "OK -- window open" : "FAILED");
 
@@ -1979,6 +1987,7 @@ static std::vector<std::filesystem::path> cli_paths(int argc, char** argv, int f
 
 int main(int argc, char** argv)
 {
+    dod3_boot_mark("main");
 #ifdef _WIN32
     win_stdio_init();
 #endif
@@ -2111,6 +2120,7 @@ int main(int argc, char** argv)
         argv = s_release_argv;
         argc = 2;
     }
+    dod3_boot_mark("the setup's checks done");
     load_settings_file();
 #ifdef __linux__
     /* Timer slack (see slack_apply): before any thread starts, so all inherit it */
@@ -2283,7 +2293,9 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    dod3_boot_mark("the guest address space");
     uint32_t entry = ppu_load_elf(argv[1]);
+    dod3_boot_mark("the ELF loaded");
     if (!entry) {
         fprintf(stderr, "ERROR: could not load %s\n", argv[1]);
 #ifdef _WIN32
@@ -2312,16 +2324,22 @@ int main(int argc, char** argv)
     apply_fps_unlock();
     apply_unfocused();
     apply_sha_overrides();
+    dod3_boot_mark("patches applied");
     /* the title's game-data install as links onto the disc (install/install.h) */
     if (const char* root = getenv("PS3_VFS_ROOT"))
         if (*root) dod3setup::gamedata_layout(std::filesystem::u8path(root));
+    dod3_boot_mark("the game-data layout");
     dod3_menu_patch_prepare();
+    dod3_boot_mark("the menu patch");
     dod3_dlc_prepare();
     dod3_mods_prepare();
+    dod3_boot_mark("DLC and mods");
 #ifdef _WIN32
     /* DOD3_PROF / DOD3_STALL_MS / DOD3_STALL_SAMPLE: src/os/win32/prof.cpp. */
     win_prof_start();
 #elif defined(__APPLE__)
+    /* DOD3_PROF: src/os/macos/prof_mac.cpp. */
+    mac_prof_start();
     if (const char* d = getenv("DOD3_STALL_SAMPLE")) {
         mkdir(d, 0755);
         pthread_t th;
@@ -2339,11 +2357,14 @@ int main(int argc, char** argv)
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
 
     ppu_recomp_register();   /* lifted function table -> address map */
+    dod3_boot_mark("the function table registered");
+    dod3_load_log_start();   /* DOD3_LOAD_LOG: patches/load_idle.cpp */
     dod3_settings_menu_install();   /* the Graphics Settings page's two natives */
     dod3_sysset_install();          /* the tree detail row's hook */
     dod3_hud_aspect_install();      /* the HUD's markers in a view of another shape */
     dod3_song_autoplay_install();   /* branch D's final song, if DOD3_SONG_AUTOPLAY=1 */
     dod3_dragon_cursor_install();   /* the mouse moves the dragon's shooting cursor */
+    dod3_archive_native_install();  /* the package loader's reads, natively */
     dod3_kbm_install();
     dod3_prompts_install();
     ps3_load_prx_modules();  /* this game's lifted system PRX, if it has any */
@@ -2356,6 +2377,7 @@ int main(int argc, char** argv)
      * until the title registers its vblank and flip handlers during init. */
     g_ps3_guest_caller = harness_guest_caller;
 
+    dod3_boot_mark("HLE modules and syscalls registered");
     printf("\n[boot] dispatching entry OPD 0x%08X (stack top 0x%08X)\n\n", entry, STACK_TOP);
 
 #if defined(__APPLE__) || defined(__linux__)

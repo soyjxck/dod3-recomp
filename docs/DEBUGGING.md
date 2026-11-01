@@ -103,14 +103,24 @@ executable when it has no console; the previous run is `dod3.prev.log`.
 
 ## Profiling
 
-- `DOD3_PROF=<ms>` (Windows, `src/os/win32/prof.cpp`): an in-process sampling
-  profiler. Every `DOD3_PROF_REPORT` seconds (5), each busy thread's CPU
-  share, its hottest functions and where it waits; lifted PPU code is named
-  through the function table (`ppu:<address>`), the rest through the PDB.
+- `DOD3_PROF=<ms>` (Windows, `src/os/win32/prof.cpp`; macOS,
+  `src/os/macos/prof_mac.cpp`): an in-process sampling profiler. Every
+  `DOD3_PROF_REPORT` seconds (5), each busy thread's CPU share, its hottest
+  functions and where it waits; lifted PPU code is named through the function
+  table (`ppu:<address>`), the rest through the PDB on Windows and the
+  executable's own symbol table on macOS.
   `DOD3_PROF_TREE=<part of a thread name>` adds inclusive time over a deep
   stack and the call chains behind the waits for the threads it matches
   (`tid` matches the unnamed ones: the game's main thread and the RSX
   walker); `DOD3_PROF_CALLERS=<function>` who calls a function.
+- `DOD3_LOAD_LOG=1`: a timeline of the loads (`src/patches/load_idle.cpp`):
+  the steps of the start-up, timed from the process's launch; when packages
+  became pending and when the last was done, with the frames between, the
+  longest of them, and how many of the loader's reads took the native path
+  (`DOD3_ARCHIVE_NATIVE`); and every frame over 100 ms, a blocking load's. With
+  `DOD3_PROF` and `DOD3_PROF_TREE` each such frame gets `[slow-frame]` lines,
+  what the matched threads did in it, and on macOS each load is a report
+  window of its own.
 - `DOD3_STALL_MS=<n>`: when no frame has been presented for n ms, every
   thread's stack, at most `DOD3_STALL_MAX` times (12), into
   `DOD3_STALL_SAMPLE=<dir>` or the log. On macOS the same switch runs
@@ -165,6 +175,7 @@ relative to the read index.
 | `DOD3_SPU_PATCH_HOOK=0`, `DOD3_LZF_MEMO=0` (`DOD3_LZF_MEMO_LOG=1`), `DOD3_MSDSP_NATIVE=0` | one path at a time |
 | `DOD3_MP3_NATIVE=0` | the original SPU MP3 decoder instead of ours, for comparison (not shipped); `DOD3_MP3_CHECK=1` runs both |
 | `DOD3_ZLIB_NATIVE=0` | the SPU zlib task instead of the native inflate |
+| `DOD3_ARCHIVE_NATIVE=0` | the package loader's reads lifted: `FArchiveAsync::Serialize`, `FLinkerLoad::Serialize` and its `operator<<(FName&)` (`src/patches/archive_native.cpp`) |
 | `DOD3_MENU_PATCH=0` | the game's own Settings menu, unpatched |
 
 ## Runtime fallbacks

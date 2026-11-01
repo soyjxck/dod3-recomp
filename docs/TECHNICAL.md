@@ -107,6 +107,7 @@ check mode that runs both and compares:
 | MultiStream's DSP biquads (half of the audio SPU task) | `src/apu/msdsp_hooks.c` | `DOD3_SPU_NATIVE_CHECK=1` |
 | The MP3 decoder MultiStream loads from the console's firmware: a native decoder (`src/apu/mp3dec.c`) behind a stand-in image of our own that the runtime serves in its place | `src/apu/mp3_native.c`, `tools/make_spu_overlays.py` | `DOD3_MP3_CHECK=1` |
 | The package inflate the game sends to an SPU zlib task through a SPURS LFQueue | `src/patches/edgezlib.cpp` | each chunk's Adler-32 |
+| The package loader's reads (`FArchiveAsync::Serialize`, millions in a load): bytes already in the precache buffer are one `memcpy`, the linker's `Serialize` goes straight to it, and a name reference is read in one step; anything else runs the lifted functions | `src/patches/archive_native.cpp` | `DOD3_ARCHIVE_NATIVE=0` |
 | The SPURS queue and LFQueue paths, lifted from libsre at build time (the HLE's own were not enough for this game) | `src/kernel/spurs_queue.cpp`, `src/kernel/spurs_lfqueue.cpp`, `tools/gen_libsre.py` | |
 
 Hooks into lifted SPU code are declared in `tools/lift_spu.sh`
