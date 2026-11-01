@@ -12,7 +12,8 @@
  *   DLC       the 20 packs, which are in, and Add DLC Packages
  *   Settings  dod3.ini: the in-game Settings pages' rows (src/ui/settings_menu.cpp,
  *             one list for both), a few that are only in the file (window size,
- *             mouse camera, camera speed, this launcher) and the keyboard's keys.
+ *             mouse camera, camera speed, this launcher), the keyboard's keys
+ *             and the cheats (src/patches/cheats.cpp, song_autoplay.cpp).
  *             A change is saved at once, the file's comments kept (ui/ini.h).
  *   Trophies  the disc's trophy list with what this install has earned
  *             (ui/trophies.h)
@@ -26,7 +27,7 @@
  * ImGui's navigation).
  *
  * Tests: DOD3_LAUNCHER_OPEN=mods|dlc|settings[:<n>]|trophies|update opens a panel at start
- * (n: the settings tab, 0 Display to 3 System), DOD3_LAUNCHER_ADD=
+ * (n: the settings tab, 0 Display to 4 Cheats), DOD3_LAUNCHER_ADD=
  * '<file>|<file>' adds files as Add Files would, and DOD3_SETUP_GRAB=<prefix>
  * saves the window as <prefix>_0.ppm once it has settled (the platform's
  * grab); DOD3_LAUNCHER_AUTO=quit then closes it, =install presses Install (or
@@ -81,8 +82,8 @@ std::string join(const std::vector<std::string>& parts)
 
 /* ---- the settings ------------------------------------------------------------ */
 
-enum Tab { kDisplay, kGraphics, kControls, kSystem, kTabs };
-const char* const kTabNames[kTabs] = { "Display", "Graphics", "Controls", "System" };
+enum Tab { kDisplay, kGraphics, kControls, kSystem, kCheats, kTabs };
+const char* const kTabNames[kTabs] = { "Display", "Graphics", "Controls", "System", "Cheats" };
 
 /* The rows only the file has (the in-game pages have the rest). */
 void extra_rows(std::vector<Dod3RowSpec>& rows)
@@ -103,12 +104,6 @@ void extra_rows(std::vector<Dod3RowSpec>& rows)
                      .label = "Camera Speed",
                      .desc = "Console keeps the stick's speed at any frame rate.",
                      .choices = { { nullptr, "Console" }, { "original", "Original" } } });
-#ifdef DOD3_FN_SONG_JUDGE
-    rows.push_back({ .key = "DOD3_SONG_AUTOPLAY",
-                     .label = "Final Song Auto-Play",
-                     .desc = "Branch D's final song presses every note for you, on its time.",
-                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
-#endif
     rows.push_back({ .key = "DOD3_TROPHY_POPUPS",
                      .label = "Trophy Pop-ups",
                      .desc = "Show a trophy at the top right of the game as you earn it.",
@@ -121,6 +116,31 @@ void extra_rows(std::vector<Dod3RowSpec>& rows)
                      .desc = "Open this at start. Hold Shift (Option on a Mac) to open it anyway.",
 #endif
                      .choices = { { nullptr, "On" }, { "0", "Off" } } });
+    /* the Cheats tab (src/patches/cheats.cpp, src/patches/song_autoplay.cpp) */
+#ifdef DOD3_FN_GAUGE_SET
+    rows.push_back({ .key = "DOD3_CHEAT_HEALTH",
+                     .label = "Infinite Health",
+                     .desc = "Your health stays full, Zero's or the dragon's. Enemies are hurt as usual.",
+                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+    rows.push_back({ .key = "DOD3_CHEAT_INTONER",
+                     .label = "Full Intoner Gauge",
+                     .desc = "The Intoner gauge fills at the first blood and stays full, in Intoner mode too.",
+                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+    rows.push_back({ .key = "DOD3_CHEAT_ITEMS",
+                     .label = "Infinite Items",
+                     .desc = "Items are not used up.",
+                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+    rows.push_back({ .key = "DOD3_CHEAT_TIME",
+                     .label = "Frozen Time Limits",
+                     .desc = "A mission's time limit does not count down.",
+                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+#endif
+#ifdef DOD3_FN_SONG_JUDGE
+    rows.push_back({ .key = "DOD3_SONG_AUTOPLAY",
+                     .label = "Final Song Auto-Play",
+                     .desc = "Branch D's final song presses every note for you, on its time.",
+                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+#endif
 #ifdef _WIN32
     rows.push_back({ .key = "DOD3_UPDATE_CHECK",
                      .label = "Check for Updates",
@@ -140,9 +160,10 @@ const struct {
     { "RSX_AA", kGraphics },        { "RSX_ANISO", kGraphics },      { "DOD3_FOV", kGraphics },
     { "DOD3_PROMPTS", kControls },  { "DOD3_MOUSE", kControls },     { "DOD3_MOUSE_SENS", kControls },
     { "DOD3_CAMERA_SPEED", kControls }, { "DOD3_SKIP_INTRO", kSystem }, { "DOD3_UNFOCUSED", kSystem },
-    { "DOD3_SONG_AUTOPLAY", kSystem }, { "DOD3_TROPHY_POPUPS", kSystem }, { "RSX_BACKEND", kSystem },
-    { "DOD3_LAUNCHER", kSystem },
+    { "DOD3_TROPHY_POPUPS", kSystem }, { "RSX_BACKEND", kSystem }, { "DOD3_LAUNCHER", kSystem },
     { "DOD3_UPDATE_CHECK", kSystem },
+    { "DOD3_CHEAT_HEALTH", kCheats }, { "DOD3_CHEAT_INTONER", kCheats }, { "DOD3_CHEAT_ITEMS", kCheats },
+    { "DOD3_CHEAT_TIME", kCheats }, { "DOD3_SONG_AUTOPLAY", kCheats },
 };
 
 int place_of(const char* key)

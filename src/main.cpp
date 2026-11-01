@@ -106,6 +106,7 @@ int dod3_setup_linux(const char* base_dir, int force);
 void dod3_settings_menu_install();  /* src/ui/settings_menu.cpp: the Graphics Settings page */
 void dod3_hud_aspect_install();     /* src/patches/hud_aspect.cpp */
 void dod3_song_autoplay_install();  /* src/patches/song_autoplay.cpp */
+void dod3_cheats_install();         /* src/patches/cheats.cpp */
 void dod3_dragon_cursor_install();  /* src/patches/dragon_cursor.cpp */
 void dod3_archive_native_install(); /* src/patches/archive_native.cpp */
 void dod3_dlc_prepare();            /* src/kernel/dlc.cpp: the installed DLC's file lists */
@@ -2363,6 +2364,7 @@ int main(int argc, char** argv)
     dod3_sysset_install();          /* the tree detail row's hook */
     dod3_hud_aspect_install();      /* the HUD's markers in a view of another shape */
     dod3_song_autoplay_install();   /* branch D's final song, if DOD3_SONG_AUTOPLAY=1 */
+    dod3_cheats_install();          /* the launcher's Cheats tab (DOD3_CHEAT_*) */
     dod3_dragon_cursor_install();   /* the mouse moves the dragon's shooting cursor */
     dod3_archive_native_install();  /* the package loader's reads, natively */
     dod3_kbm_install();

@@ -58,6 +58,9 @@
 #define DOD3_FN_ARCHIVE_ASYNC_SERIALIZE func_00141420 /* FArchiveAsync::Serialize, the package loader's reads (patches/archive_native.cpp) */
 #define DOD3_FN_LINKER_SERIALIZE       func_0014A32C /* FLinkerLoad::Serialize: Loader->Serialize (patches/archive_native.cpp) */
 #define DOD3_FN_LINKER_NAME            func_0014A62C /* FLinkerLoad::operator<<(FName&), the FArchive's thunk (patches/archive_native.cpp) */
+#define DOD3_FN_GAUGE_SET              func_0095B0CC /* a pawn's gauge set, clamped to its range (patches/cheats.cpp) */
+#define DOD3_FN_ITEM_REMOVE            func_00A6C560 /* the inventory's RemoveItem(id, count) (patches/cheats.cpp) */
+#define DOD3_FN_TIME_LIMIT_TICK        func_009F3ED8 /* a mission's time limit counting down (patches/cheats.cpp) */
 #define DOD3_FN_SHOOTING_CURSOR_ON     func_0096B9A8 /* ASqex03GamePawn::IsEnableShootingCursor */
 #define DOD3_FN_UBER_CREATE_PROXY      func_00306728 /* UUberPostProcessEffect::CreateSceneProxy (patches/sysset.cpp) */
 #define DOD3_FN_DOFBLOOM_CREATE_PROXY  func_001B1B64 /* UDOFAndBloomEffect::CreateSceneProxy */
@@ -107,6 +110,12 @@
 #define DOD3_A_ARCHIVE_ASYNC_SERIALIZE 0x00141420u
 #define DOD3_A_LINKER_SERIALIZE       0x0014A32Cu
 #define DOD3_A_LINKER_NAME            0x0014A62Cu
+#define DOD3_A_GAUGE_SET              0x0095B0CCu
+#define DOD3_A_ITEM_REMOVE            0x00A6C560u
+#define DOD3_A_TIME_LIMIT_TICK        0x009F3ED8u
+#define DOD3_A_PLAYER_CONTROLLER_VTABLE 0x0173ADA0u /* the player's controller (patches/cheats.cpp) */
+#define DOD3_O_PAWN_CONTROLLER        0x1E8u /* APawn::Controller */
+#define DOD3_O_CONTROLLER_PAWN        0x1CCu /* AController::Pawn */
 #define DOD3_O_SHOOTING_CURSOR      0x13F4u /* ASqex03GamePawn: m_xTarget.m_xShooting.m_vCurPos, (x, y) of the screen */
 #define DOD3_O_SHOOTING_RECT        0x1448u /* m_xTarget.m_xShooting.m_fShootingRect_Up, _Bottom, _Left, _Right */
 #define DOD3_O_HUD_CANVAS          0x414u /* ASqex03GameHUD: AHUD::Canvas */

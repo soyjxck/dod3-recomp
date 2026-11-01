@@ -1,6 +1,6 @@
 /*
  * Auto-play for the song of branch D's final mission (DOD3_SONG_AUTOPLAY=1,
- * the launcher's System tab): the port's form of the RPCS3 patch "Auto Play
+ * the launcher's Cheats tab): the port's form of the RPCS3 patch "Auto Play
  * Song of The D Branch Final Mission" by bucanero (BLUS31197 1.01).
  *
  * The song's notes are judged by func_0091D8F0, called through the note's

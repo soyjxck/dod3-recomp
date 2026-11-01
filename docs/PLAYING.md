@@ -114,8 +114,8 @@ art (from your copy of the game):
   installed, a switch to turn one off and on again, Remove, and Add Files /
   Add Folder for more (see Mods below)
 - DLC: which of the 20 packs are installed, and Add DLC Packages
-- Settings: the display, graphics, controls (the keyboard's keys too) and
-  system settings, saved to dod3.ini as you change them
+- Settings: the display, graphics, controls (the keyboard's keys too),
+  system settings and cheats, saved to dod3.ini as you change them
 - Game Files, at the bottom: the setup, to install the disc or the update
   again
 - Update to ..., at the bottom (Windows), once a newer release is out: its
@@ -194,8 +194,12 @@ folder above). It explains each setting:
 | DOD3_LAUNCHER | 0 starts the game straight away, without the launcher; holding Shift (Option on a Mac) while it starts opens the launcher anyway. Unset opens it at every start |
 | DOD3_UPDATE_CHECK | Windows: 0 stops the launcher asking GitHub for a newer release when it opens. In the launcher: Settings > System > Check for Updates. Unset asks |
 | DOD3_UNFOCUSED | While the window is in the background: unset keeps running, mute silences the audio, pause stops the game until you come back |
-| DOD3_SONG_AUTOPLAY | 1 plays the song of branch D's final mission for you: every note is pressed on its time (the RPCS3 patch "Auto Play Song of The D Branch Final Mission", by bucanero). In the launcher: Settings > System > Final Song Auto-Play. Unset is off |
+| DOD3_SONG_AUTOPLAY | 1 plays the song of branch D's final mission for you: every note is pressed on its time (the RPCS3 patch "Auto Play Song of The D Branch Final Mission", by bucanero). In the launcher: Settings > Cheats > Final Song Auto-Play. Unset is off |
 | DOD3_TROPHY_POPUPS | 0 leaves out the pop-up at the top right of the game as you earn a trophy (Windows, Direct3D 12 for now). The trophies are kept either way, in gamedata/trophies, and listed on the launcher's Trophies page. In the launcher: Settings > System > Trophy Pop-ups. Unset shows them |
+| DOD3_CHEAT_HEALTH | 1 keeps your health full: Zero's, or the dragon's in the sky. Enemies are hurt as usual. In the launcher: Settings > Cheats > Infinite Health. From the next start; unset is off |
+| DOD3_CHEAT_INTONER | 1 fills the Intoner gauge at the first blood and keeps it full, in Intoner mode too. Settings > Cheats > Full Intoner Gauge |
+| DOD3_CHEAT_ITEMS | 1: items are not used up. Settings > Cheats > Infinite Items |
+| DOD3_CHEAT_TIME | 1: a mission's time limit does not count down. Settings > Cheats > Frozen Time Limits |
 | DOD3_PROMPTS | The buttons the game shows: unset follows the controller you hold; or ps3, ps4, ps5, xbox, switch, keyboard |
 | DOD3_MOUSE_SENS | How far the mouse turns the camera; 1 is the default. DOD3_MOUSE = 0 turns the mouse off |
 | KEY_CROSS, KEY_MOVE_UP, ... | Windows: the keys for each pad button and stick direction (the file lists them all) |
