@@ -195,6 +195,7 @@ folder above). It explains each setting:
 | DOD3_UPDATE_CHECK | Windows: 0 stops the launcher asking GitHub for a newer release when it opens. In the launcher: Settings > System > Check for Updates. Unset asks |
 | DOD3_UNFOCUSED | While the window is in the background: unset keeps running, mute silences the audio, pause stops the game until you come back |
 | DOD3_SONG_AUTOPLAY | 1 plays the song of branch D's final mission for you: every note is pressed on its time (the RPCS3 patch "Auto Play Song of The D Branch Final Mission", by bucanero). In the launcher: Settings > System > Final Song Auto-Play. Unset is off |
+| DOD3_TROPHY_POPUPS | 0 leaves out the pop-up at the top right of the game as you earn a trophy (Windows, Direct3D 12 for now). The trophies are kept either way, in gamedata/trophies, and listed on the launcher's Trophies page. In the launcher: Settings > System > Trophy Pop-ups. Unset shows them |
 | DOD3_PROMPTS | The buttons the game shows: unset follows the controller you hold; or ps3, ps4, ps5, xbox, switch, keyboard |
 | DOD3_MOUSE_SENS | How far the mouse turns the camera; 1 is the default. DOD3_MOUSE = 0 turns the mouse off |
 | KEY_CROSS, KEY_MOVE_UP, ... | Windows: the keys for each pad button and stick direction (the file lists them all) |

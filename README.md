@@ -196,6 +196,7 @@ follows the scene, with the frames shown at even intervals, FXAA or MSAA,
 anisotropic filtering, a wider field of view, sharper shadows, a longer draw
 distance for scenery and for trees, skipping the intro logos and movie,
 pausing or muting when the window is in the background, keyboard and mouse,
+trophies (a pop-up as you earn one, and their list in the launcher),
 and the button prompts of the pad you hold -- set in the launcher, or in a
 Graphics Settings, a System Settings, an Advanced Graphics and a Picture
 Settings page added to the game's own Settings menu. The launcher also installs your DLC and two

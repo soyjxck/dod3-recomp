@@ -46,6 +46,34 @@ std::string size_text(uint64_t bytes)
     return s;
 }
 
+ImU32 grade_colour(char grade)
+{
+    switch (grade) {
+    case 'P': return IM_COL32(184, 198, 219, 255);
+    case 'G': return IM_COL32(227, 179, 65, 255);
+    case 'S': return IM_COL32(196, 200, 204, 255);
+    default:  return IM_COL32(205, 127, 50, 255);
+    }
+}
+
+void trophy_cup(ImDrawList* dl, ImVec2 c, float size, ImU32 col)
+{
+    const float r = size * 0.30f, top = c.y - size * 0.45f;
+    /* the bowl: the lower half of a circle under the rim */
+    dl->PathArcTo(ImVec2(c.x, top), r, 0.0f, IM_PI, 16);
+    dl->PathFillConvex(col);
+    /* the handles */
+    const float hr = size * 0.12f, th = size * 0.07f;
+    dl->PathArcTo(ImVec2(c.x - r, top + size * 0.11f), hr, IM_PI * 0.5f, IM_PI * 1.5f, 8);
+    dl->PathStroke(col, 0, th);
+    dl->PathArcTo(ImVec2(c.x + r, top + size * 0.11f), hr, -IM_PI * 0.5f, IM_PI * 0.5f, 8);
+    dl->PathStroke(col, 0, th);
+    /* the stem and the foot */
+    dl->AddRectFilled(ImVec2(c.x - size * 0.05f, top + r - 1.0f), ImVec2(c.x + size * 0.05f, c.y + size * 0.27f), col);
+    dl->AddRectFilled(ImVec2(c.x - size * 0.24f, c.y + size * 0.27f), ImVec2(c.x + size * 0.24f, c.y + size * 0.45f), col,
+                      size * 0.05f);
+}
+
 void load_fonts(Fonts& F)
 {
     ImGuiIO& io = ImGui::GetIO();

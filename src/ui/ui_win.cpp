@@ -43,7 +43,7 @@ namespace dod3setup {
 namespace {
 
 constexpr int kFrames = 2;          /* frames in flight = back buffers */
-constexpr int kSrvHeapSize = 16;    /* the font atlas, and room to grow */
+constexpr int kSrvHeapSize = 256;   /* the font atlas, the key art and the trophy icons (128 at most), and room */
 const wchar_t kClass[] = L"Dod3Setup";
 
 struct FrameContext {

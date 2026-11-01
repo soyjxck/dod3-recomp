@@ -308,6 +308,7 @@ if(WIN32)
     list(APPEND SETUP_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/wizard.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/launcher.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/trophies.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/look.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/setup_shared.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/png.cpp"
@@ -324,6 +325,7 @@ elseif(APPLE)
     list(APPEND SETUP_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/wizard.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/launcher.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/trophies.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/look.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/setup_shared.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/png.cpp"
@@ -342,6 +344,7 @@ elseif(DOD3_LINUX)
     list(APPEND SETUP_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/wizard.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/launcher.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/trophies.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/look.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/setup_shared.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ui/png.cpp"
@@ -415,7 +418,14 @@ set(PORT_PATCH_SOURCES               # native replacements of the game's own cod
     src/patches/sysset.cpp)
 set(PORT_UI_SOURCES                  # the in-game settings pages
     src/ui/settings_menu.cpp
+    src/ui/overlay.cpp               # the in-game layer (ImGui over the frames): the trophy pop-ups
     src/ui/ini.cpp)                  # dod3.ini, edited in place (the pages' and the launcher's)
+set_property(SOURCE src/ui/overlay.cpp APPEND PROPERTY INCLUDE_DIRECTORIES
+             "${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui")
+# the trophies (trophy_pack.h, trophy_host.h): only for the
+# files that read them, so the lifted code's command lines stay as they are
+set_property(SOURCE src/ui/overlay.cpp src/ui/launcher.cpp src/ui/trophies.cpp APPEND PROPERTY INCLUDE_DIRECTORIES
+             "${PS3RECOMP_DIR}/libs/network")
 if(MSVC)   # the pages' Spanish text is UTF-8 in the source (clang reads it so anyway)
     set_property(SOURCE src/ui/settings_menu.cpp APPEND PROPERTY COMPILE_OPTIONS "/utf-8")
 endif()

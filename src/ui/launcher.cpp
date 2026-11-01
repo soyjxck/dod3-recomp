@@ -14,6 +14,8 @@
  *             one list for both), a few that are only in the file (window size,
  *             mouse camera, camera speed, this launcher) and the keyboard's keys.
  *             A change is saved at once, the file's comments kept (ui/ini.h).
+ *   Trophies  the disc's trophy list with what this install has earned
+ *             (ui/trophies.h)
  *   Update    Windows: a newer release the launcher found on GitHub as it
  *             opened (install/update.h), offered by a line in the footer:
  *             its notes, and Install Update, which replaces the program's
@@ -23,7 +25,7 @@
  * too (ui/look.h). Keyboard, mouse and controller all work (the backends feed
  * ImGui's navigation).
  *
- * Tests: DOD3_LAUNCHER_OPEN=mods|dlc|settings[:<n>]|update opens a panel at start
+ * Tests: DOD3_LAUNCHER_OPEN=mods|dlc|settings[:<n>]|trophies|update opens a panel at start
  * (n: the settings tab, 0 Display to 3 System), DOD3_LAUNCHER_ADD=
  * '<file>|<file>' adds files as Add Files would, and DOD3_SETUP_GRAB=<prefix>
  * saves the window as <prefix>_0.ppm once it has settled (the platform's
@@ -39,6 +41,7 @@
 #include "ui/ini.h"
 #include "ui/look.h"           /* the type, the colours, the art, the widgets */
 #include "ui/setup_shared.h"   /* the files added and the install, on their own threads */
+#include "ui/trophies.h"       /* the Trophies panel */
 #include "install/install.h"
 #include "patches/sysset.h"    /* Dod3RowSpec, dod3_setting_rows */
 #include "cpu/eboot.h"         /* what this EBOOT's build can patch */
@@ -106,6 +109,10 @@ void extra_rows(std::vector<Dod3RowSpec>& rows)
                      .desc = "Branch D's final song presses every note for you, on its time.",
                      .choices = { { nullptr, "Off" }, { "1", "On" } } });
 #endif
+    rows.push_back({ .key = "DOD3_TROPHY_POPUPS",
+                     .label = "Trophy Pop-ups",
+                     .desc = "Show a trophy at the top right of the game as you earn it.",
+                     .choices = { { nullptr, "On" }, { "0", "Off" } } });
     rows.push_back({ .key = "DOD3_LAUNCHER",
                      .label = "Launcher at Start",
 #ifdef __linux__
@@ -133,7 +140,8 @@ const struct {
     { "RSX_AA", kGraphics },        { "RSX_ANISO", kGraphics },      { "DOD3_FOV", kGraphics },
     { "DOD3_PROMPTS", kControls },  { "DOD3_MOUSE", kControls },     { "DOD3_MOUSE_SENS", kControls },
     { "DOD3_CAMERA_SPEED", kControls }, { "DOD3_SKIP_INTRO", kSystem }, { "DOD3_UNFOCUSED", kSystem },
-    { "DOD3_SONG_AUTOPLAY", kSystem }, { "RSX_BACKEND", kSystem },  { "DOD3_LAUNCHER", kSystem },
+    { "DOD3_SONG_AUTOPLAY", kSystem }, { "DOD3_TROPHY_POPUPS", kSystem }, { "RSX_BACKEND", kSystem },
+    { "DOD3_LAUNCHER", kSystem },
     { "DOD3_UPDATE_CHECK", kSystem },
 };
 
@@ -234,7 +242,7 @@ const char* key_name(ImGuiKey k)
 
 /* ---- the launcher -------------------------------------------------------------- */
 
-enum class Panel { None, Mods, Dlc, Settings, Update };
+enum class Panel { None, Mods, Dlc, Settings, Trophies, Update };
 
 #ifdef _WIN32
 /* A release's notes (GitHub Markdown) as the Update panel shows them: one
@@ -319,6 +327,7 @@ struct Launcher : Kit {
 
     /* the settings */
     std::map<std::string, std::string> kv;   /* dod3.ini */
+    TrophiesPanel trophies;
     std::vector<Dod3RowSpec> rows;
     int tab = kDisplay;
     int capture = -1, capture_frames = 0;   /* a key binding being set */
@@ -556,7 +565,7 @@ struct Launcher : Kit {
     {
         /* while files are being recognised, leaving would wait for them with the window still */
         const bool busy = working() || checks.pending() > 0;
-        float y = H * 0.40f;
+        float y = H * 0.36f;
         int result = kGoOn;
         if (play_item(y, !busy)) result = kPlay;
         /* Enter, or a pad's confirm button, plays straight away when nothing
@@ -588,6 +597,10 @@ struct Launcher : Kit {
         back_here(Panel::Settings);
         if (menu_item("##settings", "Settings", settings_summary().c_str(), y, panel == Panel::Settings, true))
             open(Panel::Settings);
+        y += px(62);
+        back_here(Panel::Trophies);
+        if (menu_item("##trophies", "Trophies", trophies.summary().c_str(), y, panel == Panel::Trophies, true))
+            open(Panel::Trophies);
         y += px(62);
         if (menu_item("##quit", "Quit", nullptr, y, false, !working())) result = kQuit;
         return result;
@@ -1286,15 +1299,21 @@ struct Launcher : Kit {
             ImVec2 body, size;
             const char* heading = panel == Panel::Mods       ? "Mods"
                                   : panel == Panel::Dlc      ? "DLC"
+                                  : panel == Panel::Trophies ? "Trophies"
                                   : panel == Panel::Update   ? "Update"
                                                              : "Settings";
             const char* sub = panel == Panel::Mods     ? "Fan-made additions, installed beside your own game files."
                               : panel == Panel::Dlc    ? "The downloadable content you own."
+                              : panel == Panel::Trophies ? "Earned as you play; kept with your saves."
                               : panel == Panel::Update ? "A newer release of the port, from its GitHub page."
                                                        : "Saved to dod3.ini as you change them; used at the next start.";
             const bool close = panel_frame(heading, sub, panel_in(), true, &body, &size);
             if (panel == Panel::Settings)
                 settings_panel(body, size);
+            else if (panel == Panel::Trophies) {
+                trophies.draw(*this, body, size, focus_panel);
+                focus_panel = false;
+            }
 #ifdef _WIN32
             else if (panel == Panel::Update)
                 update_panel(body, size);
@@ -1305,7 +1324,7 @@ struct Launcher : Kit {
                 mods_panel(body, size);
             else
                 dlc_panel(body, size);
-            const bool back = back_pressed() && capture < 0 && cooldown == 0;
+            const bool back = back_pressed() && capture < 0 && cooldown == 0 && !trophies.typing();
             if ((close || back) && !working()) {
                 if (ImGui::GetIO().NavVisible) refocus = panel;
                 panel = Panel::None;
@@ -1331,6 +1350,7 @@ struct Launcher : Kit {
             panel = !strncmp(o, "mods", 4)       ? Panel::Mods
                     : !strncmp(o, "dlc", 3)      ? Panel::Dlc
                     : !strncmp(o, "settings", 8) ? Panel::Settings
+                    : !strncmp(o, "trophies", 8) ? Panel::Trophies
                     : !strncmp(o, "update", 6)   ? Panel::Update
                                                  : Panel::None;
             if (const char* c = strchr(o, ':')) tab = std::clamp(atoi(c + 1), 0, kTabs - 1);
@@ -1406,6 +1426,7 @@ int run_launcher(const fs::path& base)
     L.ini = fs::path(dod3_settings_path_now());
     L.art = look::load_art(base);
     L.refresh();
+    L.trophies.start(base);
     L.kv = dod3::ini_read(L.ini);
     dod3_setting_rows(L.rows);
     extra_rows(L.rows);

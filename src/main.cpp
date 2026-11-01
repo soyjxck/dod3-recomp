@@ -52,6 +52,7 @@
 #include "install/crypto.h"
 #include "install/install.h"           /* the release layout (the installer) */
 #include "ui/ini.h"                    /* dod3.ini */
+#include "ui/overlay.h"                /* the in-game layer: the trophy pop-ups */
 
 /* The Win32 names -- Sleep, GetTickCount64, CreateThread, InterlockedIncrement,
  * VirtualAlloc, the scalar typedefs -- from one place. On Windows this is a
@@ -2179,6 +2180,8 @@ int main(int argc, char** argv)
     if (!getenv("PS3_DEV_FLASH") && dod3_mp3_standin_wanted() && dod3_mp3_standin_install("gamedata/dev_flash"))
         dod3_setenv("PS3_DEV_FLASH", "gamedata/dev_flash", 1);
     dod3_setenv("PS3_DEV_FLASH", "fw/dev_flash", 0);
+    /* The trophies: the pop-ups over the game (src/ui/overlay.cpp). */
+    dod3_overlay_install();
     /* The PhysX taskset (memory-manager and physics tasks sharing request
      * blocks) runs as hardware runs it: up to its maxContention (3) tasks at
      * once, started in creation order. With no limit its tasks raced (a task
