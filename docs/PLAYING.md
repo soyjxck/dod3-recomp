@@ -426,7 +426,8 @@ delete the folder.
 ## Known issues
 
 - Tested on few machines so far (Windows: i9-13900K with an RTX 4090;
-  macOS: M1 Pro). Reports from other hardware are welcome.
+  macOS: M1 Pro; Linux: a Steam Deck, in Desktop Mode). Reports from other
+  hardware are welcome.
 - Trophy pop-ups show on Windows with Direct3D 12 only so far; on Vulkan,
   macOS and Linux the trophies are earned and listed in the launcher without
   the pop-up.

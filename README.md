@@ -184,7 +184,7 @@ and the conventions.
 |---|---|
 | Windows 10/11, Direct3D 12 | Playable. 60 fps at 4K on an RTX 4090 / i9-13900K (chapter 1 through the heavy destruction scene, open areas, the village); 120 fps holds at lower resolutions |
 | Windows, Vulkan | Experimental (`RSX_BACKEND = vulkan`) |
-| Linux, Vulkan | Experimental: the same Vulkan renderer in an SDL2 window; being brought up on a Steam Deck |
+| Linux, Vulkan | Experimental. Tested on a Steam Deck (SteamOS, Desktop Mode): the chapter 1 battle at 55-65 fps uncapped, the heaviest moments in the 40s; Gaming Mode not yet tried |
 | macOS 13+, Apple silicon, Metal | Playable. 60 fps at 1080p in battle on an M1 Pro |
 | Game version | The 1.01 update (required) |
 | DLC | All 20 packs, including the Japanese voice pack |
