@@ -1,4 +1,44 @@
+<div align="center">
+
+<img src="docs/images/icon.png" alt="Drakengard 3 Recompiled icon" width="112">
+
 # Drakengard 3 Recompiled
+
+**A native port of the PlayStation 3 game Drakengard 3.**
+
+[![Latest release](https://img.shields.io/github/v/release/soyjxck/dod3-recomp?include_prereleases&label=release)](https://github.com/soyjxck/dod3-recomp/releases)
+[![Downloads](https://img.shields.io/github/downloads/soyjxck/dod3-recomp/total?label=downloads)](https://github.com/soyjxck/dod3-recomp/releases)
+[![Stars](https://img.shields.io/github/stars/soyjxck/dod3-recomp?style=flat)](https://github.com/soyjxck/dod3-recomp/stargazers)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/soyjxck/dod3-recomp?label=last%20commit)](https://github.com/soyjxck/dod3-recomp/commits/main)
+[![Open issues](https://img.shields.io/github/issues/soyjxck/dod3-recomp?label=issues)](https://github.com/soyjxck/dod3-recomp/issues)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/soyjack)
+
+![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6)
+![Linux x64](https://img.shields.io/badge/Linux-x64-FCC624?logo=linux&logoColor=black)
+![macOS arm64](https://img.shields.io/badge/macOS-arm64-000000?logo=apple&logoColor=white)
+
+![Direct3D 12](https://img.shields.io/badge/Direct3D-12-5E5E5E)
+![Vulkan](https://img.shields.io/badge/Vulkan-AC162C?logo=vulkan&logoColor=white)
+![Metal](https://img.shields.io/badge/Metal-147EFB)
+
+### [Download](https://github.com/soyjxck/dod3-recomp/releases) · [Installing](#installing) · [Playing guide](docs/PLAYING.md)
+
+[Report an issue](https://github.com/soyjxck/dod3-recomp/issues) · [Build from source](#building) · [Technical notes](docs/TECHNICAL.md) · [Ko-fi](https://ko-fi.com/soyjack)
+
+</div>
+
+## Contents
+
+- [About](#about)
+- [Installing](#installing)
+- [Building](#building)
+- [Status](#status)
+- [How it fits together](#how-it-fits-together)
+- [Legal](#legal)
+- [Credits](#credits)
+
+## About
 
 A native PC port of **Drakengard 3** (Drag-On Dragoon 3, PlayStation 3,
 BLUS31197) for Windows, macOS and Linux, made by static recompilation of the game's
