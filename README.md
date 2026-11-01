@@ -1,7 +1,7 @@
 # Drakengard 3 Recompiled
 
 A native PC port of **Drakengard 3** (Drag-On Dragoon 3, PlayStation 3,
-BLUS31197) for Windows and macOS, made by static recompilation of the game's
+BLUS31197) for Windows, macOS and Linux, made by static recompilation of the game's
 code on the [ps3recomp](https://github.com/sp00nznet/ps3recomp) toolkit.
 
 The game's PowerPC and SPU code is translated to C++ ahead of time and built
@@ -71,6 +71,21 @@ macOS:
 3. The setup opens as on Windows. The game's files go into
    `~/Library/Application Support/Drakengard 3 Recompiled`.
 
+Linux (x86-64; the Steam Deck included), experimental:
+
+1. Download `dod3-recomp-<version>-linux-x86_64.tar.gz` from the
+   [releases](https://github.com/soyjxck/dod3-recomp/releases) and unpack it
+   anywhere you can write to. It needs a Vulkan 1.3 driver (Mesa's RADV,
+   ANV, or NVIDIA's), SDL2 (`sdl2` or `sdl2-compat`; SteamOS has it) and
+   glibc 2.38 or newer.
+2. Run `dod3` in the folder. The setup opens as on Windows, and the game's
+   files are copied into the `game` folder beside it. Add Files uses the
+   desktop's picker (kdialog or zenity); without either,
+   `./dod3 --install <files...>` in a terminal does the same.
+3. On a Steam Deck: install from Desktop Mode, then add `dod3` to Steam as a
+   non-Steam game to play it in Game Mode. `dod3.log` beside it says what
+   happened if it does not start.
+
 Settings (resolution, display mode, frame-rate cap, anti-aliasing, field of
 view, draw distance, skipping the intro, the keyboard's keys) are in the
 launcher's Settings, in the game's own Settings menu (Graphics Settings,
@@ -90,6 +105,11 @@ the game's executable, so you need your own copy of the game first.
    Windows, and vcpkg with `zlib:x64-windows` and `sdl2:x64-windows`
    (`VCPKG_ROOT`, or `C:\vcpkg`). macOS: Xcode's command-line tools and,
    from Homebrew, `cmake ninja python zlib sdl2 glslang spirv-cross`.
+   Linux: Clang, CMake, Ninja, Python and the SDL2, zlib, Vulkan and glslang
+   development files (Ubuntu 24.04 package names, and the Steam Deck's
+   distrobox, in [docs/BUILDING.md](docs/BUILDING.md#prerequisites)). All
+   three also need a decrypted `libsre.prx` from the PS3 firmware
+   ([docs/BUILDING.md](docs/BUILDING.md#the-games-files)).
 
 2. **The sources.**
 
@@ -164,6 +184,7 @@ and the conventions.
 |---|---|
 | Windows 10/11, Direct3D 12 | Playable. 60 fps at 4K on an RTX 4090 / i9-13900K (chapter 1 through the heavy destruction scene, open areas, the village); 120 fps holds at lower resolutions |
 | Windows, Vulkan | Experimental (`RSX_BACKEND = vulkan`) |
+| Linux, Vulkan | Experimental: the same Vulkan renderer in an SDL2 window; being brought up on a Steam Deck |
 | macOS 13+, Apple silicon, Metal | Playable. 60 fps at 1080p in battle on an M1 Pro |
 | Game version | The 1.01 update (required) |
 | DLC | All 20 packs, including the Japanese voice pack |

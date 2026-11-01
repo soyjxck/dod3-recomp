@@ -23,7 +23,22 @@ macOS (Apple silicon):
 - Xcode's command-line tools; from Homebrew: `cmake ninja python zlib sdl2
   glslang spirv-cross`.
 
-Then, on either:
+Linux (x86-64):
+
+- Clang 18 or later, CMake 3.20 or later, Ninja, Python 3.11 or later, and
+  the development files of SDL2, zlib, the Vulkan headers and glslang built
+  with SPIRV-Tools (the game's shaders go HLSL -> SPIR-V through it). On
+  Ubuntu 24.04: `clang cmake ninja-build python3-venv libsdl2-dev
+  zlib1g-dev libvulkan-dev glslang-dev glslang-tools spirv-tools`.
+- A release is built in the oldest distribution it is for, since the
+  executable runs on that glibc or newer: Ubuntu 24.04 (its build needs glibc 2.38) runs on
+  SteamOS and on current distributions. On a Steam Deck, whose system is
+  read-only and has no compiler, that is a distrobox:
+  `distrobox create --name dod3-build --image docker.io/library/ubuntu:24.04`
+  and the packages above in it; the build folder is in your home, so the
+  result runs on the Deck itself.
+
+Then, on any of them:
 
 ```sh
 git clone --recurse-submodules https://github.com/soyjxck/dod3-recomp
@@ -50,7 +65,19 @@ DOD3_INSTALL_BASE=. path/to/dod3 --install <disc .iso or folder, or PSN game .pk
 
 Any other decrypted copy of the update's EBOOT.BIN with that hash works too
 (RPCS3's *Utilities > Decrypt PS3 Binaries*, for one). `dod3 --check
-<file>...` says what the installer makes of a file.
+<file>...` says what the installer makes of a file. On a platform with no
+`dod3` yet (a first Linux build), RPCS3's decrypt is the way in: the update
+package installed in RPCS3, then `rpcs3 --decrypt
+<dev_hdd0>/game/BLUS31197/USRDIR/EBOOT.BIN`, saved as `elf/EBOOT_101.ELF`.
+
+The build also lifts part of the console's SPURS library (the queue paths,
+`tools/gen_libsre.py`), so it needs a decrypted `libsre.prx` at
+`ps3recomp/fw_spu/libsre.prx` (git-ignored; `LIBSRE_PRX` points elsewhere).
+It is the firmware's `dev_flash/sys/external/libsre.sprx`, decrypted: with
+the firmware installed in RPCS3 (*File > Install Firmware*, the PS3UPDAT.PUP
+from PlayStation's site), `rpcs3 --decrypt
+<rpcs3>/dev_flash/sys/external/libsre.sprx` writes `libsre.prx` beside it.
+Firmware 4.91 is known to work.
 
 ## Lifting the PPU code
 
@@ -117,6 +144,20 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
+Linux (in the distrobox on a Deck: `distrobox enter dod3-build` first):
+
+```sh
+CC=clang CXX=clang++ cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-linux -j4
+```
+
+The renderer there is the draw engine over Vulkan 1.3 (ps3recomp's
+`rsx_vulkan_engine.c`, which Windows runs with `RSX_BACKEND=vulkan`) in an
+SDL2 window, and the setup's window is SDL2 too (`src/ui/ui_linux.cpp`); the
+configure step stops if glslang is missing, as there would be no shaders.
+Each lifted unit takes several GB of memory to compile at `-O3`: on a 16 GB
+machine (a Steam Deck) build with `-j4` or fewer.
+
 A clean build takes about 15 minutes, nearly all of it the lifted translation
 units; a header every lifted unit includes (`ppu_recomp.h`, `ppu_vm_fast.h`)
 rebuilds all of them. A build folder keeps `RECOMP_DIR` in its cache, so one
@@ -128,7 +169,7 @@ CMake options:
 |---|---|---|
 | `DOD3_EBOOT` | 101 | the version the lift is from. 100 builds the disc version instead (`elf/EBOOT.ELF`, `recompiled/`, `src/cpu/eboot.h`'s other column); kept for comparison, not maintained |
 | `RECOMP_DIR` | `recompiled_101` | the lifted PPU C++ |
-| `DOD3_X86_LEVEL` | x86-64-v3 | the lifted code's x86 level (clang-cl); empty for the baseline. The default needs AVX2, FMA and BMI2, and the executable checks for them at start |
+| `DOD3_X86_LEVEL` | x86-64-v3 | the lifted code's x86 level (clang-cl, and clang on Linux); empty for the baseline. The default needs AVX2, FMA and BMI2, and the executable checks for them at start |
 | `DOD3_INLINE_VM` | ON | inline the guest-memory fast path into the lifted code |
 | `DOD3_SYMBOLS` | ON | Windows: `/Z7` on the port's and the runtime's sources, `/DEBUG` at link, for the profiler and the crash handler |
 | `DOD3_CONSOLE` | OFF | Windows: link as a console program |
@@ -170,8 +211,13 @@ in the environment wins over it.
 - macOS: `tools/build_mac_deps.sh` once (SDL2, glslang, SPIRV-Cross built for
   the deployment target), then `tools/package_mac.sh v0.1.0` builds its own
   release tree and makes the signed `.app`.
+- Linux: `bash tools/package_linux.sh v0.1.0` packs `build-linux/dod3` with
+  `dod3.ini`, the player guide and the licences into
+  `dist/dod3-recomp-<version>-linux-x86_64.tar.gz`, and refuses an executable
+  that needs a library beyond glibc, libstdc++, zlib and SDL2 (glslang and
+  SPIRV-Tools are linked in), printing the oldest glibc it runs on.
 
-Both refuse to package anything of the game's.
+All three refuse to package anything of the game's.
 
 ## Regenerating the committed tables
 

@@ -33,9 +33,11 @@ executable when it has no console; the previous run is `dod3.prev.log`.
   `engslow` (the draw engine's old per-draw paths; on means slow),
   `icallflat`, `usleepspin`, `pumpsleep`, `kickhr`, `hleindex`, `texreads`
   (only the texture units a fragment program samples bound), `earlysubmit`
-  (the frame to the GPU every `RSX_SUBMIT_EVERY` records), `none` (the control,
-  which must report no difference). `DOD3_AB_FROM=<s>` skips the boot and
-  menus (default 70).
+  (the frame to the GPU every `RSX_SUBMIT_EVERY` records; on Linux's Vulkan
+  engine every `RSX_VK_SUBMIT_EVERY`), `slack` (Linux: every thread's timer
+  slack 1 ns against the kernel's 50 us), `none` (the control, which must
+  report no difference). `DOD3_AB_FROM=<s>` skips the boot and menus
+  (default 70).
 - `tools/replay_regress.sh`: the rendering regression. Replays RSX captures
   through the engine headlessly and compares the frames with a reference set
   (`tools/compare_frames.py`). The captures and references are made from the
@@ -116,6 +118,17 @@ executable when it has no console; the previous run is `dod3.prev.log`.
 - `PPU_WAITPROF=1`: time in syscalls by thread and guest call site, every
   5 s, with the fence poll's statistics; `=2` adds the most frequent calls
   (who sends or signals how often: which thread answers a wait).
+  `DOD3_USLEEP_SITES=1` with it: guest sleeps by caller (the return address
+  into whoever called appSleep and friends) and thread, the top eight every
+  5 s -- which loop a polling thread is in, where the site above only names
+  the function making the syscall (0x000B4464 is the rendering thread's wait
+  on the empty render-command ring, 0x008B0D18 its fence poll).
+- Linux: `perf` (SteamOS ships it) profiles the running game with no special
+  build: the executable keeps its symbols, PPU threads carry the guest's
+  names and SPU task threads `spu img <n>`, and `perf record --sample-cpu
+  --switch-events -p <pid> -- sleep 15` gives each thread's on-CPU intervals
+  (the gaps in a hand-off chain) at `perf_event_paranoid` 2. The process is
+  `dod3`: the walker runs on the main thread there and keeps its name.
 - `PS3_TIME_LOG=1`: the date and the time zone the game was told, once
   each (the first `sys_time_get_current_time` and `sys_time_get_timezone`);
   the game stamps its saves with them.
@@ -170,7 +183,10 @@ sleep), `RSX_SNAP_INCR=0` (full snapshot copies),
 task), `SPURS_TASKSET_SERIAL=01AA7700` (PhysX one task at a time),
 `RSX_ASYNC_SHADERS=0` (build shaders on the walker), `RSX_QUERY_NOSYNC=1`,
 `RSX_SUBMIT_EVERY=0` (the frame to the GPU at fences and the present only;
-`<n>`: every n records, default 256),
+`<n>`: every n records, default 256; Linux's Vulkan engine has its own,
+`RSX_VK_SUBMIT_EVERY`, default 0: on a Steam Deck 256 measured nothing and
+doubled the frames over 25 ms), `DOD3_TIMERSLACK_NS=<n>` (Linux: every
+thread's timer slack, default 1; 0 the kernel's 50 us),
 `DOD3_PACE=vblank`, `DOD3_VBLANK_MULT=<n>` / `DOD3_VBLANK_HZ=<hz>`,
 `DOD3_FIFO_SLEEP_MS=<n>`, `DOD3_FAST_POLL_LR=<hex>` (0 for none),
 `PS3RECOMP_RSX_ENGINE=vtable` (the toolkit's old RSX path),

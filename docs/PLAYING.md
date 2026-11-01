@@ -15,6 +15,9 @@ or Sony. Drakengard 3 and its assets belong to their owners.
    - Windows 10 or 11, 64-bit, a GPU with Direct3D 12, and a CPU with AVX2
      (Intel Haswell / AMD Zen or newer).
    - Or a Mac with Apple silicon (M1 or newer) on macOS 13 Ventura or newer.
+   - Or, experimentally, Linux on x86-64 with a CPU with AVX2, a Vulkan 1.3
+     driver (Mesa's RADV or ANV, or NVIDIA's), SDL2 and glibc 2.38 or newer
+     -- SteamOS on a Steam Deck has all of it.
 
    About 16 GB of free disk space for the game, plus 10 GB more if you
    install the Japanese voice pack and about 3 GB for the Spanish
@@ -83,6 +86,24 @@ macOS:
 3. The setup opens, as on Windows. The game's files go into
    ~/Library/Application Support/Drakengard 3 Recompiled.
 
+Linux (experimental):
+
+1. Unpack the release anywhere you can write to (not under /usr or /opt).
+2. Run dod3 in that folder. The setup opens, as on Windows, and the game's
+   files go into the game folder beside dod3. Add Files and Add Folder use
+   the desktop's own picker (kdialog or zenity); with neither,
+   `./dod3 --install <disc or game .pkg> <update .pkg> [DLC .pkg ...]` in
+   a terminal installs the same way. If the folder cannot be written to,
+   everything goes into ~/.local/share/dod3-recomp instead.
+3. Steam Deck: do the setup in Desktop Mode, then in Steam, Add a Game >
+   Add a Non-Steam Game, and pick dod3, to play it in Game Mode with the
+   Deck's own controls. Started outside Steam on a Deck (Desktop Mode, from
+   the file manager or a terminal), the game reads the Deck's controls as
+   the pad only and leaves the keyboard and mouse alone: Steam's desktop
+   layout turns the Deck's buttons into keys there, and every press would
+   arrive twice (one of them as Esc, which opens the pause menu). With a
+   keyboard of your own plugged in, start it with DOD3_KEYBOARD=1.
+
 ## The launcher
 
 Once the game is installed, it opens on a launcher, over the game's own key
@@ -103,10 +124,13 @@ art (from your copy of the game):
 It works with the mouse, the keyboard and a controller (Esc or the pad's
 back button closes a page). To start the game without it, set Settings >
 System > Launcher at Start to Off; holding Shift (Option on a Mac) while
-starting the game opens it anyway.
+starting the game opens it anyway (on Linux, start it with DOD3_LAUNCHER=1
+in the environment; in Steam, as the launch options
+`DOD3_LAUNCHER=1 %command%`).
 
 To run the setup again -- to replace a file -- use Game Files in the
-launcher, or run dod3.exe --setup from a command prompt on Windows.
+launcher, or run dod3.exe --setup from a command prompt on Windows
+(./dod3 --setup on Linux).
 Everything already installed stays.
 
 If the setup cannot open its window, it can run from a command prompt:
@@ -232,7 +256,8 @@ all of them. W A S D move the cursor too, as the stick does on a pad.
 While the game is in front the cursor is hidden and the mouse is the
 game's; switch to another application (Alt+Tab, Cmd+Tab on a Mac) and it
 is yours again. On a Mac the keys are places on the keyboard, the same on
-every layout; Alt is the Option key, and CapsLock cannot be used.
+every layout; Alt is the Option key, and CapsLock cannot be used. On Linux
+too the keys are places on the keyboard, whatever the layout.
 
 
 ## Japanese voices
@@ -307,7 +332,8 @@ files back.
 ## Your saves, and updating
 
 Saves and the game's own data are in the "gamedata" folder next to
-dod3.exe (on a Mac, in the Application Support folder). Back that folder up
+dod3.exe (on a Mac, in the Application Support folder; on Linux, next to
+dod3). Back that folder up
 to keep your progress.
 
 On Windows the launcher looks for a newer release on GitHub each time it
@@ -330,7 +356,8 @@ delete the folder.
 ## If something goes wrong
 
 - Each run writes dod3.log next to dod3.exe (the run before is kept as
-  dod3.prev.log; on a Mac both are in the Application Support folder).
+  dod3.prev.log; on a Mac both are in the Application Support folder; on
+  Linux next to dod3, or printed to the terminal when started from one).
   Please include it when you report a problem, with your GPU and CPU.
 - The setup refuses a file it cannot use and says why: an encrypted disc
   image, another region or version, a package for another game, a damaged
