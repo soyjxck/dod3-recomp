@@ -203,6 +203,18 @@ const struct {
     { "HDR Brightness", "Brillo del HDR" },
     { "How bright white is in HDR. Auto: as Windows' SDR content.",
       "El brillo del blanco en HDR. Auto: como el contenido SDR de Windows." },
+    { "How bright white is in HDR. Default: 203 nits, as in HDR games.",
+      "El brillo del blanco en HDR. Predeterminado: 203 nits, como en los juegos HDR." },
+    { "As Windows", "Como Windows" },
+    { "HDR Peak Brightness", "Brillo máximo del HDR" },
+    { "The brightest the display shows. Auto: what the display reports.",
+      "Lo más brillante que muestra la pantalla. Auto: lo que indica la pantalla." },
+    { "HDR Highlight Colour", "Color de las luces del HDR" },
+    { "How much colour the brightest light, such as fire, keeps.",
+      "Cuánto color conservan las luces más intensas, como el fuego." },
+    { "Balanced", "Equilibrado" },
+    { "Full", "Completo" },
+    { "As SDR", "Como en SDR" },
     { "Post-Processing Quality", "Calidad del posprocesado" },
     { "High: depth of field and bloom drawn smoothly above 720p.",
       "Alta: profundidad de campo y resplandor suaves por encima de 720p." },
@@ -574,16 +586,45 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
                      "HDR Brightness",
 #ifdef __APPLE__
                      "How bright white is in HDR. Auto: as the system's SDR white.",
-#else
-                     "How bright white is in HDR. Auto: as Windows' SDR content.",
-#endif
                      { { NULL, "Auto" },
+#else
+                     "How bright white is in HDR. Default: 203 nits, as in HDR games.",
+                     { { NULL, "Default" },
+                       { "windows", "As Windows" },
+#endif
                        { "100", "100 nits" },
                        { "150", "150 nits" },
                        { "200", "200 nits" },
                        { "250", "250 nits" },
                        { "300", "300 nits" },
                        { "400", "400 nits" } },
+                     0,
+                     LIVE_DISPLAY,
+                     nullptr,
+                     PAGE_PICTURE });
+#endif
+#ifdef _WIN32
+    /* The reworked HDR's (Direct3D 12 and Vulkan): the peak the highlights
+     * roll off toward, and how much of their own colour they keep. */
+    rows.push_back({ "RSX_HDR_PEAK",
+                     "HDR Peak Brightness",
+                     "The brightest the display shows. Auto: what the display reports.",
+                     { { NULL, "Auto" },
+                       { "400", "400 nits" },
+                       { "600", "600 nits" },
+                       { "800", "800 nits" },
+                       { "1000", "1000 nits" },
+                       { "1500", "1500 nits" },
+                       { "2000", "2000 nits" },
+                       { "4000", "4000 nits" } },
+                     0,
+                     LIVE_DISPLAY,
+                     nullptr,
+                     PAGE_PICTURE });
+    rows.push_back({ "RSX_HDR_HUE",
+                     "HDR Highlight Colour",
+                     "How much colour the brightest light, such as fire, keeps.",
+                     { { NULL, "Balanced" }, { "1", "Full" }, { "0", "As SDR" } },
                      0,
                      LIVE_DISPLAY,
                      nullptr,
@@ -691,7 +732,8 @@ void apply()
                 display = true;   /* the renderer makes or drops its MSAA targets at the reload */
             }
             if (!strcmp(r.key, "RSX_DISPLAY") || !strcmp(r.key, "RSX_VSYNC") || !strcmp(r.key, "RSX_SCALE") ||
-                !strcmp(r.key, "RSX_HDR") || !strcmp(r.key, "RSX_HDR_WHITE"))
+                !strcmp(r.key, "RSX_HDR") || !strcmp(r.key, "RSX_HDR_WHITE") ||
+                !strcmp(r.key, "RSX_HDR_PEAK") || !strcmp(r.key, "RSX_HDR_HUE"))
                 display = true;
             if (!strcmp(r.key, "DOD3_FPS")) fps = true;
             if (!strcmp(r.key, "DOD3_UNFOCUSED")) unfocused = true;

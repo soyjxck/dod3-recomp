@@ -187,7 +187,9 @@ folder above). It explains each setting:
 | DOD3_DOF | 0 turns off only the depth of field, the blur of what is near and far; the bloom and the colour grading stay |
 | RSX_HDR | Windows (Direct3D 12 or Vulkan): 1 shows the game in HDR on a display that has HDR on in Windows (Settings > Display > Use HDR): the picture at the brightness below, with its shadows as an SDR display shows them (Windows' own conversion of an SDR game washes them out), and the light the game clips at white -- the sky, fire, glints on blades -- brighter than white, up to the display's peak. The HUD and menus stay at the brightness below. The bright parts come from the next start when HDR is switched on in the game. macOS (Metal): 1 shows it in HDR on a display with EDR headroom (a MacBook Pro's XDR display; an external HDR display with HDR on), white at the system's SDR white; the extra brightness follows the brightness setting, and macOS takes it back while the window is covered. Unset is SDR |
 | RSX_HDR_HIGHLIGHTS | 0 keeps HDR's picture within white: no brighter highlights |
-| RSX_HDR_WHITE | The brightness of white in HDR, in nits (100 to 400). Unset follows Windows' SDR content brightness slider; on a Mac, the system's SDR white, which a setting counts as 100 nits |
+| RSX_HDR_HUE | Windows: how much of its own colour the brightest light (fire, lamps, the sun) keeps in HDR, 0 to 1. 1 keeps all of it; 0 whitens it as the SDR picture does. Unset is 0.5 |
+| RSX_HDR_PEAK | Windows: the brightest the display shows, in nits, which the highlights roll off toward. Unset is what the display reports |
+| RSX_HDR_WHITE | The brightness of white in HDR, in nits (100 to 400). Windows: unset is 203 nits, where HDR games put it; `windows` follows Windows' SDR content brightness slider. On a Mac, unset is the system's SDR white, which a setting counts as 100 nits |
 | DOD3_POSTFX_QUALITY | high: above 1280x720, the depth of field and bloom are drawn smoothly, and what is out of focus stays soft instead of showing sharp detail through the blur (the port's own version of the game's post-processing shader). The same picture as Original at 1280x720. Unset is the original. From the next start |
 | DOD3_SCREEN_BLOOD | Blood over the screen in combat: border leaves out the splashes and keeps the blood around the edges at low health, a warning; 0 leaves out both. Unset is the original |
 | DOD3_DRAW_DISTANCE | 2, 3, 5 or 10: props, bushes and small trees are drawn from that many times as far away; unset is the original |
@@ -220,16 +222,24 @@ Settings > HDR in the game, or `RSX_HDR = 1` in dod3.ini.
   a Pro Display XDR, or an external HDR display with HDR on.
 - Linux: not yet.
 
-The game's picture is made for an SDR screen; in HDR it is shown as an SDR
-screen would show it -- the same colours and the same dark shadows -- at
-the brightness HDR Brightness sets for white, and the light the game itself
-clips at white (the sky, fire, embers, glints on blades) goes on above it,
-up to your display's peak, rolled off smoothly instead of cut. The HUD,
-menus, movies and pop-ups stay at the white you set.
+The game draws its scene with more light than an SDR screen shows and cuts
+it off at white. In HDR that light is kept: fire, lamps, embers and glints
+on blades go on above white, up to your display's peak, rolled off smoothly
+instead of cut, with the game's own colour grading. Everything up to about
+three quarters of white is the SDR picture itself -- the same colours and
+the same dark shadows -- at the brightness HDR Brightness sets for white.
+The HUD, menus, movies and pop-ups stay at that white.
 
-- HDR Brightness: Auto takes Windows' SDR content brightness (on a Mac, the
-  system's normal white). A lower white leaves the highlights more room above
-  it; 200 to 300 nits is a good start in a dim room.
+- HDR Brightness: on Windows the default is 203 nits, where HDR games put
+  white; As Windows takes Windows' SDR content brightness instead (on a Mac,
+  Auto is the system's normal white). A lower white leaves the highlights
+  more room above it.
+- HDR Peak Brightness (Windows): Auto is what the display reports; set it
+  lower if the brightest parts lose detail, as on a display that reports
+  more than it shows.
+- HDR Highlight Colour (Windows): how much of its own colour the brightest
+  light keeps. Balanced is the default; Full keeps all of it (deep orange
+  fire), As SDR whitens it as the SDR picture does.
 - Switching HDR on in the game changes the picture at once; the brighter
   highlights need HDR on when the game starts, so they come at the next
   start. `RSX_HDR_HIGHLIGHTS = 0` keeps the picture within white.

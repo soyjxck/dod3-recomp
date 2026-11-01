@@ -2248,10 +2248,11 @@ int main(int argc, char** argv)
      *   detail laid over the blur, at 1280x720 a picture as soft as its
      *   pixels. Ours reads the two smoothly and softens the picture as far
      *   as the pixel is out of focus; at 1280x720 it is the title's own.
-     *   HDR (RSX_HDR, from the start): it also writes the renderer's
-     *   highlight plane, how much brighter each pixel was before the title
-     *   clipped it, which the HDR present shows (switched on later in the
-     *   game, HDR has no highlights until the next start).
+     *   HDR (RSX_HDR, from the start): it also writes the renderer's HDR
+     *   plane, each pixel's HDR version -- the light the title clips at
+     *   white kept, through its own colour grade -- which the HDR present
+     *   shows (switched on later in the game, HDR has no highlights until
+     *   the next start).
      * The folder: the app's Resources on a Mac, else beside the executable,
      * else the working folder's. */
     const char* pq = getenv("DOD3_POSTFX_QUALITY");

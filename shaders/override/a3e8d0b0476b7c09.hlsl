@@ -8,8 +8,9 @@
  *     above 1280x720 the quarter-size blur and bloom are read smoothly and
  *     the full-size picture is softened where it is out of focus; at
  *     1280x720 the translation as it is.
- *   Always: the HDR highlight plane at the second target (rsx_hdr_plane),
- *     which the title's single target leaves unbound unless HDR is on. */
+ *   Always: the HDR plane at the second target (rsx_hdr_plane), which the
+ *     title's single target leaves unbound unless HDR is on: the pixel's
+ *     HDR version (hdr_graded) beside what went to the frame. */
 struct PSInput {
     float4 position : SV_POSITION; float4 col0 : COLOR0; float4 col1 : COLOR1;
     float4 fog : FOG;
@@ -25,7 +26,11 @@ cbuffer PSConstants : register(b1) {
 };
 struct PSOutput {
     float4 t0 : SV_TARGET0;
+#ifdef RSX_HDR_PLANE_PACKED
+    uint2 t1 : SV_TARGET1;
+#else
     float4 t1 : SV_TARGET1;
+#endif
 };
 /* A texture read as a uniform cubic B-spline over its texels: four bilinear
  * taps (the sampler filters linearly) weighted to the spline. Smooth where
@@ -47,6 +52,53 @@ float4 bspline(Texture2D t, SamplerState s, float2 uv)
     const float2 t0 = (c - 0.5 + w1 / g0) / size, t1 = (c + 1.5 + w3 / g1) / size;
     return g0.y * (g0.x * t.Sample(s, float2(t0.x, t0.y)) + g1.x * t.Sample(s, float2(t1.x, t0.y)))
          + g1.y * (g0.x * t.Sample(s, float2(t0.x, t1.y)) + g1.x * t.Sample(s, float2(t1.x, t1.y)));
+}
+
+/* The title's colour grade: a 16x16x16 LUT laid out as 16 slices side by
+ * side in a 256x16 texture (rsx_tex[3]), read as the translation reads it.
+ * e is the encoded colour, 0 to 1. */
+float3 grade(float3 e)
+{
+    e = saturate(e);
+    const float sl = floor(e.b * fp_constants[10].x) * fp_constants[11].x;
+    const float2 uv = float2(e.r * fp_constants[13].x + sl, e.g * fp_constants[12].y);
+    const float3 a = rsx_tex[3].Sample(rsx_samp[3], uv + fp_constants[15].xy).xyz;
+    const float3 b = rsx_tex[3].Sample(rsx_samp[3], float2(uv.x + fp_constants[16].x, uv.y) + fp_constants[17].xy).xyz;
+    return (e.b * fp_constants[18].x - sl * fp_constants[14].x) * (b - a) + a;
+}
+
+/* A pixel's HDR version, in linear light with 1 at the SDR picture's white,
+ * graded the way Luma's Unreal Engine 3 ports grade it. The scene and its
+ * bloom go through the title's encode (its exponents, fp_constants 7, 9 and
+ * 8) with nothing clipped and are decoded as a display decodes the frame
+ * (2.2), so above 1 is light the SDR picture cut off. A pixel whose
+ * brightest channel is at most 0.75 is the SDR pixel; a brighter one is
+ * scaled down until that channel is within 0.75..1 (a smooth shoulder),
+ * graded through the title's LUT there and scaled back up by as much: the
+ * grade's colour is kept, and the light above white is not lost. */
+float3 hdr_graded(float3 scene, float3 sdr)
+{
+    const float K = 0.75;
+    const float3 k = float3(fp_constants[7].x, fp_constants[9].x, fp_constants[8].x);
+    const float3 w = pow(pow(clamp(scene, 0.0, 65504.0), k), 2.2);
+    const float m = max(max(w.r, w.g), w.b);
+    if (!(m > K)) return pow(sdr, 2.2);
+    const float x = m - K;
+    const float q = (K + x / (x / (1.0 - K) + 1.0)) / m;
+    return pow(grade(pow(w * q, 1.0 / 2.2)), 2.2) / q;
+}
+
+/* An HDR colour (0 to 65408) as RGB9E5: three 9-bit mantissas and a shared
+ * exponent, as DXGI_FORMAT_R9G9B9E5_SHAREDEXP has them. */
+uint rgb9e5(float3 c)
+{
+    c = clamp(c, 0.0, 65408.0);
+    const float m = max(max(c.r, c.g), c.b);
+    int e = max(-16, (int)floor(log2(max(m, 1e-30)))) + 16;
+    float d = exp2((float)(e - 24));
+    if (floor(m / d + 0.5) >= 512.0) { d *= 2.0; e += 1; }
+    const uint3 q = (uint3)floor(c / d + 0.5);
+    return q.r | (q.g << 9) | (q.b << 18) | ((uint)e << 27);
 }
 
 PSOutput main(PSInput input) {
@@ -127,17 +179,24 @@ PSOutput main(PSInput input) {
     PSOutput _out;
     float4 _o0 = r[0];
     _out.t0 = (_o0 == _o0) ? _o0 : (float4)0;
-    /* The HDR highlight plane (rsx_hdr_plane: the renderer binds it here, as
-     * the second target, while HDR is on; otherwise nothing is). rgb: what
-     * went to the frame; a: how many times brighter the pixel was, in linear
-     * light, before the clip -- the scene and its bloom (h[2]) through the
-     * title's own encode (its exponents, fp_constants 7, 9 and 8 for red,
-     * green and blue) above 1, then as a display decodes it (2.2). */
+    /* The HDR plane (rsx_hdr_plane: the renderer binds it here, as the second
+     * target, while HDR is on; otherwise nothing is): the pixel's HDR version
+     * (hdr_graded, from the scene and its bloom, h[2]) beside the colour that
+     * went to the frame, by which the present knows the frame still shows
+     * it. Packed (RSX_HDR_PLANE_PACKED): x the HDR colour as RGB9E5, y the
+     * 8-bit colour with bit 24 set. Otherwise rgb the colour and a how many
+     * times brighter the HDR version is. */
     {
-        const float3 e = pow(max(h[2].xyz, 1e-6), float3(fp_constants[7].x, fp_constants[9].x, fp_constants[8].x));
-        const float over = max(max(e.x, e.y), max(e.z, 1.0));
-        const float4 plane = float4(saturate(r[0].xyz), min(pow(over, 2.2), 64.0));
-        _out.t1 = (plane == plane) ? plane : float4(saturate(r[0].xyz), 1.0);
+        const float3 sdr = saturate(r[0].xyz);
+        const float3 hdr = hdr_graded(h[2].xyz, sdr);
+#ifdef RSX_HDR_PLANE_PACKED
+        const uint3 q = (uint3)(sdr * 255.0 + 0.5);
+        _out.t1 = uint2(rgb9e5(all(hdr == hdr) ? hdr : pow(sdr, 2.2)), q.r | (q.g << 8) | (q.b << 16) | (1u << 24));
+#else
+        const float ys = dot(pow(sdr, 2.2), float3(0.2126, 0.7152, 0.0722));
+        const float more = ys > 1e-5 ? dot(hdr, float3(0.2126, 0.7152, 0.0722)) / ys : 1.0;
+        _out.t1 = float4(sdr, more == more ? clamp(more, 1.0, 64.0) : 1.0);
+#endif
     }
     return _out;
 }
