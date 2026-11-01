@@ -157,7 +157,7 @@ the mouse's sensitivity, the renderer and the blood on the screen.
 Settings > Advanced Graphics sets the aspect ratio and the engine's own
 shadow quality, motion blur, post-processing, depth of field, draw distance
 and tree detail. Settings > Picture Settings sets the post-processing
-quality and HDR (Windows). Confirm with X to save them; everything but the renderer, Skip
+quality and HDR (Windows and macOS). Confirm with X to save them; everything but the renderer, Skip
 Intro, Shadow Quality and Post-Processing Quality changes at once (a second
 of black while the resolution or display mode switches; Tree Detail in the
 next area the game loads), those four the next time the game starts.
@@ -183,9 +183,9 @@ folder above). It explains each setting:
 | DOD3_MOTION_BLUR | 0 turns motion blur off |
 | DOD3_POSTFX | 0 turns off depth of field, bloom and the colour grading |
 | DOD3_DOF | 0 turns off only the depth of field, the blur of what is near and far; the bloom and the colour grading stay |
-| RSX_HDR | Windows (Direct3D 12 or Vulkan): 1 shows the game in HDR on a display that has HDR on in Windows (Settings > Display > Use HDR): the picture at the brightness below, with its shadows as an SDR display shows them (Windows' own conversion of an SDR game washes them out), and the light the game clips at white -- the sky, fire, glints on blades -- brighter than white, up to the display's peak. The HUD and menus stay at the brightness below. The bright parts come from the next start when HDR is switched on in the game. Unset is SDR |
+| RSX_HDR | Windows (Direct3D 12 or Vulkan): 1 shows the game in HDR on a display that has HDR on in Windows (Settings > Display > Use HDR): the picture at the brightness below, with its shadows as an SDR display shows them (Windows' own conversion of an SDR game washes them out), and the light the game clips at white -- the sky, fire, glints on blades -- brighter than white, up to the display's peak. The HUD and menus stay at the brightness below. The bright parts come from the next start when HDR is switched on in the game. macOS (Metal): 1 shows it in HDR on a display with EDR headroom (a MacBook Pro's XDR display; an external HDR display with HDR on), white at the system's SDR white; the extra brightness follows the brightness setting, and macOS takes it back while the window is covered. Unset is SDR |
 | RSX_HDR_HIGHLIGHTS | 0 keeps HDR's picture within white: no brighter highlights |
-| RSX_HDR_WHITE | The brightness of white in HDR, in nits (100 to 400). Unset follows Windows' SDR content brightness slider |
+| RSX_HDR_WHITE | The brightness of white in HDR, in nits (100 to 400). Unset follows Windows' SDR content brightness slider; on a Mac, the system's SDR white, which a setting counts as 100 nits |
 | DOD3_POSTFX_QUALITY | high: above 1280x720, the depth of field and bloom are drawn smoothly, and what is out of focus stays soft instead of showing sharp detail through the blur (the port's own version of the game's post-processing shader). The same picture as Original at 1280x720. Unset is the original. From the next start |
 | DOD3_SCREEN_BLOOD | Blood over the screen in combat: border leaves out the splashes and keeps the blood around the edges at low health, a warning; 0 leaves out both. Unset is the original |
 | DOD3_DRAW_DISTANCE | 2, 3, 5 or 10: props, bushes and small trees are drawn from that many times as far away; unset is the original |

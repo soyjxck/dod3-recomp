@@ -557,10 +557,14 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
     /* Advanced Graphics: the engine's own switches (src/patches/sysset.cpp) */
     dod3_sysset_rows(rows);
     /* Picture Settings */
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__APPLE__)
     rows.push_back({ "RSX_HDR",
                      "HDR",
+#ifdef __APPLE__
+                     "On a display with HDR (EDR) headroom, such as a MacBook Pro's.",
+#else
                      "On a display with HDR on in Windows. Direct3D 12.",
+#endif
                      { { NULL, "Off" }, { "1", "On" } },
                      0,
                      LIVE_DISPLAY,
@@ -568,7 +572,11 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
                      PAGE_PICTURE });
     rows.push_back({ "RSX_HDR_WHITE",
                      "HDR Brightness",
+#ifdef __APPLE__
+                     "How bright white is in HDR. Auto: as the system's SDR white.",
+#else
                      "How bright white is in HDR. Auto: as Windows' SDR content.",
+#endif
                      { { NULL, "Auto" },
                        { "100", "100 nits" },
                        { "150", "150 nits" },
