@@ -800,7 +800,8 @@ void dod3_quit()
  * then the BROKEN_EXIT_GAMEDATA dialog. A package patched for the settings
  * menu (served through PS3_VFS_OVERLAY), or a mod's in the player's own
  * files, carries its own hash, written over the entry before the title runs
- * (patches/menu_patch.cpp). The hash is of the uncompressed package.
+ * (patches/menu_patch.cpp). The hash is of the uncompressed package; of a
+ * file that is not a package (COALESCED_INT.BIN), as it is.
  * DOD3_SHA_OVERRIDE=<name>=<40 hex digits>[,<name>=<hex>...] */
 bool dod3_sha_override(const char* name, const uint8_t sha[20])
 {

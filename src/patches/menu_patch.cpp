@@ -19,6 +19,9 @@
  * it is. Its own hash goes into the EBOOT's table, as it would in a modded
  * EBOOT; the Settings menu stays as the title shipped it. The stamp then
  * says so, with the hash, so the package is not read again at every start.
+ * The table's other files (the start-up and script packages, the COALESCED
+ * files) get the same when a mod has put its own in the update's folder:
+ * dod3_table_hash_file, for src/kernel/mods.cpp.
  *
  * On 1.00 two copies of the package go into the overlay: the title reads its
  * packages from the game-data install (/dev_hdd0/game/BLES00000DATA/USRDIR/
@@ -356,6 +359,45 @@ std::string source_id(const fs::path& pkg)
 }
 
 }  // namespace
+
+/* A mod's file in the update's folder: if the EBOOT's table names it, the
+ * table's hash for it becomes this file's, made as the title makes it -- of
+ * a compressed package's contents, of any other file as it is -- so the
+ * title's check passes on it. The script package aside, which
+ * dod3_menu_patch_prepare sees to. False if the table has no such name or the
+ * file cannot be read. */
+bool dod3_table_hash_file(const fs::path& file)
+{
+    /* the table's other names (1.01's: mods are for that build) */
+    static const char* const kNamed[] = {
+        "coalesced_int.bin",
+        "coalesced_fra.bin",
+        "core.xxx",
+        "engine.xxx",
+        "gfxui.xxx",
+        "ipdrv.xxx",
+        "gameframework.xxx",
+        "onlinesubsystempc.xxx",
+        "cdevsounddriver_loc_int.xxx",
+        "cdevsounddriver.xxx",
+        "sqexsead.xxx",
+        "startup.xxx",
+        "cdevsounddriver_loc_fra.xxx",
+    };
+    std::string name = utf8(file.filename());
+    for (char& c : name) c = (char)tolower((unsigned char)c);
+    bool named = false;
+    for (const char* k : kNamed) named |= name == k;
+    if (!named) return false;
+    std::vector<uint8_t> f, u, h;
+    uint32_t bs = 0;
+    if (!read_file(file, f)) return false;
+    const std::string hex = inflate_full(f, u, bs) ? sha1_hex(u) : sha1_hex(f);
+    if (!dod3setup::from_hex(hex, &h) || h.size() != 20 || !dod3_sha_override(name.c_str(), h.data())) return false;
+    fprintf(stderr, "[mods] %s is a mod's: the EBOOT's hash for it is now this file's (%s)\n", name.c_str(),
+            hex.c_str());
+    return true;
+}
 
 /* At boot, after the EBOOT is in guest memory and before the title runs:
  * make (once) and lay over the patched package. False leaves the title's own. */

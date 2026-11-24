@@ -24,6 +24,11 @@
  *    too -- a translation's text -- the mod's is read in Japanese as well:
  *    the undub's is English text retimed for the Japanese voices.
  *
+ * A mod's file in the update's folder that the EBOOT's hash table names (a
+ * start-up or script package, COALESCED_INT.BIN) gets its own hash there at
+ * boot (dod3_table_hash_file, src/patches/menu_patch.cpp): the title checks
+ * those files against the table and ends the game on one it does not know.
+ *
  * Bridge 18 (src/ui/settings_menu.cpp) asks dod3_dlc_jpvoice(): with the
  * undub installed, the DLC chapters keep the Japanese voices instead of the
  * 1.01 update's switch to English there (tools/menu_patch.py). */
@@ -42,6 +47,7 @@
 
 extern "C" void (*ps3_vfs_title_hook)(char* path, size_t cap);   /* runtime/syscalls/sys_fs.c */
 extern "C" int32_t ps3_sysutil_language(void);                   /* libs/system/cellSysutil.c */
+bool dod3_table_hash_file(const std::filesystem::path& file);    /* src/patches/menu_patch.cpp */
 
 namespace fs = std::filesystem;
 
@@ -148,6 +154,23 @@ void hook(char* path, size_t cap)
     if (!s_tree.empty() && s_tree.count(std::string(rel))) serve(path, cap, s_mods + std::string(path + rn), rel);
 }
 
+/* A mod's list of its files (game/modfiles/<id>.txt: "patch/<path>" a file in
+ * the update's folder, a tab and a mark after some): each of those the
+ * EBOOT's hash table names gets its own hash there. */
+void table_hashes(const fs::path& list, const fs::path& patch)
+{
+    FILE* f = dod3::open_file(list, "rb");
+    if (!f) return;
+    char line[1024];
+    while (fgets(line, sizeof line, f)) {
+        if (strncmp(line, "patch/", 6) != 0) continue;
+        line[strcspn(line, "\t\r\n")] = 0;
+        if (strstr(line, "..")) continue;
+        dod3_table_hash_file(patch / fs::u8path(line + 6));
+    }
+    fclose(f);
+}
+
 }  // namespace
 
 /* With the DLC chapters' Japanese voices installed (and the voice pack they
@@ -181,10 +204,17 @@ void dod3_mods_prepare()
     s_mods = dod3::utf8(mods);
     /* game/mods/installed.txt has a line a mod, "<id>\t..." (src/install/install.cpp);
      * a mod switched off has game/modfiles/<id>.off */
+    const fs::path modfiles = root.parent_path() / "modfiles";
     if (FILE* f = dod3::open_file(mods / "installed.txt", "rb")) {
-        char line[512];
-        while (fgets(line, sizeof line, f))
-            if (!strncmp(line, "ES-DATA\t", 8)) s_spanish_menus = !fs::exists(root.parent_path() / "modfiles/ES-DATA.off", ec);
+        char line[1024];
+        while (fgets(line, sizeof line, f)) {
+            const char* tab = strchr(line, '\t');
+            if (!tab) continue;
+            const std::string id(line, (size_t)(tab - line));
+            if (fs::exists(modfiles / fs::u8path(id + ".off"), ec)) continue;
+            if (id == "ES-DATA") s_spanish_menus = true;
+            table_hashes(modfiles / fs::u8path(id + ".txt"), root / "game/BLES00000/USRDIR/PATCH");
+        }
         fclose(f);
     }
     for (fs::recursive_directory_iterator it(mods, ec), end; !ec && it != end; it.increment(ec)) {
