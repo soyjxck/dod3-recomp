@@ -110,6 +110,7 @@ void dod3_cheats_install();         /* src/patches/cheats.cpp */
 void dod3_dragon_cursor_install();  /* src/patches/dragon_cursor.cpp */
 void dod3_pawn_step_install();      /* src/patches/pawn_step.cpp */
 void dod3_projectile_expiry_install(); /* src/patches/projectile_expiry.cpp */
+void dod3_gauge_drain_install();    /* src/patches/gauge_drain.cpp */
 void dod3_archive_native_install(); /* src/patches/archive_native.cpp */
 void dod3_dlc_prepare();            /* src/kernel/dlc.cpp: the installed DLC's file lists */
 void dod3_mods_prepare();           /* src/kernel/mods.cpp: the mods' files, the DLC chapters' voices */
@@ -536,8 +537,11 @@ static void hitch_to_profiler(double ms)
  * (src/patches/pawn_step.cpp), without which jumps lost height at every
  * rate above 60, and a projectile past its range is let run out
  * (src/patches/projectile_expiry.cpp), without which the dragon's homing
- * volley did not fire above 100. Above 120 fps the rest of its timing is
- * untested.
+ * volley did not fire above 100, and the part of the Intoner gauge's drain
+ * that the title cuts off each frame is carried over
+ * (src/patches/gauge_drain.cpp), without which the gauge ran down more
+ * slowly at every rate above 30 and not at all above 150. Above 120 fps
+ * the rest of its timing is untested.
  *
  * DOD3_FPS=adaptive is a cap that follows the scene (fps_adaptive_rate
  * below): as fast as the frames can be made evenly, and never over 120.
@@ -2397,6 +2401,7 @@ int main(int argc, char** argv)
     dod3_dragon_cursor_install();   /* the mouse moves the dragon's shooting cursor */
     dod3_pawn_step_install();       /* gravity in a part step, weighted as its move is */
     dod3_projectile_expiry_install(); /* a projectile past its range ends above 100 fps too */
+    dod3_gauge_drain_install();     /* the Intoner gauge's drain, the part cut off carried over */
     dod3_archive_native_install();  /* the package loader's reads, natively */
     dod3_kbm_install();
     dod3_prompts_install();

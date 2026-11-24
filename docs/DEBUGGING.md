@@ -284,6 +284,10 @@ runtime's function from then on.
   10 ms set again on every update (above 100 fps the projectile never
   ends and the dragon's homing volley does not fire; the log then counts
   the updates in a row).
+- `DOD3_GAUGE_LOG=1`: about once a second while the Intoner gauge runs
+  down, what was taken off it and in how many frames;
+  `DOD3_GAUGE_DRAIN=0`: the drain as the title has it, each frame's share
+  cut to a whole number (slower above 30 fps, none above 150).
 - `DOD3_MENU_LANGUAGE=es|fr|en`: the Settings pages in Spanish, French or
   English whatever is installed or set. `PS3_LANG=<code>`: the console
   language the title is told, over `DOD3_LANGUAGE` (the data has `en` and

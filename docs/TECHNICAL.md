@@ -30,14 +30,17 @@ fork.
 - **Frame rate.** `DOD3_FPS=n` replaces `UEngine::GetMaxTickRate` in the
   function registry so it returns n (the game's own smoothing, a 300-frame
   running average clamped to 22-30 fps, is bypassed) and runs the vblank at
-  8n Hz so a late frame is late by a millisecond, not a vblank. Two of the
+  8n Hz so a late frame is late by a millisecond, not a vblank. Three of the
   title's rules that only hold at its own rates are corrected: gravity in
   the part of a 1/60 s step left over by a frame is weighted as the step's
   move is (`src/patches/pawn_step.cpp`; jumps lost height above 60 fps),
   and a projectile past its range, which the title gives 10 ms to live on
   every update, is let run out (`src/patches/projectile_expiry.cpp`; above
   100 fps it never ended, and the dragon's homing volley, which waits for
-  one to end, did not fire).
+  one to end, did not fire); and the Intoner gauge's drain, a frame's share
+  of which the title cuts to a whole number, keeps what was cut off for the
+  next frame (`src/patches/gauge_drain.cpp`; the gauge lost 150 a second at
+  30 fps, 120 at 60, 90 at 90, and nothing above 150).
 - **Movies.** With no render commands to run, Unreal's rendering thread
   ticks the Bink player itself, at most `GRenderingThreadMaxIdleTickFrequency`
   times a second: 40 in this title. A 29.97 fps movie's frames, each shown
