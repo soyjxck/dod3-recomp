@@ -38,7 +38,11 @@ std::string sha256_file(const fs::path& p)
 }
 
 /* ---- PARAM.SFO -------------------------------------------------------------- */
-bool param_sfo(const std::vector<uint8_t>& d, std::string* title_id, std::string* app_ver)
+namespace {
+
+/* Each of an SFO's entries to `each(key, value)`, the value as text up to its
+ * first NUL; false if it is not an SFO. */
+template <typename F> bool sfo_entries(const std::vector<uint8_t>& d, F each)
 {
     auto le32 = [&](size_t o) {
         return (uint32_t)d[o] | (uint32_t)d[o + 1] << 8 | (uint32_t)d[o + 2] << 16 | (uint32_t)d[o + 3] << 24;
@@ -50,14 +54,35 @@ bool param_sfo(const std::vector<uint8_t>& d, std::string* title_id, std::string
     for (uint32_t i = 0; i < n; i++) {
         const size_t e = 20 + (size_t)i * 16;
         const uint32_t ko = le16(e), len = le32(e + 4), dof = le32(e + 12);
-        if (kt + ko >= d.size() || (uint64_t)dt + dof + len > d.size()) continue;
-        const char* key = (const char*)&d[kt + ko];
+        if ((uint64_t)kt + ko >= d.size() || (uint64_t)dt + dof + len > d.size()) continue;
+        const size_t kmax = d.size() - (kt + ko);
+        const std::string key((const char*)&d[kt + ko], strnlen((const char*)&d[kt + ko], kmax));
         std::string val((const char*)&d[dt + dof], len);
         val = val.c_str();                                   /* to the first NUL */
-        if (!strncmp(key, "TITLE_ID", 9) && title_id) *title_id = val;
-        if (!strncmp(key, "APP_VER", 8) && app_ver) *app_ver = val;
+        each(key, val);
     }
     return true;
+}
+
+}  // namespace
+
+bool param_sfo(const std::vector<uint8_t>& d, std::string* title_id, std::string* app_ver)
+{
+    return sfo_entries(d, [&](const std::string& key, const std::string& val) {
+        if (key == "TITLE_ID" && title_id) *title_id = val;
+        if (key == "APP_VER" && app_ver) *app_ver = val;
+    });
+}
+
+bool param_sfo_text(const std::vector<uint8_t>& d, const char* key, std::string* value)
+{
+    bool found = false;
+    const bool sfo = sfo_entries(d, [&](const std::string& k, const std::string& val) {
+        if (k != key) return;
+        *value = val;
+        found = true;
+    });
+    return sfo && found;
 }
 
 bool disc_installed(const fs::path& base)

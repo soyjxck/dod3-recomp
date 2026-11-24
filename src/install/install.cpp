@@ -7,7 +7,9 @@
 #include "cpu/eboot.h"
 #include "util.h"
 
+#include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <algorithm>
 #include <chrono>
@@ -15,6 +17,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <system_error>
 #include <thread>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -311,7 +314,8 @@ bool licence_only(const Pkg& pkg)
  * archive, and the DLC chapters' Japanese voices (the DLC Undub by Canzah and
  * Slow). The packages are homebrew ones, most with no checksum in their
  * footer: each is told by its size and QA digest and checked against its
- * SHA-1 as it is installed. */
+ * SHA-1 as it is installed. Any other package for the game is a mod too
+ * (identify_mod_pkg), named by what it calls itself or by its file. */
 struct KnownPkg {
     const char* id;
     uint64_t size;
@@ -353,20 +357,47 @@ std::string mod_name(const std::string& id)
     return id;
 }
 
+/* The file list the title reads its files' sizes from; a mod's own is not
+ * installed as a file of the mod (compose_tocs). */
+const char kTocName[] = "PS3TOC.TXT";
+bool is_toc(const fs::path& rel) { return upper(utf8(rel.filename())) == kTocName; }
+
+/* The script package, where a mod's would go (mod_layout): the port's
+ * Settings pages are made to the update's own (src/patches/menu_patch.cpp). */
+const char kScriptPackage[] = "patch/SQEX03GAME/COOKEDPS3/SQEX03GAME.XXX";
+/* A movie archive's movies, in place of the disc's. */
+const char kMoviesDir[] = "PS3_GAME/USRDIR/SQEX03GAME/MOVIES";
+
 /* Where a mod package's file goes, by its path in the package and the title
  * it is for: "patch/..." into the update's PATCH folder (as the console has
  * it), "tree/..." into game/mods at the path under game/disc it stands in for
- * (the game-data install's files, the DLC's), "" left out (the package's own
- * PARAM.SFO, icons, package.conf); nothing if it has nowhere to go. */
+ * (the game-data install's files, the DLC's, the disc's), "" left out without
+ * a word (the package's own PARAM.SFO, icons, package.conf); nothing if the
+ * port has no use for it -- an EBOOT.BIN (the port is its own executable),
+ * system modules, trophies and licences, a folder the title does not read --
+ * which the player is told (ModInfo). The path is upper case whatever the
+ * package's spelling: the title asks for its files so.
+ *
+ * NPUB31251 is also the US PSN release, whose own folders (USRDIR/SQEX03GAME,
+ * ENGINE, BINARIES) are the disc's PS3_GAME/USRDIR here. Of those the title
+ * reads COOKEDPS3 and COOKEDSOUND through its game-data install, so a mod's
+ * files for them go there; its plain files, not licensed ones (.EDAT). */
 std::optional<std::string> mod_layout(const std::string& title, const std::string& name)
 {
-    static const char kPatch[] = "USRDIR/PATCH/";
     if (name.find('/') == std::string::npos) return "";
+    const std::string u = upper(name);
+    auto in = [&](const char* folder) { return u.starts_with(folder) && u.size() > strlen(folder); };
+    if (!in("USRDIR/") || u == "USRDIR/EBOOT.BIN" || u.ends_with(".SPRX") || u.ends_with(".SELF")) return std::nullopt;
+    const std::string rel = u.substr(sizeof "USRDIR/" - 1);
+    if (in("USRDIR/PATCH/")) return "patch/" + rel.substr(sizeof "PATCH/" - 1);
     if (title == "BLUS31197") {
-        if (name.starts_with(kPatch)) return "patch/" + name.substr(sizeof kPatch - 1);
-        if (name.starts_with("USRDIR/FIOS-UNREALENGINE3/")) return "tree/game/BLES00000DATA/" + name;
+        if (in("USRDIR/FIOS-UNREALENGINE3/")) return "tree/game/BLES00000DATA/" + u;
     } else if (title == "NPUB31251") {
-        if (name.starts_with("USRDIR/DLC/") || name.starts_with("USRDIR/DLC_JPV/")) return "tree/game/NPUB31251/" + name;
+        if (in("USRDIR/DLC/") || in("USRDIR/DLC_JPV/")) return "tree/game/NPUB31251/" + u;
+        if (u.ends_with(".EDAT")) return std::nullopt;
+        if (in("USRDIR/SQEX03GAME/COOKEDPS3/") || in("USRDIR/SQEX03GAME/COOKEDSOUND/"))
+            return "tree/game/BLES00000DATA/USRDIR/FIOS-UNREALENGINE3/" + rel;
+        if (in("USRDIR/SQEX03GAME/") || in("USRDIR/ENGINE/") || in("USRDIR/BINARIES/")) return "tree/PS3_GAME/" + u;
     }
     return std::nullopt;
 }
@@ -588,43 +619,68 @@ bool install_undub(const fs::path& base, const Source& s, const fs::path& stage,
 
 /* A mod's list of its files (game/modfiles/<id>.txt): "patch/<path>" in the
  * update's PATCH folder, "tree/<path>" in game/mods, with "\t1" after it when
- * the update's own file there was kept aside (game/modfiles/<id>/orig/<path>).
+ * the update's own file there was kept aside (game/modfiles/<id>/orig/<path>)
+ * and "\tT" when it is the mod's file list for the title (PS3TOC.TXT), which
+ * stays in game/modfiles/<id>/toc/<kind>/<path>: the one in place is made
+ * from every mod's (compose_tocs).
  * Switched off (set_mod_enabled), the mod's files are in
  * game/modfiles/<id>/off/<kind>/<path> and <id>.off says so. */
 struct ModFile {
     std::string kind;   /* "patch" or "tree" */
     fs::path rel;
     bool kept = false;
-    std::string line() const
+    bool toc = false;
+    std::string path() const
     {
         const auto g = rel.generic_u8string();
-        return kind + "/" + std::string(g.begin(), g.end()) + (kept ? "\t1\n" : "\n");
+        return kind + "/" + std::string(g.begin(), g.end());
     }
+    std::string line() const { return path() + (toc ? "\tT\n" : kept ? "\t1\n" : "\n"); }
+    std::string key() const { return upper(path()); }   /* the same for every spelling of the path */
 };
 
 fs::path list_file(const fs::path& base, const std::string& id) { return modfiles_dir(base) / (id + ".txt"); }
 fs::path off_mark(const fs::path& base, const std::string& id) { return modfiles_dir(base) / (id + ".off"); }
+fs::path info_file(const fs::path& base, const std::string& id) { return modfiles_dir(base) / (id + ".info"); }
 bool has_list(const fs::path& base, const std::string& id)
 {
     std::error_code ec;
     return fs::exists(list_file(base, id), ec);
 }
 
-bool mod_files(const fs::path& base, const std::string& id, std::vector<ModFile>* out)
+/* a list's lines as files; lines that are none are left out */
+std::vector<ModFile> list_parse(const std::vector<std::string>& lines)
 {
-    if (!has_list(base, id)) return false;
-    for (std::string l : read_lines(list_file(base, id))) {
+    std::vector<ModFile> out;
+    for (std::string l : lines) {
         ModFile m;
         m.kept = l.ends_with("\t1");
-        if (m.kept) l.resize(l.size() - 2);
+        m.toc = l.ends_with("\tT");
+        if (m.kept || m.toc) l.resize(l.size() - 2);
         const size_t sl = l.find('/');
         if (sl == std::string::npos || l.find("..") != std::string::npos) continue;
         m.kind = l.substr(0, sl);
         m.rel = fs::u8path(l.substr(sl + 1));
         if ((m.kind != "patch" && m.kind != "tree") || m.rel.empty() || m.rel.is_absolute()) continue;
-        out->push_back(m);
+        out.push_back(m);
     }
+    return out;
+}
+
+bool mod_files(const fs::path& base, const std::string& id, std::vector<ModFile>* out)
+{
+    if (!has_list(base, id)) return false;
+    *out = list_parse(read_lines(list_file(base, id)));
     return true;
+}
+
+bool list_write(const fs::path& base, const std::string& id, const std::vector<ModFile>& files)
+{
+    std::error_code ec;
+    std::string list;
+    for (const ModFile& m : files) list += m.line();
+    fs::create_directories(modfiles_dir(base), ec);
+    return write_file(list_file(base, id), list);
 }
 
 fs::path mod_root(const fs::path& base, const std::string& kind)
@@ -646,11 +702,374 @@ void remove_empty_dirs(const std::set<fs::path>& dirs)
         if (fs::is_directory(*it, ec) && fs::is_empty(*it, ec)) fs::remove(*it, ec);
 }
 
+/* one file moved, the folder it goes to made first */
+bool move_file(const fs::path& from, const fs::path& to, std::string* err)
+{
+    std::error_code ec;
+    fs::create_directories(to.parent_path(), ec);
+    ec.clear();
+    move_patiently(from, to, ec);
+    if (!ec) return true;
+    *err = "could not move " + utf8(from) + " to " + utf8(to) + ": " + ec.message();
+    return false;
+}
+
+/* ---- what the player is told of a mod package (game/modfiles/<id>.info) ---- */
+
+/* text for one line of a file or a card: no control characters, at most `max` bytes */
+std::string one_line(const std::string& s, size_t max)
+{
+    std::string t;
+    for (unsigned char c : s) {
+        const bool space = c < 0x20 || c == 0x7F || c == ' ';
+        if (space && (t.empty() || t.back() == ' ')) continue;
+        t += space ? ' ' : (char)c;
+    }
+    while (!t.empty() && t.back() == ' ') t.pop_back();
+    if (t.size() > max) {
+        size_t n = max;
+        while (n > 0 && ((unsigned char)t[n] & 0xC0) == 0x80) n--;   /* not inside a UTF-8 character */
+        t.resize(n);
+    }
+    return t;
+}
+
+bool info_write(const fs::path& base, const std::string& id, const ModInfo& m)
+{
+    std::error_code ec;
+    std::string s = "cid=" + one_line(m.content_id, 64) + "\nfile=" + one_line(m.file, 200) + "\n";
+    if (m.eboot) s += "eboot=1\n";
+    if (m.skipped) s += "skipped=" + std::to_string(m.skipped) + "\n";
+    if (m.script) s += "script=1\n";
+    fs::create_directories(modfiles_dir(base), ec);
+    return write_file(info_file(base, id), s);
+}
+
+/* ---- two mods with the same file ----------------------------------------------
+ * A file in place is one mod's: the update's own beneath it is kept aside by
+ * that mod and put back when it goes. Two mods that replace the same file are
+ * therefore never on together (mod_conflict); the title's file lists apart,
+ * which more than one mod may bring and which are put together instead
+ * (below). */
+
+/* Which mod that is on has each file, by ModFile::key; `skip` left out. */
+std::map<std::string, std::string> files_on(const fs::path& base, const std::string& skip)
+{
+    std::map<std::string, std::string> owner;
+    for (const ModRow& r : mods_read(base)) {
+        std::vector<ModFile> files;
+        std::error_code ec;
+        if (r.id == skip || fs::exists(off_mark(base, r.id), ec) || !mod_files(base, r.id, &files)) continue;
+        for (const ModFile& m : files)
+            if (!m.toc && !is_toc(m.rel)) owner.emplace(m.key(), r.id);
+    }
+    return owner;
+}
+
+std::string row_name(const fs::path& base, const std::string& id)
+{
+    for (const ModRow& r : mods_read(base))
+        if (r.id == id) return r.name;
+    return id;
+}
+
+/* mod_conflict's sentence for the mod `id`, called `name`, with these files. */
+std::string conflict(const fs::path& base, const std::string& id, const std::string& name,
+                     const std::vector<ModFile>& files)
+{
+    const std::map<std::string, std::string> owner = files_on(base, id);
+    std::string other, example;
+    size_t n = 0;
+    for (const ModFile& m : files) {
+        if (m.toc || is_toc(m.rel)) continue;
+        const auto it = owner.find(m.key());
+        if (it == owner.end() || (!other.empty() && it->second != other)) continue;
+        other = it->second;
+        if (!n++) example = utf8(m.rel.filename());
+    }
+    if (!n) return "";
+    const std::string on = row_name(base, other);
+    const std::string what =
+        n == 1 ? example : example + " and " + std::to_string(n - 1) + (n == 2 ? " other file" : " other files");
+    return name + " and " + on + " both replace " + what +
+           ", and two mods that replace the same file cannot be on together: switch " + on +
+           " off first, on the launcher's Mods page";
+}
+
+/* The update's own file `orig`, which the mod being removed kept aside, where
+ * the file in place is the mod `to`'s (an install from before two mods with
+ * the same file were kept apart): kept for that mod instead, so that
+ * removing it puts the update's own back. */
+void hand_over(const fs::path& base, const std::string& to, const ModFile& m, const fs::path& orig)
+{
+    std::error_code ec;
+    std::string err;
+    const fs::path theirs = modfiles_dir(base) / to / "orig" / m.rel;
+    fs::remove(theirs, ec);   /* what that mod kept is the removed mod's file, not the update's */
+    if (!move_file(orig, theirs, &err)) return;
+    std::vector<ModFile> files;
+    if (!mod_files(base, to, &files)) return;
+    for (ModFile& f : files)
+        if (f.key() == m.key()) f.kept = true;
+    list_write(base, to, files);
+}
+
+/* ---- the title's file lists -----------------------------------------------------
+ * PS3TOC.TXT: a line a file, "<size> <uncompressed size> <path> 0", the path
+ * from the folder beside the list's ("..\Sqex03Game\CookedPS3\CORE.xxx" in
+ * SQEX03GAME/PS3TOC.TXT). A mod may bring one for the folder its files go
+ * into (the Spanish translation: the update's, and the game-data install's),
+ * the disc's with its own files' lines changed, and on the console the one
+ * installed last replaces the others whole. Here each stays
+ * with its mod (game/modfiles/<id>/toc/<kind>/<path>, "\tT" in its list)
+ * and the one in place is made from them: the list of the first mod that is
+ * on and has one, as it is, then every other such mod's files -- each by the
+ * line its own list has for it, or failing that with its size. Made again
+ * whenever the mods that are on change (compose_tocs). */
+
+fs::path toc_store(const fs::path& base, const std::string& id) { return modfiles_dir(base) / id / "toc"; }
+/* compose_tocs' own: made.txt, the lists it has put in place (as a mod's
+ * list names them), and orig/patch/, the update's own list one replaced */
+fs::path toc_shared(const fs::path& base) { return modfiles_dir(base) / "_toc"; }
+
+struct Toc {
+    std::vector<std::string> lines;      /* without their line ends */
+    std::map<std::string, size_t> at;    /* a file, by key_of -> its line */
+    bool crlf = true;
+
+    /* a line's file, the same for every spelling: "SQEX03GAME/COOKEDPS3/CORE.XXX"; "" if it names none */
+    static std::string key_of(const std::string& line)
+    {
+        const size_t a = line.find(' '), b = a == std::string::npos ? a : line.find(' ', a + 1), c = line.rfind(' ');
+        if (b == std::string::npos || c <= b) return "";
+        std::string p = upper(line.substr(b + 1, c - b - 1));
+        for (char& ch : p)
+            if (ch == '\\') ch = '/';
+        if (p.starts_with("../")) p.erase(0, 3);
+        return p;
+    }
+    bool read(const fs::path& p)
+    {
+        std::vector<uint8_t> d;
+        if (!read_file(p, 64u << 20, &d)) return false;
+        crlf = d.empty() || std::find(d.begin(), d.end(), (uint8_t)'\r') != d.end();
+        lines = read_lines(p);
+        at.clear();
+        for (size_t i = 0; i < lines.size(); i++)
+            if (const std::string k = key_of(lines[i]); !k.empty()) at[k] = i;
+        return true;
+    }
+    /* a file's line, in place of the one it has or added; false if nothing changed */
+    bool set(const std::string& key, const std::string& line)
+    {
+        const auto it = at.find(key);
+        if (it == at.end()) {
+            at[key] = lines.size();
+            lines.push_back(line);
+            return true;
+        }
+        if (lines[it->second] == line) return false;
+        lines[it->second] = line;
+        return true;
+    }
+    /* a file's size in its line, or a line added for it */
+    bool set_size(const std::string& key, uint64_t size)
+    {
+        const auto it = at.find(key);
+        if (it != at.end()) {
+            const std::string& l = lines[it->second];
+            return set(key, std::to_string(size) + l.substr(l.find(' ')));
+        }
+        std::string path = key;
+        for (char& ch : path)
+            if (ch == '/') ch = '\\';
+        return set(key, std::to_string(size) + " 0 ..\\" + path + " 0");
+    }
+    std::string text() const
+    {
+        std::string s;
+        for (const std::string& l : lines) s += l + (crlf ? "\r\n" : "\n");
+        return s;
+    }
+};
+
+std::vector<ModFile> made_read(const fs::path& base) { return list_parse(read_lines(toc_shared(base) / "made.txt")); }
+
+bool made_write(const fs::path& base, const std::vector<ModFile>& made)
+{
+    std::error_code ec;
+    const fs::path dir = toc_shared(base);
+    if (made.empty()) {
+        fs::remove(dir / "made.txt", ec);
+        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+        return true;
+    }
+    std::string s;
+    for (const ModFile& m : made) s += m.line();
+    fs::create_directories(dir, ec);
+    return write_file(dir / "made.txt", s);
+}
+
+/* An install made before the file lists were put together: a mod's
+ * PS3TOC.TXT is among its files -- in place, or set aside with the rest of a
+ * mod that is off -- and the update's own kept aside by the mod it was first
+ * replaced for. Each mod's goes to its own folder, as install_mod now puts
+ * it; the one in place stays until compose_tocs makes it again, and is
+ * noted as made here so that it is not taken for the update's. */
+void migrate_tocs(const fs::path& base)
+{
+    std::error_code ec;
+    std::string err;
+    std::vector<ModFile> made = made_read(base);
+    bool made_changed = false;
+    for (const ModRow& r : mods_read(base)) {
+        std::vector<ModFile> files;
+        if (!mod_files(base, r.id, &files)) continue;
+        const bool on = !fs::exists(off_mark(base, r.id), ec);
+        bool changed = false;
+        for (ModFile& m : files) {
+            if (m.toc || !is_toc(m.rel)) continue;
+            const fs::path mine = modfiles_dir(base) / r.id, keep = toc_store(base, r.id) / m.kind / m.rel;
+            const fs::path live = mod_root(base, m.kind) / m.rel, aside = mine / "off" / m.kind / m.rel;
+            if (!fs::exists(keep, ec)) {
+                fs::create_directories(keep.parent_path(), ec);
+                if (on && fs::exists(live, ec)) {
+                    fs::copy_file(live, keep, ec);
+                    if (ec) continue;   /* left as it was; tried again the next time */
+                    if (std::none_of(made.begin(), made.end(), [&](const ModFile& x) { return x.key() == m.key(); })) {
+                        made.push_back({ m.kind, m.rel });
+                        made_changed = true;
+                    }
+                } else if (fs::exists(aside, ec) && !move_file(aside, keep, &err)) {
+                    continue;
+                }
+            }
+            /* the update's own list, kept aside by this mod: compose_tocs' to put back */
+            if (m.kept && fs::exists(mine / "orig" / m.rel, ec)) {
+                const fs::path own = toc_shared(base) / "orig" / m.kind / m.rel;
+                if (fs::exists(own, ec))
+                    fs::remove(mine / "orig" / m.rel, ec);
+                else if (!move_file(mine / "orig" / m.rel, own, &err))
+                    continue;
+            }
+            m.toc = true;
+            m.kept = false;
+            changed = true;
+        }
+        if (made_changed) made_write(base, made);   /* before the list says the mod's is no longer its file in place */
+        made_changed = false;
+        if (changed) list_write(base, r.id, files);
+    }
+}
+
+/* The file lists in place made again from the mods that are on (above); one
+ * no mod has a list for any more is taken away, and the update's own, if it
+ * had one, put back. */
+bool compose_tocs(const fs::path& base, std::string* err)
+{
+    std::error_code ec;
+    struct Place {
+        ModFile file;
+        std::vector<std::string> ids;   /* the mods with a list for it, in the order installed */
+    };
+    std::map<std::string, Place> places;
+    std::vector<std::pair<std::string, std::vector<ModFile>>> on;
+    for (const ModRow& r : mods_read(base)) {
+        std::vector<ModFile> files;
+        if (fs::exists(off_mark(base, r.id), ec) || !mod_files(base, r.id, &files)) continue;
+        for (const ModFile& m : files) {
+            if (!m.toc || !fs::exists(toc_store(base, r.id) / m.kind / m.rel, ec)) continue;
+            Place& p = places[m.key()];
+            if (p.ids.empty()) p.file = { m.kind, m.rel };
+            p.ids.push_back(r.id);
+        }
+        on.push_back({ r.id, std::move(files) });
+    }
+    const std::vector<ModFile> before = made_read(base);
+    if (places.empty() && before.empty()) return true;
+    const fs::path shared = toc_shared(base);
+    auto was_made = [&](const std::string& key) {
+        return std::any_of(before.begin(), before.end(), [&](const ModFile& m) { return m.key() == key; });
+    };
+    std::set<fs::path> dirs;
+    for (const ModFile& m : before) {
+        if (places.count(m.key())) continue;
+        const fs::path root = mod_root(base, m.kind), live = root / m.rel, own = shared / "orig" / m.kind / m.rel;
+        fs::remove(live, ec);
+        if (fs::exists(own, ec) && !move_file(own, live, err)) return false;
+        add_dirs(dirs, root, m.rel);
+    }
+    remove_empty_dirs(dirs);
+    std::vector<ModFile> made;
+    for (const auto& [key, place] : places) {
+        const ModFile& at = place.file;
+        const fs::path first = toc_store(base, place.ids[0]) / at.kind / at.rel;
+        Toc toc;
+        if (!toc.read(first)) {
+            *err = "could not read " + utf8(first);
+            return false;
+        }
+        /* the folder the list's paths start from, the one above the list's own, as the start of a ModFile::key */
+        const std::string top = [&] {
+            const ModFile above{ at.kind, at.rel.parent_path().parent_path() / "x" };
+            const std::string k = above.key();
+            return k.substr(0, k.size() - 1);
+        }();
+        bool changed = false;
+        for (const auto& [id, files] : on) {
+            if (id == place.ids[0]) continue;
+            Toc own;
+            const bool has_own = std::find(place.ids.begin(), place.ids.end(), id) != place.ids.end() &&
+                                 own.read(toc_store(base, id) / at.kind / at.rel);
+            for (const ModFile& f : files) {
+                if (f.toc || is_toc(f.rel)) continue;
+                const std::string fk = f.key();
+                if (!fk.starts_with(top)) continue;
+                const std::string k = fk.substr(top.size());
+                const auto line = has_own ? own.at.find(k) : own.at.end();
+                if (line != own.at.end()) {
+                    changed |= toc.set(k, own.lines[line->second]);
+                    continue;
+                }
+                const uint64_t size = fs::file_size(mod_root(base, f.kind) / f.rel, ec);
+                if (!ec) changed |= toc.set_size(k, size);
+                ec.clear();
+            }
+        }
+        const fs::path live = mod_root(base, at.kind) / at.rel, own = shared / "orig" / at.kind / at.rel;
+        /* the update's own list, if it has one: aside, to put back when no mod has one */
+        if (at.kind == "patch" && !was_made(key) && fs::exists(live, ec) && !fs::exists(own, ec) &&
+            !move_file(live, own, err))
+            return false;
+        fs::path part = live;
+        part += ".partial";
+        fs::create_directories(live.parent_path(), ec);
+        ec.clear();
+        if (changed) {
+            if (!write_file(part, toc.text())) ec = std::make_error_code(std::errc::io_error);
+        } else {
+            fs::copy_file(first, part, fs::copy_options::overwrite_existing, ec);   /* the mod's own, byte for byte */
+        }
+        if (!ec) move_patiently(part, live, ec);
+        if (ec) {
+            *err = "could not write " + utf8(live);
+            return false;
+        }
+        made.push_back({ at.kind, at.rel });
+    }
+    if (fs::is_directory(shared / "orig", ec) && !count_files(shared / "orig")) fs::remove_all(shared / "orig", ec);
+    if (made_write(base, made)) return true;
+    *err = "could not write " + utf8(shared / "made.txt");
+    return false;
+}
+
 /* One mod removed (Plan::remove_ids): the DLC Undub's folder, the voice
  * pack's lists written again; any other by its list -- its files in
  * game/mods and the update's folder deleted (or, switched off, the ones set
  * aside), the update's own put back, the folders it leaves empty removed. A
- * mod without a list (mod_removable) is left as it is, with an error. */
+ * file in place that is another mod's is left alone. A mod without a list
+ * (mod_removable) is left as it is, with an error. The title's file lists
+ * are the caller's to make again (compose_tocs). */
 bool remove_mod(const fs::path& base, const std::string& id, std::string* err)
 {
     std::error_code ec;
@@ -667,6 +1086,7 @@ bool remove_mod(const fs::path& base, const std::string& id, std::string* err)
         }
         return mods_forget(base, id, err);
     }
+    migrate_tocs(base);
     const fs::path orig = modfiles_dir(base) / id / "orig", off = modfiles_dir(base) / id / "off";
     std::vector<ModFile> list;
     if (!mod_files(base, id, &list)) {
@@ -674,9 +1094,15 @@ bool remove_mod(const fs::path& base, const std::string& id, std::string* err)
                "all the mods";
         return false;
     }
+    const std::map<std::string, std::string> others = files_on(base, id);
     std::set<fs::path> dirs;
     for (const ModFile& m : list) {
+        if (m.toc) continue;   /* in the mod's own folder, which goes below */
         const fs::path root = mod_root(base, m.kind), live = root / m.rel;
+        if (const auto theirs = others.find(m.key()); theirs != others.end()) {
+            if (m.kept && fs::exists(orig / m.rel, ec)) hand_over(base, theirs->second, m, orig / m.rel);
+            continue;
+        }
         if (m.kept) {
             /* the update's own back over the mod's -- unless it is back already
              * (switched off, or a removal cut short) */
@@ -696,7 +1122,29 @@ bool remove_mod(const fs::path& base, const std::string& id, std::string* err)
     fs::remove_all(modfiles_dir(base) / id, ec);
     fs::remove(list_file(base, id), ec);
     fs::remove(off_mark(base, id), ec);
+    fs::remove(info_file(base, id), ec);
     return mods_forget(base, id, err);
+}
+
+/* The files a mod to install brings, as its list will name them. */
+bool planned_files(const Source& s, std::vector<ModFile>* out, std::string* err)
+{
+    if (s.form == ModForm::Zip) {
+        std::vector<ZipEntry> es;
+        if (!zip_list(s.path, &es, err)) return false;
+        for (const ZipEntry& e : es)
+            if (!e.dir) out->push_back({ "tree", fs::path(kMoviesDir) / upper(utf8(fs::u8path(e.name).filename())) });
+    } else if (s.form == ModForm::Pkg) {
+        Pkg pkg;
+        if (!pkg_open(s.path, &pkg, err)) return false;
+        const std::string title = cid_title(pkg.content_id);
+        for (const PkgEntry& e : pkg.entries) {
+            const std::string to = e.dir ? "" : mod_layout(title, e.name).value_or("");
+            const size_t sl = to.find('/');
+            if (sl != std::string::npos) out->push_back({ to.substr(0, sl), fs::u8path(to.substr(sl + 1)) });
+        }
+    }
+    return true;
 }
 
 /* A mod: a package's files where mod_layout puts them, a movie archive's
@@ -706,6 +1154,15 @@ bool install_mod(const fs::path& base, const Source& s, const fs::path& stage,
 {
     std::error_code ec;
     if (s.form == ModForm::Undub) return install_undub(base, s, stage, progress, err);
+    migrate_tocs(base);
+    {   /* before anything is unpacked: a mod that is on has one of its files */
+        std::vector<ModFile> brings;
+        if (!planned_files(s, &brings, err)) return false;
+        if (const std::string clash = conflict(base, s.id, s.name, brings); !clash.empty()) {
+            *err = clash;
+            return false;
+        }
+    }
     const fs::path part = stage / "mod";
     fs::remove_all(part, ec);
     if (s.form == ModForm::Zip) {
@@ -714,8 +1171,8 @@ bool install_mod(const fs::path& base, const Source& s, const fs::path& stage,
         uint64_t before = 0;
         for (const ZipEntry& e : es) {
             if (e.dir) continue;
-            const std::string n = fs::path(e.name).filename().string();
-            if (!zip_extract(s.path, e, part / "tree/PS3_GAME/USRDIR/SQEX03GAME/MOVIES" / n,
+            const std::string n = upper(utf8(fs::u8path(e.name).filename()));
+            if (!zip_extract(s.path, e, part / "tree" / kMoviesDir / fs::u8path(n),
                              [&](uint64_t x) { return progress(before + x); }, err))
                 return false;
             before += e.csize;
@@ -738,7 +1195,7 @@ bool install_mod(const fs::path& base, const Source& s, const fs::path& stage,
     if (!had_list)
         for (const ModRow& r : mods_read(base))
             if (r.id == s.id && r.in_patch()) listed = false;
-    if (had_list && !remove_mod(base, s.id, err)) return false;
+    if (had_list && !(remove_mod(base, s.id, err) && compose_tocs(base, err))) return false;
     /* The list is written before anything moves in, the update's files it
      * replaces kept aside first: a move cut short is undone by Remove. */
     std::vector<ModFile> files;
@@ -746,7 +1203,9 @@ bool install_mod(const fs::path& base, const Source& s, const fs::path& stage,
         for (fs::recursive_directory_iterator it(from, ec), end; !ec && it != end; it.increment(ec)) {
             if (!it->is_regular_file(ec)) continue;
             ModFile m{ kind, fs::relative(it->path(), from, ec) };
-            if (!orig.empty() && fs::exists(to / m.rel, ec)) {   /* the update's own: kept aside */
+            if (is_toc(m.rel)) {
+                m.toc = true;   /* to the mod's own folder (below), not in place */
+            } else if (!orig.empty() && fs::exists(to / m.rel, ec)) {   /* the update's own: kept aside */
                 fs::create_directories((orig / m.rel).parent_path(), ec);
                 move_patiently(to / m.rel, orig / m.rel, ec);
                 m.kept = !ec;
@@ -764,13 +1223,12 @@ bool install_mod(const fs::path& base, const Source& s, const fs::path& stage,
     if (listed) {
         if (has_patch) list_files(part / "patch", "patch", patch, modfiles_dir(base) / s.id / "orig");
         if (has_tree) list_files(part / "tree", "tree", mods_dir(base), fs::path());
-        std::string list;
-        for (const ModFile& m : files) list += m.line();
-        fs::create_directories(modfiles_dir(base), ec);
-        if (!write_file(list_file(base, s.id), list)) {
+        if (!list_write(base, s.id, files)) {
             *err = "could not write " + utf8(list_file(base, s.id));
             return false;
         }
+        for (const ModFile& m : files)
+            if (m.toc && !move_file(part / m.kind / m.rel, toc_store(base, s.id) / m.kind / m.rel, err)) return false;
     }
     std::string where;
     if (has_patch) {
@@ -782,7 +1240,8 @@ bool install_mod(const fs::path& base, const Source& s, const fs::path& stage,
         where += where.empty() ? "tree" : ",tree";
     }
     fs::remove_all(part, ec);
-    return mods_record(base, { s.id, where, s.name }, err);
+    if (s.form == ModForm::Pkg && !s.about.content_id.empty()) info_write(base, s.id, s.about);
+    return mods_record(base, { s.id, where, s.name }, err) && compose_tocs(base, err);
 }
 
 /* The installed mods removed (Plan::remove_mods): each listed one by itself
@@ -807,10 +1266,16 @@ bool remove_mods(const fs::path& base, std::string* err)
 /* The update installed again (its PATCH folder replaced whole): the mods'
  * files there went with the old folder, and the update's own files they
  * kept aside are the old update's. A mod with files only there is
- * forgotten; one with files in game/mods too is kept, as those. */
+ * forgotten; one with files in game/mods too is kept, as those. The title's
+ * file lists are the caller's to make again (compose_tocs). */
 void forget_patch_mods(const fs::path& base)
 {
     std::error_code ec;
+    migrate_tocs(base);
+    /* the lists made for the update's folder went with it, and the update's own kept for them is the old one */
+    fs::remove_all(toc_shared(base) / "orig" / "patch", ec);
+    std::vector<ModFile> made = made_read(base);
+    if (std::erase_if(made, [](const ModFile& m) { return m.kind == "patch"; })) made_write(base, made);
     auto rows = mods_read(base);
     bool changed = false;
     for (auto it = rows.begin(); it != rows.end();) {
@@ -822,19 +1287,19 @@ void forget_patch_mods(const fs::path& base)
         const std::string id = it->id;
         fs::remove_all(modfiles_dir(base) / id / "orig", ec);
         fs::remove_all(modfiles_dir(base) / id / "off" / "patch", ec);
+        fs::remove_all(toc_store(base, id) / "patch", ec);
         if (it->where.find("tree") == std::string::npos) {
             fs::remove(list_file(base, id), ec);
             fs::remove(off_mark(base, id), ec);
+            fs::remove(info_file(base, id), ec);
             fs::remove_all(modfiles_dir(base) / id, ec);
             it = rows.erase(it);
             continue;
         }
         std::vector<ModFile> files;
         if (mod_files(base, id, &files)) {
-            std::string list;
-            for (const ModFile& m : files)
-                if (m.kind == "tree") list += m.line();
-            write_file(list_file(base, id), list);
+            std::erase_if(files, [](const ModFile& m) { return m.kind != "tree"; });
+            list_write(base, id, files);
         }
         it->where = "tree";
         ++it;
@@ -861,37 +1326,91 @@ bool mod_enabled(const fs::path& base, const std::string& id)
     return !fs::exists(off_mark(base, id), ec);
 }
 
+std::string mod_conflict(const fs::path& base, const Source& mod)
+{
+    std::vector<ModFile> files;
+    std::string err;
+    if (mod.kind != SourceKind::Mod || !planned_files(mod, &files, &err)) return "";
+    return conflict(base, mod.id, mod.name, files);
+}
+
+std::string mod_conflict(const fs::path& base, const std::string& id)
+{
+    std::vector<ModFile> files;
+    if (!mod_files(base, id, &files)) return "";
+    return conflict(base, id, row_name(base, id), files);
+}
+
+ModInfo mod_info(const fs::path& base, const std::string& id)
+{
+    ModInfo m;
+    for (const std::string& l : read_lines(info_file(base, id))) {
+        const size_t eq = l.find('=');
+        if (eq == std::string::npos) continue;
+        const std::string k = l.substr(0, eq), v = l.substr(eq + 1);
+        if (k == "cid") m.content_id = v;
+        if (k == "file") m.file = v;
+        if (k == "eboot") m.eboot = v == "1";
+        if (k == "skipped") m.skipped = (unsigned)strtoul(v.c_str(), nullptr, 10);
+        if (k == "script") m.script = v == "1";
+    }
+    return m;
+}
+
+std::vector<std::string> mod_notes(const ModInfo& m)
+{
+    std::vector<std::string> notes;
+    if (m.eboot)
+        notes.push_back("Its EBOOT.BIN is not used: the port is its own executable, so a mod that needs a changed "
+                        "one may not work as its author meant.");
+    if (m.skipped)
+        notes.push_back(std::to_string(m.skipped) +
+                        (m.skipped == 1 ? " file in it has no use here and is left out"
+                                        : " files in it have no use here and are left out") +
+                        " (system files, or a folder the game does not read).");
+    if (m.script)
+        notes.push_back("It has a script package of its own (SQEX03GAME.XXX). If that is not the update's, the "
+                        "port's additions to the Settings menu are not there while the mod is on: the Graphics "
+                        "Settings, System Settings, Advanced Graphics and Picture Settings pages, Quit Game, and "
+                        "what works through them (the wider field of view, the Aspect Ratio setting's wider view, "
+                        "skipping the intro).");
+    return notes;
+}
+
 /* File by file, each step done only if it is still to do, so a switch cut
  * short is finished by doing it again. */
 bool set_mod_enabled(const fs::path& base, const std::string& id, bool on, std::string* err)
 {
     std::error_code ec;
     std::vector<ModFile> list;
+    migrate_tocs(base);
     if (!mod_switchable(base, id) || !mod_files(base, id, &list)) {
         *err = "this mod was installed without a list of its files; install it again to switch it on and off";
         return false;
     }
     const fs::path orig = modfiles_dir(base) / id / "orig", off = modfiles_dir(base) / id / "off",
                    mark = off_mark(base, id);
-    auto move = [&](const fs::path& from, const fs::path& to) {
-        fs::create_directories(to.parent_path(), ec);
-        ec.clear();
-        move_patiently(from, to, ec);
-        if (!ec) return true;
-        *err = "could not move " + utf8(from) + " to " + utf8(to) + ": " + ec.message();
-        return false;
-    };
+    if (on && fs::exists(mark, ec)) {
+        if (const std::string clash = conflict(base, id, row_name(base, id), list); !clash.empty()) {
+            *err = clash;
+            return false;
+        }
+    }
+    /* a file in place that is another mod's (an install from before two mods
+     * with the same file were kept apart) stays where it is */
+    const std::map<std::string, std::string> others = files_on(base, id);
     std::set<fs::path> dirs;
     for (const ModFile& m : list) {
+        if (m.toc || others.count(m.key())) continue;
         const fs::path root = mod_root(base, m.kind), live = root / m.rel, aside = off / m.kind / m.rel,
                        own = orig / m.rel;
         if (!on) {
-            if (fs::exists(live, ec) && !fs::exists(aside, ec) && !move(live, aside)) return false;
-            if (m.kept && !fs::exists(live, ec) && fs::exists(own, ec) && !move(own, live)) return false;
+            if (fs::exists(live, ec) && !fs::exists(aside, ec) && !move_file(live, aside, err)) return false;
+            if (m.kept && !fs::exists(live, ec) && fs::exists(own, ec) && !move_file(own, live, err)) return false;
             add_dirs(dirs, root, m.rel);
         } else if (fs::exists(aside, ec)) {
-            if (m.kept && fs::exists(live, ec) && !fs::exists(own, ec) && !move(live, own)) return false;
-            if (!fs::exists(live, ec) && !move(aside, live)) return false;
+            if (m.kept && fs::exists(live, ec) && !fs::exists(own, ec) && !move_file(live, own, err)) return false;
+            if (!fs::exists(live, ec) && !move_file(aside, live, err)) return false;
         }
     }
     if (!on) {
@@ -905,7 +1424,7 @@ bool set_mod_enabled(const fs::path& base, const std::string& id, bool on, std::
         fs::remove(modfiles_dir(base) / id, ec);   /* when nothing was kept aside, the folder is empty */
         fs::remove(mark, ec);
     }
-    return true;
+    return compose_tocs(base, err);
 }
 
 const std::vector<DlcInfo>& known_mods()
@@ -1052,8 +1571,33 @@ bool key_art(const Source& game, std::vector<uint8_t>* png)
 
 namespace {
 
-/* A homebrew (debug) package: a mod, its files where mod_layout puts them.
- * NoPayStation's licence "FIX" packages are debug packages too. */
+/* What a mod package calls itself (its PARAM.SFO's TITLE), if that says more
+ * than the game's name; else "". */
+std::string pkg_title(const Pkg& pkg)
+{
+    bool has = false;
+    for (const PkgEntry& e : pkg.entries) has |= !e.dir && e.name == "PARAM.SFO" && e.size <= (1u << 20);
+    std::vector<uint8_t> sfo;
+    std::string err, title;
+    if (!has || !pkg_read_file(pkg, "PARAM.SFO", &sfo, &err) || !param_sfo_text(sfo, "TITLE", &title)) return "";
+    title = one_line(title, 80);
+    /* its letters and digits, the (R) and (TM) signs aside: "Drakengard(R) 3" is the game's own name */
+    std::string plain;
+    for (size_t i = 0; i < title.size(); i++) {
+        const unsigned char c = (unsigned char)title[i];
+        if (!title.compare(i, 2, "\xC2\xAE"))
+            i += 1;
+        else if (!title.compare(i, 3, "\xE2\x84\xA2"))
+            i += 2;
+        else if (c >= 0x80 || isalnum(c))
+            plain += (char)toupper(c);
+    }
+    return plain.empty() || plain == "DRAKENGARD3" ? std::string() : title;
+}
+
+/* A package for this game that is none of Sony's: a mod, its files where
+ * mod_layout puts them. Homebrew tools make debug packages, and some make
+ * retail ones; NoPayStation's licence "FIX" packages are debug packages too. */
 bool identify_mod_pkg(const fs::path& p, const std::string& cid, Source* s, std::string* err)
 {
     Pkg pkg;
@@ -1063,19 +1607,33 @@ bool identify_mod_pkg(const fs::path& p, const std::string& cid, Source* s, std:
         return false;
     }
     const std::string title = cid_title(cid);
+    if (title != "BLUS31197" && title != "NPUB31251") {
+        *err = std::string(pkg.debug ? "a homebrew package" : "a package") + " for another game (" + cid + ")";
+        return false;
+    }
+    ModInfo about;
+    std::string unused;   /* the first file the port has no use for */
     for (const PkgEntry& e : pkg.entries) {
         if (e.dir) continue;
         const std::optional<std::string> to = mod_layout(title, e.name);
         if (!to) {
-            *err = title == "BLUS31197" || title == "NPUB31251"
-                       ? "a homebrew package with files the setup has no place for (" + e.name + ")"
-                       : "a homebrew package for another game (" + cid + ")";
-            return false;
+            if (upper(e.name) == "USRDIR/EBOOT.BIN")
+                about.eboot = true;
+            else if (!about.skipped++)
+                unused = e.name;
+            continue;
         }
-        if (!to->empty()) s->bytes += e.size;
+        if (to->empty()) continue;
+        s->bytes += e.size;
+        about.script |= *to == kScriptPackage;
     }
     if (!s->bytes) {
-        *err = "a homebrew package with nothing in it to install";
+        if (about.skipped)
+            *err = "a package with no file the game reads here (" + one_line(unused, 120) + ")";
+        else if (about.eboot)
+            *err = "a package that holds only an executable (EBOOT.BIN), which the port, being its own, cannot use";
+        else
+            *err = "a package with nothing in it to install";
         return false;
     }
     if (!update_required()) {
@@ -1084,12 +1642,16 @@ bool identify_mod_pkg(const fs::path& p, const std::string& cid, Source* s, std:
     }
     s->kind = SourceKind::Mod;
     s->form = ModForm::Pkg;
+    about.content_id = cid;
+    about.file = utf8(p.filename());
+    s->about = about;
     if (const KnownPkg* k = known_pkg(pkg)) {
         s->id = k->id;
         s->name = mod_name(k->id);
     } else {
+        const std::string named = pkg_title(pkg);
         s->id = "PKG-" + to_hex(pkg.qa, 4);
-        s->name = "Mod package " + utf8(p.filename());
+        s->name = !named.empty() ? named : one_line(utf8(p.stem()), 80);
     }
     return true;
 }
@@ -1164,11 +1726,13 @@ bool identify_pkg(const fs::path& p, Source* s, std::string* err)
             s->bytes = pkg.payload();
             return true;
         }
-        *err = "this Drakengard 3 package (" + id + ") is not one of the DLC packs";
+    }
+    if (cid.empty()) {
+        *err = "an unreadable PS3 package";
         return false;
     }
-    *err = cid.empty() ? "an unreadable PS3 package" : "a package for another game (" + cid + ")";
-    return false;
+    /* none of Sony's for this game: a mod, if it is for this game at all */
+    return identify_mod_pkg(p, cid, s, err);
 }
 
 /* A .zip: a mod's movies (the Spanish translation's MOVIES.zip, or others). */
@@ -1369,6 +1933,7 @@ bool install(const fs::path& base, const Plan& plan,
         if (!progress(0, total, "Removing a mod")) return fail("cancelled");
         if (!remove_mod(base, id, err)) return fail(*err);
     }
+    if ((plan.remove_mods || !plan.remove_ids.empty()) && !compose_tocs(base, err)) return fail(*err);
 
     /* The executable, made first (in memory) so wrong keys stop the install
      * before anything is copied; written once the update is in place. */
@@ -1440,7 +2005,7 @@ bool install(const fs::path& base, const Plan& plan,
          * so a file 1.01 dropped does not linger */
         fs::remove_all(update_dir(base) / "USRDIR/PATCH", ec);
         forget_patch_mods(base);
-        if (!merge_move(part, update_dir(base), err)) return fail(*err);
+        if (!merge_move(part, update_dir(base), err) || !compose_tocs(base, err)) return fail(*err);
         done = start + pkg.file_size;
     }
 
@@ -1537,6 +2102,8 @@ int install_files_cli(const fs::path& base, const std::vector<fs::path>& files, 
             return 1;
         }
         printf("%s: %s\n", utf8(f).c_str(), s.name.c_str());
+        if (s.kind == SourceKind::Mod)
+            for (const std::string& n : mod_notes(s.about)) printf("    %s\n", n.c_str());
         plan_add(plan, s);
     }
     const Status have = installed(base);

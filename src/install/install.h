@@ -12,11 +12,12 @@
  *                   brought by the update (the disc release's, for either)
  *   the update      the 1.01 update package (a 1.01 build needs it)
  *   DLC             any of the 20 PSN packs (UP0082-NPUB31251_00-...), optional
- *   mods            optional fan-made additions: homebrew packages and movie
- *                   archives (the Spanish translation's, which it knows by
- *                   name, or any laid out as the console installs them), and
- *                   the folder of the DLC chapters' Japanese voices (the DLC
- *                   Undub); see install_mod in install.cpp
+ *   mods            optional fan-made additions: packages for this game
+ *                   that are none of the above (the Spanish translation's,
+ *                   which it knows by name, or any other: mod_layout in
+ *                   install.cpp says where a package's files go) and movie
+ *                   archives, and the folder of the DLC chapters' Japanese
+ *                   voices (the DLC Undub); see install_mod in install.cpp
  *   keys            what opens the game's executable (src/install/keys.h): the
  *                   setup makes it from the update's EBOOT.BIN (1.01) or the
  *                   disc's (1.00), and checks it by its hash
@@ -40,12 +41,19 @@
  *                                                are), and installed.txt,
  *                                                the mods installed
  *   game/modfiles/                               each mod's list of its files
- *                                                (<id>.txt), and the update's
- *                                                files a mod replaced
- *                                                (<id>/orig/), so a mod can be
- *                                                removed by itself; switched
- *                                                off, its files set aside
- *                                                (<id>/off/) and <id>.off
+ *                                                (<id>.txt), what the player
+ *                                                is told of it (<id>.info),
+ *                                                and the update's files a mod
+ *                                                replaced (<id>/orig/), so a
+ *                                                mod can be removed by
+ *                                                itself; switched off, its
+ *                                                files set aside (<id>/off/)
+ *                                                and <id>.off; a mod's own
+ *                                                file list for the title
+ *                                                (PS3TOC.TXT, <id>/toc/): the
+ *                                                one the title reads is made
+ *                                                from those of the mods
+ *                                                that are on (toc/)
  *   .../PATCH/                                   a mod's files for the
  *                                                update's folder, which the
  *                                                title lists: there, as the
@@ -78,6 +86,15 @@ namespace fs = std::filesystem;
 enum class SourceKind { Unknown, Disc, Update, Eboot, Dlc, Mod };
 enum class ModForm { Pkg, Zip, Undub };   /* what a mod came as */
 
+/* What the player is told of a mod package besides its name. */
+struct ModInfo {
+    std::string content_id;   /* the package's: "UP0082-BLUS31197_00-..." */
+    std::string file;         /* the file it came as */
+    bool eboot = false;       /* it carries an EBOOT.BIN, which the port does not use */
+    unsigned skipped = 0;     /* its other files the port has no use for, left out */
+    bool script = false;      /* it has its own script package (SQEX03GAME.XXX) */
+};
+
 struct Source {
     SourceKind kind = SourceKind::Unknown;
     fs::path path;
@@ -86,6 +103,7 @@ struct Source {
     uint64_t bytes = 0;      /* what installing it writes */
     bool psn = false;        /* the game: the US PSN release's package, not the disc */
     ModForm form = ModForm::Pkg;   /* a mod */
+    ModInfo about;                 /* a mod package */
     bool set() const { return kind != SourceKind::Unknown; }
 };
 
@@ -168,9 +186,27 @@ bool mod_enabled(const fs::path& base, const std::string& id);
 /* A switchable mod switched off or on, the update package not needed: off,
  * its files are set aside (game/modfiles/<id>/off) and the update's own files
  * it replaced put back; on, the other way. The game sees it at its next
- * start. False with `err` if a file could not be moved: doing it again
- * finishes the switch. */
+ * start. False with `err` if a file could not be moved (doing it again
+ * finishes the switch), or, switching on, if a mod that is on replaces one
+ * of the same files (mod_conflict's sentence). */
 bool set_mod_enabled(const fs::path& base, const std::string& id, bool on, std::string* err);
+
+/* Two mods that replace the same file cannot be on together (the file lists
+ * the title reads, PS3TOC.TXT, apart: those are made from every mod's). ""
+ * if the mod to add, or the installed mod `id` to switch on, shares no file
+ * with an installed mod that is on; else one sentence naming that mod, which
+ * is to be switched off first. */
+std::string mod_conflict(const fs::path& base, const Source& mod);
+std::string mod_conflict(const fs::path& base, const std::string& id);
+
+/* What was kept of an installed mod package (game/modfiles/<id>.info); empty
+ * for a mod installed before it was kept, or one that is not a package. */
+ModInfo mod_info(const fs::path& base, const std::string& id);
+
+/* What the player is told about a mod package, a sentence each: that its
+ * EBOOT.BIN is not used, how many of its files were left out, and that the
+ * port's Settings pages are off with a script package of its own. */
+std::vector<std::string> mod_notes(const ModInfo& m);
 
 /* The encrypted executable: from the plan's update (1.01) or disc (1.00) if
  * set, else from the install. */

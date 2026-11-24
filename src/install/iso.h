@@ -26,6 +26,10 @@ std::string sha256_file(const fs::path& p);    /* "" if unreadable */
 /* PARAM.SFO's TITLE_ID and APP_VER; false if it is not an SFO. */
 bool param_sfo(const std::vector<uint8_t>& sfo, std::string* title_id, std::string* app_ver);
 
+/* One of PARAM.SFO's values by its key ("TITLE"), as text up to its first
+ * NUL; false if it is not an SFO or has no such key. */
+bool param_sfo_text(const std::vector<uint8_t>& sfo, const char* key, std::string* value);
+
 /* Is the game installed under `base` (game/disc): the disc, or the PSN
  * package laid out as it? */
 bool disc_installed(const fs::path& base);
