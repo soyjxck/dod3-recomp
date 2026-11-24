@@ -23,9 +23,11 @@
  * two slots are wrapped (both are reached through the vtable only from that
  * loop, so the function registry replaces them without a re-lift), the first
  * noting the speed before and after the step, the second, when the weight is
- * under 1 and the step slowed the pawn, giving back the rest. A step that
- * speeds the pawn upward -- the start of a jump, a launch, a landing's reset
- * to rest -- is left as it is.
+ * under 1 and the step slowed the pawn by what gravity takes, giving back
+ * the rest. A step that speeds the pawn upward -- the start of a jump, a
+ * launch, a landing's reset to rest -- is left as it is, and so is one that
+ * takes more than gravity does (gravity, +0x1154, over 120, times the pawn's
+ * scale, +0x1284): there the speed was set, by a dive or a stop, not aged.
  *
  * DOD3_STEP_GRAVITY=0 keeps the title's own behaviour. DOD3_STEP_LOG=1
  * prints each jump of the player's pawn: the height reached above the
@@ -48,6 +50,8 @@ namespace {
 
 const uint32_t kSpeedZ = 0x1280;   /* the pawn's vertical speed, a step's worth of move */
 const uint32_t kLocationZ = 0x5C;  /* AActor::Location.Z */
+const uint32_t kGravity = 0x1154;  /* what the gravity step takes off the speed, times 120 */
+const uint32_t kGravityScale = 0x1284;
 
 struct Step {
     uint32_t pawn;
@@ -85,6 +89,14 @@ bool readable(uint32_t a, uint32_t n)
     for (uint32_t p = a >> 16; p <= (a + n - 1) >> 16; p++)
         if (!(__atomic_load_n(&g_ppu_vm_page[p], __ATOMIC_RELAXED) & PPU_VM_PAGE_RD)) return false;
     return true;
+}
+
+/* Is a step's loss of vertical speed what the gravity step takes (less where the fall's limit cut in, a
+ * little more with its damping), not a speed set by something else? */
+bool gravity_sized(uint32_t pawn, float loss)
+{
+    const float g = guest_float(pawn + kGravity) / 120.0f * guest_float(pawn + kGravityScale);
+    return g > 0.0f && loss <= g * 1.5f;
 }
 
 /* Is this the pawn the player's controller holds? */
@@ -134,7 +146,8 @@ void hook_step_move(ppu_context* ctx)
     if (t_step.pawn == pawn) {
         const Step s = t_step;
         t_step.pawn = 0;
-        if (s_weighted && weight < 1.0f && weight > 0.0f && s.after < s.before)
+        if (s_weighted && weight < 1.0f && weight > 0.0f && s.after < s.before &&
+            gravity_sized(pawn, s.before - s.after))
             set_guest_float(pawn + kSpeedZ, s.before + (s.after - s.before) * weight);
         if (s_log && player_pawn(pawn)) {
             if (s_log > 1 && (s_jump.up || s_jump.down || s.after > 0.0f))
