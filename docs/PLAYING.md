@@ -110,9 +110,9 @@ Once the game is installed, it opens on a launcher, over the game's own key
 art (from your copy of the game):
 
 - Play (Enter, or the pad's confirm button, starts it straight away)
-- Mods: the Spanish translation and the DLC Undub, what of them is
-  installed, a switch to turn one off and on again, Remove, and Add Files /
-  Add Folder for more (see Mods below)
+- Mods: the Spanish translation, the DLC Undub and any other mod package
+  you add, what of them is installed, a switch to turn one off and on
+  again, Remove, and Add Files / Add Folder for more (see Mods below)
 - DLC: which of the 20 packs are installed, and Add DLC Packages
 - Settings: the display, graphics, controls (the keyboard's keys too),
   system settings and cheats, saved to dod3.ini as you change them
@@ -364,10 +364,12 @@ and English when English is chosen.
 
 ## Mods
 
-The launcher installs two fan-made mods by name, on its Mods page. Unzip
-or unpack what you downloaded first, then add the files with Add Files or
-Add Folder. Your own game files stay as they are: a mod's files go to the
-game/mods folder (and the voice pack's folder, for the DLC Undub).
+The launcher installs mods on its Mods page: two fan-made ones it knows by
+name, and any other that comes as a PS3 package (.pkg) for this game.
+Unzip or unpack what you downloaded first, then add the files with Add
+Files or Add Folder. Your own game files stay as they are: a mod's files
+go to the game/mods folder (and the voice pack's folder, for the DLC
+Undub).
 
 - The Spanish translation by Traducciones Vacuno (TraduSquare, v1.1, for
   the US release BLUS31197): from its downloads, the
@@ -397,9 +399,36 @@ it is not shown while the game is in French; and the DLC Undub's retimed
 subtitles are English, so in French the DLC chapters keep the official
 French timing under the Japanese voices.
 
-Other mods made as homebrew packages for this release, laid out as the
-console installs them (in the update's folder, the game-data folder, or
-the DLC's), are taken too and listed by their file names.
+Any other mod: add its .pkg as it is. A package made for the US release
+(BLUS31197 on disc, NPUB31251 from PSN and for the DLC) that is not the
+update, a DLC pack or the PSN game is taken as a mod, whichever kind of
+package it is (the ones homebrew tools make, or laid out like Sony's own).
+It is listed by the title it gives itself, or else by its file name, with
+the file and its content ID under it. Its files go where the game reads
+them: the update's folder, the game data, the DLC's folders, and for a
+mod made for the PSN release, the game's own. What the port has no use
+for is left out, and the card says so:
+
+- an EBOOT.BIN. The port is its own executable, built from the US 1.01
+  one, so a mod's executable is never run. A mod that only changes files
+  works without it; one that needs its changed executable (a release for
+  another region, a patched one) does not work as its author meant.
+- system files (modules, trophies, licences) and files in a folder the
+  game does not read.
+
+A package with nothing else in it is refused, as is one for another game
+or another region's release.
+
+Two mods that replace the same file cannot be on together: the second is
+refused, with the name of the mod to switch off first. Switch that one
+off on its card and add the other again; either can be on, not both. The
+file list a mod may bring along (PS3TOC.TXT, as the Spanish translation
+does) is the exception: the launcher puts one together from those of
+every mod that is on.
+
+A mod with its own script package (SQEX03GAME.XXX) takes the port's
+additions to the Settings menu away while it is on, as described below
+for a mod copied in by hand; the card says when a mod has one.
 
 To play without a mod for a while -- the game in English again, say --
 turn the switch on its card in the launcher's Mods page to Off: its files
@@ -418,8 +447,9 @@ A mod copied into the update's folder by hand
 is. If it replaces the game's script package (SQEX03GAME.XXX), the port's
 additions to the Settings menu are not there, because they are made to
 that package: the Graphics Settings, System Settings, Advanced Graphics and
-Picture Settings pages, and what works through them (the wider field of view, the Aspect
-Ratio setting's wider view, skipping the intro). dod3.ini still sets the
+Picture Settings pages, Quit Game, and what works through them (the wider
+field of view, the Aspect Ratio setting's wider view, skipping the
+intro). dod3.ini still sets the
 resolution, the display mode, the frame rate and the anti-aliasing.
 Running the setup again with the update package puts the update's own
 files back.

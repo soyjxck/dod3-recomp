@@ -245,9 +245,12 @@ French (`DOD3_LANGUAGE = fr`: the title is told the console's language
 is French and reads the disc's `_FRA` packages), in French, in the
 game's own words (`dod3_menu_language`, `src/kernel/mods.cpp`).
 
-A script package that is not the update's -- a mod copied over the update
-by hand -- is not patched: its own hash goes into the table instead, so it
-plays as it is, without the pages.
+A script package that is not the update's -- a mod's -- is not patched:
+its own hash goes into the table instead, so it plays as it is, without
+the pages. The table's other files (the start-up and script packages, the
+two COALESCED files) get their own hash too when a mod that is on has put
+one in the update's folder (`dod3_table_hash_file`): a package's is of its
+contents inflated, any other file's of the file as it is.
 
 Most rows set the engine's own switches (`src/patches/sysset.cpp`). Two act
 on the game's code: Depth of Field Off zeroes the near and far blur
@@ -385,8 +388,10 @@ controller holds, Zero or the dragon), an item's removal takes a count of
 Each file the player adds is recognised by itself (`install/install.cpp`):
 the disc by its PARAM.SFO and the hash of its EBOOT.BIN (`install/iso.cpp`,
 an ISO 9660 reader), the update, the DLC and the PSN release's game by their
-package content IDs and footer checksums (`install/pkg.cpp`), a mod by its
-packages' names or its folder's layout (a `.zip` through `install/zip.cpp`).
+package content IDs and footer checksums (`install/pkg.cpp`), a mod the
+setup knows by its packages' sizes and digests or its folder's layout (a
+`.zip` through `install/zip.cpp`); any other package whose content ID is
+for BLUS31197 or NPUB31251, debug or retail, is a mod too.
 Each part is unpacked into a staging folder and moved into place whole, so
 a failure leaves nothing half-installed. The game's executable is made from
 the update's EBOOT.BIN (`install/self.cpp`) and checked by its hash. The
@@ -405,6 +410,34 @@ files to `game/modfiles/<id>/off/`, puts the originals back meanwhile and
 marks the mod off (`<id>.off`); on moves them back. The DLC Undub's voices
 go beside the voice pack's (`DLC_JPV/UNDUB`), and the game's own Voice
 option switches them.
+
+`mod_layout` says where a package's files go, by the title in its content
+ID and each file's path, whatever its spelling (the result is upper case,
+as the title asks for its files): `USRDIR/PATCH` into the update's folder;
+BLUS31197's `USRDIR/FIOS-UNREALENGINE3` and NPUB31251's `USRDIR/DLC` and
+`USRDIR/DLC_JPV` into `game/mods` under the folders the console has them
+in; and the PSN release's own folders (NPUB31251's `USRDIR/SQEX03GAME`,
+`ENGINE`, `BINARIES`) under the disc's `PS3_GAME/USRDIR`, except COOKEDPS3
+and COOKEDSOUND, which the title reads through its game-data install and
+which go there. The package's own top-level files are dropped; an
+EBOOT.BIN, system modules, trophies, licences and files anywhere else are
+left out and counted, and `game/modfiles/<id>.info` keeps that with the
+package's content ID and file name for the mod's card.
+
+A file in place belongs to one mod, so two mods with the same file are
+never on together: adding one, or switching one on, is refused while a
+mod that is on lists the same file (`mod_conflict`). The title's file
+lists are the exception. A mod may bring a PS3TOC.TXT for the folder its
+files go into -- the Spanish translation brings two, each the disc's list
+with its own files' lines changed -- and on the console the last one
+installed replaces the others.
+Here each stays with its mod (`game/modfiles/<id>/toc/`, marked `T` in
+the mod's list) and the one in place is made from them whenever the mods
+that are on change (`compose_tocs`): the list of the first mod that is on
+and has one, as it is, then every other such mod's files, each by the line
+that mod's own list has for it or, failing that, with the file's size. An
+install from before this (a mod's list among its files) is converted the
+first time a mod is added, switched or removed.
 
 ## Audio
 

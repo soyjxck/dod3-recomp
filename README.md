@@ -80,9 +80,10 @@ What you need:
   disc release's update; the PSN release takes it too.
 - Optionally, the DLC packages you own (`UP0082-NPUB31251_00-...`). No
   licence files are needed.
-- Optionally, mods: the Spanish fan translation and the DLC Undub
-  (Japanese voices for the DLC chapters), which the launcher installs on its
-  Mods page; see [docs/PLAYING.md](docs/PLAYING.md#mods).
+- Optionally, mods: the Spanish fan translation, the DLC Undub (Japanese
+  voices for the DLC chapters), or any other mod that comes as a PS3
+  package for the US release, which the launcher installs on its Mods page;
+  see [docs/PLAYING.md](docs/PLAYING.md#mods).
 
 Windows:
 
@@ -243,9 +244,9 @@ muting when the window is in the background, keyboard and mouse, trophies
 button prompts of the pad you hold -- set in the launcher, or in a Graphics
 Settings, a System Settings, an Advanced Graphics and a Picture Settings
 page added to the game's own Settings menu. The launcher also installs your
-DLC and two fan-made mods (the Spanish translation, with the added pages in
-Spanish, and the DLC Undub), and on Windows updates the port from its
-releases.
+DLC and mods (the Spanish translation, with the added pages in Spanish,
+the DLC Undub, and any other mod package for the US release), and on
+Windows updates the port from its releases.
 
 Known issues: the game has been tested on few machines, and at 16:10, 21:9
 and 32:9 some of the HUD is still out of place.
