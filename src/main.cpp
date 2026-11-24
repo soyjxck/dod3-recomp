@@ -762,6 +762,17 @@ static void pgo_writer_start(void) {}
 static void pgo_write(void) {}
 #endif
 
+/* Quit Game on the Settings screen (src/ui/settings_menu.cpp): the exit the
+ * window's close button takes, from the frame loop, once no save is being
+ * written. */
+extern "C" int ps3_savedata_busy(void);   /* libs/system/cellSaveData.c */
+static std::atomic<bool> s_quit_asked;
+void dod3_quit()
+{
+    fprintf(stderr, "[menu] Quit Game\n");
+    s_quit_asked = true;
+}
+
 [[noreturn]] static void window_closed_exit(void)
 {
     fprintf(stderr, "[rsx] window closed -- exiting\n");
@@ -1624,6 +1635,7 @@ static DWORD WINAPI frame_clock(LPVOID)
             if (pump_now - last_pump >= 2000) {
                 last_pump = pump_now;
                 if (rsx_backend_pump() != 0) window_closed_exit();
+                if (s_quit_asked.load(std::memory_order_relaxed) && !ps3_savedata_busy()) window_closed_exit();
             }
             /* Present on a guest flip. A present on a fixed clock can catch the
              * drain mid-frame and flash a partial one. Before the first flip

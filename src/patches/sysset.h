@@ -5,8 +5,9 @@
 #include <utility>
 #include <vector>
 
-/* The in-game Settings pages a row is on. */
-enum { PAGE_GRAPHICS, PAGE_SYSTEM, PAGE_ADVANCED, PAGE_PICTURE };
+/* The in-game Settings pages a row is on (PAGE_QUIT: Quit Game's one row, which is not a
+ * setting and not in the launcher's list). */
+enum { PAGE_GRAPHICS, PAGE_SYSTEM, PAGE_ADVANCED, PAGE_PICTURE, PAGE_QUIT };
 
 struct Dod3RowSpec {
     const char* key;      /* the dod3.ini key */

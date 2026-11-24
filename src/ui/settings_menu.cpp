@@ -80,7 +80,8 @@ extern "C" void rsx_present_set_screen_aspect(float aspect);    /* rsx_draw_engi
 extern "C" float rsx_present_window_aspect(void);
 void dod3_hud_aspect(int phase, uint32_t canvas, bool on);       /* src/patches/hud_aspect.cpp */
 bool dod3_dlc_jpvoice();                                          /* src/kernel/mods.cpp */
-const char* dod3_menu_language();                                        /* src/kernel/mods.cpp */
+const char* dod3_menu_language();
+void dod3_quit();                                                 /* src/main.cpp */                                        /* src/kernel/mods.cpp */
 void dod3_fps_reload();             /* main.cpp: DOD3_FPS again */
 void dod3_unfocused_reload();       /* main.cpp: DOD3_UNFOCUSED again */
 extern "C" volatile int g_rsx_display_reload;   /* rsx_draw_engine.c: the renderer re-reads its display settings */
@@ -205,6 +206,17 @@ const struct {
       "Ajustes de sombras, desenfoque de movimiento y posprocesado.",
       "Modifiez les ombres, le flou de mouvement et le post-traitement." },
     { "Picture Settings", "Ajustes de imagen", "Réglages de l'image" },
+    { "Quit Game", "Salir del juego", "Quitter le jeu" },
+    { "Close the game and return to the desktop.",
+      "Cierra el juego y vuelve al escritorio.",
+      "Fermez le jeu et revenez au bureau." },
+    /* Quit Game */
+    { "Exit to Desktop", "Salir al escritorio", "Retour au bureau" },
+    { "Unsaved progress is lost. Choose Yes, then confirm.",
+      "Se pierde lo no guardado. Elige Sí y confirma.",
+      "Progression non sauvegardée perdue. Choisissez Oui et validez." },
+    { "Yes", "Sí", "Oui" },
+    { "No", "No", "Non" },
     { "Adjust the post-processing quality and HDR.",
       "Ajustes de la calidad del posprocesado y del HDR.",
       "Modifiez la qualité du post-traitement et le HDR." },
@@ -419,12 +431,13 @@ struct Row {
     bool live;                /* applied at once (else on the next start) */
     int running, saved, pending;   /* choice indices; -1 = a value not in the list */
     std::string other;        /* that value */
-    int page;                 /* PAGE_GRAPHICS, PAGE_SYSTEM, PAGE_ADVANCED, PAGE_PICTURE */
+    int page;                 /* PAGE_GRAPHICS, PAGE_SYSTEM, PAGE_ADVANCED, PAGE_PICTURE, PAGE_QUIT */
     void (*apply_fn)(const char* value);   /* a live row's own apply (src/patches/sysset.cpp) */
 };
 
+const char* const kQuitKey = "DOD3_QUIT";   /* Quit Game's row: a name only, never in dod3.ini */
 std::vector<Row> s_rows;            /* every page's */
-const int NPAGES = 4;
+const int NPAGES = 5;
 std::vector<int> s_page_rows[NPAGES];   /* each page's, in order */
 int s_page;                         /* the page open; -1: every page (Restore Defaults) */
 bool s_init;
@@ -740,6 +753,15 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
                      false,
                      nullptr,
                      PAGE_PICTURE });
+    /* Quit Game: not a setting -- Yes, confirmed, ends the game (apply). */
+    rows.push_back({ kQuitKey,
+                     "Exit to Desktop",
+                     "Unsaved progress is lost. Choose Yes, then confirm.",
+                     { { NULL, "No" }, { "1", "Yes" } },
+                     0,
+                     true,
+                     nullptr,
+                     PAGE_QUIT });
 }
 
 void init_rows()
@@ -789,6 +811,7 @@ bool menu_text(int i, std::string& out)
         "System Settings",   "Adjust the start-up, focus, prompt, mouse and renderer options.",
         "Advanced Graphics", "Adjust the engine's shadows, motion blur and post-processing.",
         "Picture Settings",  "Adjust the post-processing quality and HDR.",
+        "Quit Game",         "Close the game and return to the desktop.",
     };
     if (k >= 0 && k < (int)std::size(kRoot))
         out = tr(kRoot[k]);
@@ -816,6 +839,11 @@ void apply()
     each([&](Row& r) {
         if (r.pending == r.saved) return;
         const char* v = r.pending >= 0 ? r.choices[r.pending].value : r.other.c_str();
+        if (r.page == PAGE_QUIT) {   /* Exit to Desktop: Yes, and nothing to keep */
+            r.pending = r.saved;
+            if (v) dod3_quit();
+            return;
+        }
         kv.push_back({ r.key, v });
         r.saved = r.pending;
         if (r.live) {
@@ -1038,4 +1066,8 @@ void dod3_settings_menu_install()
     set_aspect(getenv("DOD3_ASPECT"));   /* the present's screen shape, before the first movie */
 }
 
-void dod3_setting_rows(std::vector<Dod3RowSpec>& rows) { build_rows(rows); }
+void dod3_setting_rows(std::vector<Dod3RowSpec>& rows)
+{
+    build_rows(rows);
+    std::erase_if(rows, [](const Dod3RowSpec& r) { return r.page == PAGE_QUIT; });   /* the settings alone */
+}
