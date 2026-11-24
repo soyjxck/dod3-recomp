@@ -137,7 +137,11 @@ bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
         }
         decrypt_range(*pkg, aes, name_off, nm.data(), nm.size());
         ent.name.assign((const char*)nm.data(), strnlen((const char*)nm.data(), nm.size()));
-        if (ent.name.empty() || ent.name.find("..") != std::string::npos || ent.name[0] == '/' || ent.name[0] == '\\') {
+        /* a colon would be a drive or a stream on Windows; no package of the console's has one, or a control character */
+        bool odd = false;
+        for (unsigned char c : ent.name) odd |= c < 0x20 || c == ':';
+        if (ent.name.empty() || ent.name.find("..") != std::string::npos || ent.name[0] == '/' || ent.name[0] == '\\' ||
+            odd) {
             *err = "the package names a file outside its folder";
             return false;
         }
