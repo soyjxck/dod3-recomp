@@ -551,6 +551,15 @@ void ui_shutdown()
     }
     release_device();
     if (g_hwnd) {
+        /* The game's window opens on the display this one was on (the
+         * renderer reads RSX_WINDOW_AT, a point of the desktop), not on the
+         * primary whatever the player moved this to. */
+        RECT r;
+        if (!getenv("RSX_WINDOW_AT") && GetWindowRect(g_hwnd, &r) && !IsIconic(g_hwnd)) {
+            char at[48];
+            snprintf(at, sizeof at, "%ld,%ld", (long)((r.left + r.right) / 2), (long)((r.top + r.bottom) / 2));
+            _putenv_s("RSX_WINDOW_AT", at);
+        }
         DestroyWindow(g_hwnd);
         g_hwnd = nullptr;
     }

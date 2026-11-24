@@ -173,7 +173,7 @@ folder above). It explains each setting:
 | Setting | What it does |
 |---|---|
 | RSX_SCALE | Internal resolution as a multiple of 1280x720: 1.5 = 1080p, 2 = 1440p, 3 = 4K. Above the window's size it is averaged down: supersampling |
-| RSX_DISPLAY | windowed, borderless (recommended for full screen) or fullscreen |
+| RSX_DISPLAY | windowed, borderless (recommended for full screen) or fullscreen. With several displays (Windows): the game opens on the one the launcher is on; borderless and fullscreen cover the display the window is on, at that display's size, and a borderless window moved to another display (Win+Shift+arrow) is laid out again for it |
 | RSX_WINDOW | Window size in windowed mode, e.g. 1920x1080 |
 | RSX_VSYNC | 1 to sync to the display; 0 lets the frame rate exceed its refresh |
 | DOD3_FPS | Frame-rate cap: 60 is tested and recommended, 120 works; adaptive holds the highest rate from 120 down to 30 that the scene keeps up with; unset keeps the original 30 |
