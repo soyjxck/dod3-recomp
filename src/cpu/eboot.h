@@ -61,6 +61,8 @@
 #define DOD3_FN_GAUGE_SET              func_0095B0CC /* a pawn's gauge set, clamped to its range (patches/cheats.cpp) */
 #define DOD3_FN_ITEM_REMOVE            func_00A6C560 /* the inventory's RemoveItem(id, count) (patches/cheats.cpp) */
 #define DOD3_FN_TIME_LIMIT_TICK        func_009F3ED8 /* a mission's time limit counting down (patches/cheats.cpp) */
+#define DOD3_FN_PAWN_STEP              func_009533C4 /* a pawn's 1/60 s step: its move algorithms (patches/pawn_step.cpp) */
+#define DOD3_FN_PAWN_STEP_MOVE         func_00954200 /* the step's move into the frame's, times its weight */
 #define DOD3_FN_SHOOTING_CURSOR_ON     func_0096B9A8 /* ASqex03GamePawn::IsEnableShootingCursor */
 #define DOD3_FN_UBER_CREATE_PROXY      func_00306728 /* UUberPostProcessEffect::CreateSceneProxy (patches/sysset.cpp) */
 #define DOD3_FN_DOFBLOOM_CREATE_PROXY  func_001B1B64 /* UDOFAndBloomEffect::CreateSceneProxy */
@@ -113,6 +115,8 @@
 #define DOD3_A_GAUGE_SET              0x0095B0CCu
 #define DOD3_A_ITEM_REMOVE            0x00A6C560u
 #define DOD3_A_TIME_LIMIT_TICK        0x009F3ED8u
+#define DOD3_A_PAWN_STEP              0x009533C4u
+#define DOD3_A_PAWN_STEP_MOVE         0x00954200u
 #define DOD3_A_PLAYER_CONTROLLER_VTABLE 0x0173ADA0u /* the player's controller (patches/cheats.cpp) */
 #define DOD3_O_PAWN_CONTROLLER        0x1E8u /* APawn::Controller */
 #define DOD3_O_CONTROLLER_PAWN        0x1CCu /* AController::Pawn */

@@ -108,6 +108,7 @@ void dod3_hud_aspect_install();     /* src/patches/hud_aspect.cpp */
 void dod3_song_autoplay_install();  /* src/patches/song_autoplay.cpp */
 void dod3_cheats_install();         /* src/patches/cheats.cpp */
 void dod3_dragon_cursor_install();  /* src/patches/dragon_cursor.cpp */
+void dod3_pawn_step_install();      /* src/patches/pawn_step.cpp */
 void dod3_archive_native_install(); /* src/patches/archive_native.cpp */
 void dod3_dlc_prepare();            /* src/kernel/dlc.cpp: the installed DLC's file lists */
 void dod3_mods_prepare();           /* src/kernel/mods.cpp: the mods' files, the DLC chapters' voices */
@@ -529,8 +530,10 @@ static void hitch_to_profiler(double ms)
  * The title's vblank handler flips on every second vblank, so the vblank
  * runs at DOD3_VBLANK_MULT * n Hz (default 8: 480 Hz at 60; 2000 Hz when
  * uncapped) and a late frame waits at most a fraction of a ms for it. The
- * title's physics hold up to 120 fps; above that jumps get lower and dragon
- * lock-on fails.
+ * title moves its pawns in 1/60 s steps with a part step for what is left
+ * of a frame; gravity in a part step is weighted here
+ * (src/patches/pawn_step.cpp), without which jumps lost height at every
+ * rate above 60. Above 120 fps the rest of its timing is untested.
  *
  * DOD3_FPS=adaptive is a cap that follows the scene (fps_adaptive_rate
  * below): as fast as the frames can be made evenly, and never over 120.
@@ -2376,6 +2379,7 @@ int main(int argc, char** argv)
     dod3_song_autoplay_install();   /* branch D's final song, if DOD3_SONG_AUTOPLAY=1 */
     dod3_cheats_install();          /* the launcher's Cheats tab (DOD3_CHEAT_*) */
     dod3_dragon_cursor_install();   /* the mouse moves the dragon's shooting cursor */
+    dod3_pawn_step_install();       /* gravity in a part step, weighted as its move is */
     dod3_archive_native_install();  /* the package loader's reads, natively */
     dod3_kbm_install();
     dod3_prompts_install();

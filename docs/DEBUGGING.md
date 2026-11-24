@@ -275,6 +275,10 @@ runtime's function from then on.
   (close once settled, or once the install ends, printing `[launcher]
   done` or `failed`); `DOD3_SETUP_GRAB=<prefix>` saves its picture as
   `<prefix>_0.ppm`. `DOD3_LAUNCHER=0|1` overrides the setting.
+- `DOD3_STEP_LOG=1`: each jump of the player's pawn, its height and its
+  1/60 s steps, whole and part (`2`: every step of it too);
+  `DOD3_STEP_GRAVITY=0`: gravity in a part step as the title has it, a
+  whole step's worth (jumps lose height above 60 fps).
 - `DOD3_MENU_LANGUAGE=es|fr|en`: the Settings pages in Spanish, French or
   English whatever is installed or set. `PS3_LANG=<code>`: the console
   language the title is told, over `DOD3_LANGUAGE` (the data has `en` and
