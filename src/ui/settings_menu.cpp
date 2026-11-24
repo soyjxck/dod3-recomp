@@ -166,9 +166,8 @@ std::u16string utf16(const std::string& s)
 
 /* *fs = text, as the thunk assigns: Data reallocated to the exact size,
  * Num = Max = characters + the terminator, UTF-16. */
-void set_fstring(ppu_context* ctx, uint32_t fs, const std::string& text)
+void set_fstring(ppu_context* ctx, uint32_t fs, const std::u16string& t)
 {
-    const std::u16string t = utf16(text);
     const uint32_t n = (uint32_t)t.size() + 1;
     const uint32_t data = app_realloc(ctx, vm_read32(fs), n * 2);
     for (uint32_t i = 0; i + 1 < n; i++) vm_write16(data + 2 * i, t[i]);
@@ -177,6 +176,7 @@ void set_fstring(ppu_context* ctx, uint32_t fs, const std::string& text)
     vm_write32(fs + 4, n);
     vm_write32(fs + 8, n);
 }
+void set_fstring(ppu_context* ctx, uint32_t fs, const std::string& text) { set_fstring(ctx, fs, utf16(text)); }
 
 /* ---- the pages in Spanish and French ------------------------------------------ */
 
@@ -362,6 +362,46 @@ const char* tr(const char* en)
     for (const auto& t : kTexts)
         if (!strcmp(t.en, en)) return s_lang == LANG_FR ? t.fr : t.es;
     return en;
+}
+
+/* ---- the console's name in the title's notices -------------------------------- */
+
+/* The title's save and data-check notices end "Do not turn off your
+ * PlayStation(R)3 system." (title_menu 14, 18, 21, 23 and 24; intermission
+ * 46 has "Please do not turn off the ..."; the French ones "N'éteignez pas le
+ * système ..." and "Ne pas éteindre le système ..."). Here what must not be
+ * done is closing the game: that line, and only it, says so instead, in the
+ * language the line is in. A line worded another way is a translation mod's:
+ * left as it is, unless the pages are in Spanish. *fs is the string the
+ * title's GetString has just returned; a line ends at character 5. */
+void pc_wording(ppu_context* ctx, uint32_t fs)
+{
+    const uint32_t data = vm_read32(fs), num = vm_read32(fs + 4);
+    if (!data || num < 16 || num > 512) return;
+    std::u16string t(num - 1, u'\0');
+    bool mark = false;
+    for (uint32_t i = 0; i + 1 < num; i++) {
+        t[i] = (char16_t)vm_read16(data + 2 * i);
+        mark |= t[i] == 0x00AE;   /* the (R) */
+    }
+    if (!mark) return;
+    const size_t at = t.find(u"PlayStation®" u"3");
+    if (at == std::u16string::npos) return;
+    const size_t brk = t.rfind(u'\x05', at), from = brk == std::u16string::npos ? 0 : brk + 1;
+    size_t to = t.find(u'\x05', at);
+    if (to == std::u16string::npos) to = t.size();
+    const char16_t* with = nullptr;
+    if (!t.compare(from, 6, u"Please"))
+        with = u"Please do not close the game.";
+    else if (!t.compare(from, 6, u"Do not"))
+        with = u"Do not close the game.";
+    else if (!t.compare(from, 2, u"N'") || !t.compare(from, 3, u"Ne "))
+        with = u"Ne fermez pas le jeu.";
+    else if (!strcmp(dod3_menu_language(), "es"))
+        with = u"No cierres el juego.";
+    if (!with) return;
+    t.replace(from, to - from, with);
+    set_fstring(ctx, fs, t);
 }
 
 /* ---- the settings ---------------------------------------------------------- */
@@ -943,6 +983,7 @@ void hook_getstring(ppu_context* ctx)
         DOD3_FN_EXEC_GETSTRING(ctx);
         dod3_drain(ctx);
         vm_write32(stack + FRAME_CODE, after + 1);
+        if (result) pc_wording(ctx, result);
     }
     ctx->gpr[2] = r2;
     ctx->lr = lr;
