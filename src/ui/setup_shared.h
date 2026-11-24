@@ -81,6 +81,10 @@ bool has_mod(const Status& have, std::string_view id);
 std::vector<std::string> installed_parts(const ModGroup& g, const Status& have);   /* the ids */
 bool known_mod(std::string_view id);   /* a part of kSpanish or kUndub */
 
+/* Where a mod package came from, for the line under its name: its file and
+ * its content ID, whichever were kept ("" if neither). */
+std::string mod_source_line(const ModInfo& about);
+
 /* The environment variable `var` split at `sep`, empty parts left out. */
 std::vector<std::string> env_list(const char* var, char sep);
 

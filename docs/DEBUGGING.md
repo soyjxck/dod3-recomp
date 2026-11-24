@@ -270,8 +270,9 @@ runtime's function from then on.
   that page), `DOD3_LAUNCHER_ADD=<file>|<file>...` (add those files, as Add
   Files does), `DOD3_LAUNCHER_KEYS=<key>,<key>...` (press them one by one: Up,
   Down, Left, Right, Space, Enter, Esc, Tab, Q, L1, R1),
-  `DOD3_LAUNCHER_SWITCH=spanish:on|spanish:off`,
-  `DOD3_LAUNCHER_REMOVE=spanish|undub`, `DOD3_LAUNCHER_AUTO=quit|install`
+  `DOD3_LAUNCHER_SWITCH=spanish:on|spanish:off` (or `<id>:on|off` for any
+  other mod, by its id in `game/mods/installed.txt`; a refusal is printed),
+  `DOD3_LAUNCHER_REMOVE=spanish|undub|<id>`, `DOD3_LAUNCHER_AUTO=quit|install`
   (close once settled, or once the install ends, printing `[launcher]
   done` or `failed`); `DOD3_SETUP_GRAB=<prefix>` saves its picture as
   `<prefix>_0.ppm`. `DOD3_LAUNCHER=0|1` overrides the setting.

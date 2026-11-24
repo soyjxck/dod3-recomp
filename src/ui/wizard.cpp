@@ -32,6 +32,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <future>
+#include <map>
 #include <utility>
 
 namespace dod3setup {
@@ -61,6 +62,7 @@ struct Wizard : Kit {
     bool page_new = true;   /* the first frame of a page: its primary button takes the focus */
     int page_frames = 0;
     Status have;
+    std::map<std::string, ModInfo> abouts;   /* what was kept of an installed mod package, read once */
     Plan plan;
     FileChecks checks;
     std::vector<std::string> notes;   /* what the last files added came to */
@@ -125,10 +127,12 @@ struct Wizard : Kit {
     void poll_checks()
     {
         for (const FileChecks::Finished& f : checks.take_finished()) {
-            if (f.src.set())
-                plan_add(plan, f.src);
-            else
+            if (!f.src.set())
                 notes.push_back(f.name + ": " + f.err);
+            else if (const std::string clash = mod_conflict(base, f.src); !clash.empty())
+                notes.push_back(f.name + ": " + clash + ".");
+            else
+                plan_add(plan, f.src);
         }
     }
 
@@ -288,7 +292,7 @@ struct Wizard : Kit {
         need_row("DLC", "The DLC packages (.pkg) you own. No licence files are needed.",
                  state_of(!plan.dlc.empty(), !have.dlc.empty(), false));
         if (update_required())
-            need_row("Mods", "Fan-made additions: the Spanish translation, the DLC Undub.",
+            need_row("Mods", "Fan-made additions: the Spanish translation, the DLC Undub, any other mod package.",
                      state_of(!plan.mods.empty(), !have.mods.empty(), false));
         if (need_keys())
             need_row("Keys",
@@ -440,21 +444,34 @@ struct Wizard : Kit {
         mod_card(kSpanish);
         mod_card(kUndub);
         /* others: added, or installed before */
+        auto about_lines = [&](const ModInfo& about) {
+            const std::string from = mod_source_line(about);
+            if (!from.empty()) para(F.medium, 13, kDim, from.c_str());
+            for (const std::string& n : mod_notes(about)) {
+                ImGui::Dummy(ImVec2(0, px(2)));
+                para(F.regular, 13, alpha(kText, 0.82f), n.c_str());
+            }
+        };
         for (const Source& m : plan.mods)
             if (!known_mod(m.id)) {
                 card_begin();
                 card_title(m.name.c_str(), "Added", kOk);
-                para(F.regular, 13, kDim, "A homebrew package laid out as the console installs it.");
+                about_lines(m.about);
                 card_end();
             }
         for (const auto& m : have.mods) {
             bool listed = known_mod(m.first);
             for (const Source& x : plan.mods) listed |= x.id == m.first;
             if (listed) continue;
+            const bool on = mod_enabled(base, m.first);
             card_begin();
-            card_title(m.second.c_str(), "Installed", kOk);
+            card_title(m.second.c_str(), on ? "Installed" : "Switched off", on ? kOk : kFaint);
+            if (!abouts.count(m.first)) abouts[m.first] = mod_info(base, m.first);
+            about_lines(abouts[m.first]);
             card_end();
         }
+        if (plan.mods.empty() && have.mods.empty())
+            para(F.regular, 13, kFaint, "Any other mod package for the game (.pkg) can be added too.");
         if (!have.mods.empty())
             para(F.regular, 13, kFaint, "Installed mods are taken out with Remove, in the launcher's Mods page.");
     }
@@ -919,6 +936,7 @@ struct Wizard : Kit {
         poll_art();
         if (job.collect()) {
             have = installed(base);
+            abouts.clear();
             if (job.ok) {
                 plan = Plan();
                 go(Page::Done);

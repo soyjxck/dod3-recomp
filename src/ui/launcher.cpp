@@ -33,11 +33,12 @@
  * grab); DOD3_LAUNCHER_AUTO=quit then closes it, =install presses Install (or
  * Remove) and closes it when that is done, =update installs the release the
  * check finds (install/update.h has its own test switches) and starts it, or
- * closes on a failure. DOD3_LAUNCHER_REMOVE=spanish|undub
- * starts removing one; DOD3_LAUNCHER_SWITCH=spanish:off|spanish:on switches
- * the translation at start; DOD3_LAUNCHER_KEYS='Down,Down,Space,...' presses
- * those keys, one every 12 frames (a key a player presses, as ImGui gets it
- * from the platform). */
+ * closes on a failure. DOD3_LAUNCHER_REMOVE=spanish|undub|<a mod's id>
+ * starts removing one; DOD3_LAUNCHER_SWITCH=spanish:off|spanish:on (or <a
+ * mod's id>:off|on) switches the translation, or that mod, at start, and
+ * prints why not if it is refused; DOD3_LAUNCHER_KEYS='Down,Down,Space,...'
+ * presses those keys, one every 12 frames (a key a player presses, as ImGui
+ * gets it from the platform). */
 #include "ui/ui.h"
 #include "ui/ini.h"
 #include "ui/look.h"           /* the type, the colours, the art, the widgets */
@@ -350,6 +351,8 @@ struct Launcher : Kit {
         bool on = true, switchable = false;
     };
     std::map<std::string, ModState> mod_states;   /* each installed mod's */
+    std::map<std::string, ModInfo> mod_abouts;    /* what was kept of each mod package (install.h) */
+    std::map<std::string, std::string> card_notes;   /* a card, by its title: why its switch did not turn */
 
     /* the settings */
     std::map<std::string, std::string> kv;   /* dod3.ini */
@@ -415,6 +418,8 @@ struct Launcher : Kit {
                 notes.push_back(f.name + ": this is the game itself. To install it again, use Game Files.");
             else if (!f.src.set())
                 notes.push_back(f.name + ": " + f.err);
+            else if (const std::string clash = mod_conflict(base, f.src); !clash.empty())
+                notes.push_back(f.name + ": " + clash + ".");
             else
                 plan_add(plan, f.src);
         }
@@ -451,6 +456,7 @@ struct Launcher : Kit {
 
     void end_flow()
     {
+        card_notes.clear();
         flow = Flow::Idle;
         plan = Plan();
         notes.clear();
@@ -463,7 +469,11 @@ struct Launcher : Kit {
     {
         have = installed(base);
         mod_states.clear();
-        for (const auto& m : have.mods) mod_states[m.first] = { mod_enabled(base, m.first), mod_switchable(base, m.first) };
+        mod_abouts.clear();
+        for (const auto& m : have.mods) {
+            mod_states[m.first] = { mod_enabled(base, m.first), mod_switchable(base, m.first) };
+            if (!known_mod(m.first)) mod_abouts[m.first] = mod_info(base, m.first);
+        }
     }
     /* are all of these on; can all of them be switched */
     bool all_on(const std::vector<std::string>& ids) const
@@ -486,7 +496,10 @@ struct Launcher : Kit {
         bool moved = true;
         for (const std::string& id : ids) moved = moved && set_mod_enabled(base, id, on, &err);
         refresh();
-        say(moved ? name + (on ? " on" : " off") : err);
+        /* why not stays on the card: it is a sentence, and may name another mod to switch off */
+        card_notes.erase(name);
+        if (!moved) card_notes[name] = err + ".";
+        say(moved ? name + (on ? " on" : " off") : name + " was not switched " + (on ? "on" : "off"));
     }
 
     /* ---- dod3.ini ---- */
@@ -716,6 +729,10 @@ struct Launcher : Kit {
             ImGui::Dummy(ImVec2(0, px(4)));
             para(F.medium, 13, kWarn, kOffNote);
         }
+        if (const auto why = card_notes.find(g.title); why != card_notes.end()) {
+            ImGui::Dummy(ImVec2(0, px(4)));
+            para(F.medium, 13, kErr, why->second.c_str());
+        }
         if (g.parts.size() > 1 || in < (int)g.parts.size()) {
             ImGui::Dummy(ImVec2(0, px(4)));
             for (const ModPart& p : g.parts) {
@@ -737,14 +754,31 @@ struct Launcher : Kit {
         card_end();
     }
 
-    /* a mod the setup does not know by name: a homebrew package */
+    /* a mod the setup does not know by name: any other package for the game,
+     * or a movie archive */
     void other_mod_card(const std::string& id, const std::string& name)
     {
+        const auto about = mod_abouts.find(id);
         card_begin();
         label(F.semibold, 17, kText, name.c_str());
         card_switch({ id }, name, card_x1 - px(18), ImGui::GetItemRectMin().y - px(2));
-        para(F.regular, 13, kDim,
-             all_on({ id }) ? "Installed from a homebrew package laid out as the console installs it." : kOffNote);
+        if (about != mod_abouts.end()) {
+            const std::string from = mod_source_line(about->second);
+            if (!from.empty()) para(F.medium, 13, kDim, from.c_str());
+        }
+        if (!all_on({ id })) {
+            ImGui::Dummy(ImVec2(0, px(2)));
+            para(F.medium, 13, kWarn, kOffNote);
+        }
+        if (const auto why = card_notes.find(name); why != card_notes.end()) {
+            ImGui::Dummy(ImVec2(0, px(2)));
+            para(F.medium, 13, kErr, why->second.c_str());
+        }
+        if (about != mod_abouts.end())
+            for (const std::string& n : mod_notes(about->second)) {
+                ImGui::Dummy(ImVec2(0, px(2)));
+                para(F.regular, 13, alpha(kText, 0.82f), n.c_str());
+            }
         ImGui::Dummy(ImVec2(0, px(6)));
         ImGui::PushID(id.c_str());
         if (button("Remove", 0, ButtonKind::Danger)) start_remove({ id }, name);
@@ -782,8 +816,10 @@ struct Launcher : Kit {
 
     void mods_panel(ImVec2 body, ImVec2 size)
     {
-        panel_foot(body, size, "Packages (.pkg), a movie archive (.zip) or a mod's folder, as downloaded. Your own "
-                               "game files are never changed.", Panel::Mods);
+        panel_foot(body, size,
+                   "Any mod package for the game (.pkg), a movie archive (.zip) or a mod's folder, as "
+                   "downloaded. Your own game files are never changed.",
+                   Panel::Mods);
         ImGui::SetCursorScreenPos(body);
         ImGui::BeginChild("##mods", ImVec2(size.x, size.y - px(64)), ImGuiChildFlags_NavFlattened,
                           ImGuiWindowFlags_NoBackground);
@@ -851,7 +887,11 @@ struct Launcher : Kit {
         for (const std::string& r : removing) row(r, 0, kErr);
         if (plan.update.set()) row("Update 1.01", plan.update.bytes, kOk);
         for (const Source& d : plan.dlc) row(d.name, d.bytes, kOk);
-        for (const Source& m : plan.mods) row(m.name, m.bytes, kOk);
+        for (const Source& m : plan.mods) {
+            row(m.name, m.bytes, kOk);
+            if (known_mod(m.id)) continue;
+            for (const std::string& n : mod_notes(m.about)) para(F.regular, 13, kWarn, n.c_str());
+        }
         checking(checks.pending());
         ImGui::Dummy(ImVec2(0, px(6)));
         for (const std::string& n : notes) para(F.regular, 14, kErr, n.c_str());
@@ -1394,14 +1434,33 @@ struct Launcher : Kit {
         for (const std::string& k : env_list("DOD3_LAUNCHER_KEYS", ','))
             for (const auto& n : names)
                 if (k == n.name) tests.keys.push_back(n.key);
-        if (const char* sw = getenv("DOD3_LAUNCHER_SWITCH")) {   /* spanish:on | spanish:off */
-            switch_mod(installed_parts(kSpanish, have), kSpanish.title, !strcmp(sw, "spanish:on"));
+        /* a mod's name by its id as installed.txt has it ("PKG-...", "ZIP-..."); "" if it is not installed */
+        auto name_of = [&](const std::string& id) {
+            for (const auto& m : have.mods)
+                if (m.first == id) return m.second;
+            return std::string();
+        };
+        if (const char* sw = getenv("DOD3_LAUNCHER_SWITCH")) {   /* spanish:on | spanish:off | <id>:on | <id>:off */
+            const std::string s = sw;
+            const size_t colon = s.rfind(':');
+            const std::string what = s.substr(0, colon), name = name_of(what);
+            const bool on = colon != std::string::npos && s.substr(colon + 1) == "on";
+            if (what == "spanish")
+                switch_mod(installed_parts(kSpanish, have), kSpanish.title, on);
+            else if (!name.empty())
+                switch_mod({ what }, name, on);
             fprintf(stderr, "[launcher] %s\n", toast.c_str());
+            for (const auto& n : card_notes) fprintf(stderr, "[launcher] %s: %s\n", n.first.c_str(), n.second.c_str());
         }
-        if (const char* r = getenv("DOD3_LAUNCHER_REMOVE")) {   /* spanish | undub */
+        if (const char* r = getenv("DOD3_LAUNCHER_REMOVE")) {   /* spanish | undub | <id> */
             panel = Panel::Mods;
-            const ModGroup& g = !strcmp(r, "undub") ? kUndub : kSpanish;
-            start_remove(installed_parts(g, have), g.title);
+            const std::string name = name_of(r);
+            if (!strcmp(r, "undub") || !strcmp(r, "spanish")) {
+                const ModGroup& g = !strcmp(r, "undub") ? kUndub : kSpanish;
+                start_remove(installed_parts(g, have), g.title);
+            } else if (!name.empty()) {
+                start_remove({ r }, name);
+            }
         }
     }
 

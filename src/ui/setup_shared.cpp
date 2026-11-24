@@ -133,6 +133,12 @@ bool known_mod(std::string_view id)
     return false;
 }
 
+std::string mod_source_line(const ModInfo& about)
+{
+    if (about.file.empty() || about.content_id.empty()) return about.file + about.content_id;
+    return about.file + " \xC2\xB7 " + about.content_id;
+}
+
 std::vector<std::string> env_list(const char* var, char sep)
 {
     std::vector<std::string> out;
