@@ -37,12 +37,15 @@ cp shaders/dxbc/*.dxbc shaders/dxbc/pipelines.bin "$out/cache/dxbc/"
 # Quality, High: src/main.cpp), beside the executable.
 mkdir -p "$out/shaders/override"
 cp shaders/override/*.hlsl "$out/shaders/override/"
+# The controller mappings the pad code reads from beside the executable.
+cp third_party/gamecontrollerdb/gamecontrollerdb.txt "$out/"
 # Windows line endings, for Notepad.
 sed 's/$/\r/' docs/PLAYING.md > "$out/README.txt"
 sed 's/$/\r/' LICENSE > "$out/LICENSE.txt"
 sed 's/$/\r/' THIRD_PARTY_NOTICES.md > "$out/THIRD_PARTY_NOTICES.txt"
 sed 's/$/\r/' ps3recomp/LICENSE > "$out/LICENSE-ps3recomp.txt"
 sed 's/$/\r/' third_party/imgui/LICENSE.txt > "$out/LICENSE-imgui.txt"
+sed 's/$/\r/' third_party/gamecontrollerdb/LICENSE.txt > "$out/LICENSE-gamecontrollerdb.txt"
 sed 's/$/\r/' third_party/fonts/inter/LICENSE.txt > "$out/LICENSE-inter.txt"
 
 # Nothing the player supplies, and no build leftovers.

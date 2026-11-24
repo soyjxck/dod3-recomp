@@ -209,6 +209,7 @@ folder above). It explains each setting:
 | DOD3_MOUSE_SENS | How far the mouse turns the camera; 1 is the default. DOD3_MOUSE = 0 turns the mouse off |
 | KEY_CROSS, KEY_MOVE_UP, ... | Windows: the keys for each pad button and stick direction (the file lists them all) |
 | DOD3_CAMERA_SPEED | original gives the camera stick the game's own speed, which falls as the frame rate rises; unset keeps it at the console's |
+| PAD_DEADZONE | A controller stick's dead zone, in percent of its travel: unset is 8; 0 reads the stick as it is |
 | RSX_BACKEND | Windows: vulkan for the Vulkan renderer (experimental); unset is Direct3D 12 |
 
 
@@ -267,9 +268,25 @@ of the port carry over. Nothing goes to PSN or anywhere else.
 ## Controls
 
 Xbox, PlayStation (DualShock 4, DualSense) and Switch Pro controllers,
-wired or over Bluetooth, plugged in before or during the game; the first
-one connected is player 1. The buttons follow their positions, so the
-bottom face button is Cross whatever the pad prints on it.
+wired or over Bluetooth, plugged in before or during the game. With
+several connected at the start, player 1 is the first the system lists;
+after that, the first plugged in. The buttons follow their positions, so
+the bottom face button is Cross whatever the pad prints on it.
+
+Other pads work when they are known as controllers: most third-party
+ones are in their Xbox (XInput) mode, and in their DirectInput mode
+through the community's list of mappings, gamecontrollerdb.txt beside
+the game (replace it with a newer one from
+github.com/mdqinc/SDL_GameControllerDB if your pad is too new for it).
+dod3.log names every pad it opens, as `[cellPad] port 0: ...`, and every
+device it leaves out for want of a mapping. The launcher itself is driven
+by Xbox-type (XInput) pads, the keyboard and the mouse only.
+
+A stick's first 8% from its centre reads as the centre, so a worn stick
+does not scroll menus or drift the camera by itself; PAD_DEADZONE in
+dod3.ini sets another percentage (0 for none). Keys and mouse buttons
+that are already down when the game's window comes to the front are not
+read until you let go of them.
 
 The game shows the buttons of the controller you hold: A and B on an Xbox
 pad, B and A on a Switch one, the DualShock 4's or the DualSense's own, the

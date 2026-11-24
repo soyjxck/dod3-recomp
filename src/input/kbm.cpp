@@ -47,6 +47,7 @@
  *   DOD3_KEYBOARD=0   the toolkit's built-in keys instead (no mouse)
  *   DOD3_KBM_LOG=1    a line whenever what the keys hold changes
  */
+#include <algorithm>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -327,6 +328,35 @@ void parse(int b, const char* list)
     }
 }
 
+/* Keys that were down when the window came to the front, until each is seen
+ * up: the Enter that pressed Play in the launcher (Start, a second later), the
+ * click that brought the window forward (an attack), and a key the system
+ * goes on reporting as held after losing its release -- Left, say, and every
+ * menu scrolls by itself, in every run until the key is pressed again. */
+std::vector<int> s_stale;
+bool s_front;   /* the window was in front at the last poll */
+
+bool held(int vk)
+{
+    const bool is = key_held(vk);
+    const auto it = std::find(s_stale.begin(), s_stale.end(), vk);
+    if (it == s_stale.end()) return is;
+    if (!is) s_stale.erase(it);
+    return false;
+}
+
+void note_stale()
+{
+    for (int b = 0; b < kBinds; b++)
+        for (const Key& k : s_keys[b]) {
+            if (k.vk == kWheelUp || k.vk == kWheelDown || !key_held(k.vk)) continue;
+            if (std::find(s_stale.begin(), s_stale.end(), k.vk) != s_stale.end()) continue;
+            s_stale.push_back(k.vk);
+            fprintf(stderr, "[keyboard] %s is down as the window comes to the front: not read until it is released\n",
+                    k.name.c_str());
+        }
+}
+
 bool down(int b, uint64_t now)
 {
     for (const Key& k : s_keys[b]) {
@@ -334,7 +364,7 @@ bool down(int b, uint64_t now)
             if (now < s_wheel_until[0]) return true;
         } else if (k.vk == kWheelDown) {
             if (now < s_wheel_until[1]) return true;
-        } else if (key_held(k.vk))
+        } else if (held(k.vk))
             return true;
     }
     return false;
@@ -353,7 +383,14 @@ int host_input(void*, int focused, CellPadHostInput* out)
 {
     const uint64_t now = dod3_now_us();
     const int wheel = rsx_host_mouse_take_wheel();
-    if (!focused) return 0;   /* keys held while another window is in front are not ours */
+    if (!focused) {   /* keys held while another window is in front are not ours */
+        s_front = false;
+        return 0;
+    }
+    if (!s_front) {
+        s_front = true;
+        note_stale();
+    }
     if (wheel > 0) s_wheel_until[0] = now + 70000;
     if (wheel < 0) s_wheel_until[1] = now + 70000;
 

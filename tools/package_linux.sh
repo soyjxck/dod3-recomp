@@ -31,11 +31,14 @@ git show HEAD:dod3.ini > "$out/dod3.ini"
 # Quality, High, and HDR: src/main.cpp finds them beside the executable).
 mkdir -p "$out/shaders/override"
 cp shaders/override/*.hlsl "$out/shaders/override/"
+# The controller mappings the pad code reads from beside the executable.
+cp third_party/gamecontrollerdb/gamecontrollerdb.txt "$out/"
 cp docs/PLAYING.md "$out/README.md"
 cp LICENSE "$out/LICENSE.txt"
 cp THIRD_PARTY_NOTICES.md "$out/THIRD_PARTY_NOTICES.md"
 cp ps3recomp/LICENSE "$out/LICENSE-ps3recomp.txt"
 cp third_party/imgui/LICENSE.txt "$out/LICENSE-imgui.txt"
+cp third_party/gamecontrollerdb/LICENSE.txt "$out/LICENSE-gamecontrollerdb.txt"
 cp third_party/fonts/inter/LICENSE.txt "$out/LICENSE-inter.txt"
 
 # What the executable links: nothing outside this list may be needed, or the

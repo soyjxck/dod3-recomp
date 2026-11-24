@@ -585,6 +585,18 @@ if(DOD3_LINUX)
     set_target_properties(${PROJECT_NAME} PROPERTIES SKIP_BUILD_RPATH ON)
 endif()
 
+# The community's controller mappings (third_party/gamecontrollerdb), beside
+# the executable, where the runtime's pad code looks for them: pads SDL has
+# no mapping of its own for -- a third-party one in its DirectInput mode --
+# are controllers with it. (A macOS bundle carries its copy in Resources.)
+if(NOT APPLE)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_SOURCE_DIR}/third_party/gamecontrollerdb/gamecontrollerdb.txt"
+                "$<TARGET_FILE_DIR:${PROJECT_NAME}>/gamecontrollerdb.txt"
+        VERBATIM)
+endif()
+
 # The runtime is C++, and on Apple also Objective-C. Letting CMake infer the
 # link language from the generated C would leave the C++ standard library out.
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
