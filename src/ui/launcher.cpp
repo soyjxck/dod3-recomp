@@ -104,6 +104,10 @@ void extra_rows(std::vector<Dod3RowSpec>& rows)
                      .label = "Camera Speed",
                      .desc = "Console keeps the stick's speed at any frame rate.",
                      .choices = { { nullptr, "Console" }, { "original", "Original" } } });
+    rows.push_back({ .key = "DOD3_LANGUAGE",
+                     .label = "Language",
+                     .desc = "The game's text and subtitles. The disc has English and French.",
+                     .choices = { { nullptr, "English" }, { "fr", "Français" } } });
     rows.push_back({ .key = "DOD3_TROPHY_POPUPS",
                      .label = "Trophy Pop-ups",
                      .desc = "Show a trophy at the top right of the game as you earn it.",
@@ -159,7 +163,8 @@ const struct {
     { "DOD3_ASPECT", kDisplay },    { "DOD3_FPS", kDisplay },        { "RSX_VSYNC", kDisplay },
     { "RSX_AA", kGraphics },        { "RSX_ANISO", kGraphics },      { "DOD3_FOV", kGraphics },
     { "DOD3_PROMPTS", kControls },  { "DOD3_MOUSE", kControls },     { "DOD3_MOUSE_SENS", kControls },
-    { "DOD3_CAMERA_SPEED", kControls }, { "DOD3_SKIP_INTRO", kSystem }, { "DOD3_UNFOCUSED", kSystem },
+    { "DOD3_CAMERA_SPEED", kControls }, { "DOD3_LANGUAGE", kSystem },
+    { "DOD3_SKIP_INTRO", kSystem }, { "DOD3_UNFOCUSED", kSystem },
     { "DOD3_TROPHY_POPUPS", kSystem }, { "RSX_BACKEND", kSystem }, { "DOD3_LAUNCHER", kSystem },
     { "DOD3_UPDATE_CHECK", kSystem },
     { "DOD3_CHEAT_HEALTH", kCheats }, { "DOD3_CHEAT_INTONER", kCheats }, { "DOD3_CHEAT_ITEMS", kCheats },

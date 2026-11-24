@@ -48,7 +48,8 @@
  * saved value differs from the running one says so.
  *
  * With the Spanish fan translation's menus installed and on, the pages speak
- * Spanish too, in its words ("Ajustes ..."): kSpanish, by the English text.
+ * Spanish too, in its words ("Ajustes ..."), and with the game in French, in French:
+ * kTexts, by the English text.
  *
  * The field of view: Sqex03GameCamera.UpdateViewTarget passes every view's
  * final FOV here (bridge 9, with whether the gameplay camera made it) and
@@ -79,7 +80,7 @@ extern "C" void rsx_present_set_screen_aspect(float aspect);    /* rsx_draw_engi
 extern "C" float rsx_present_window_aspect(void);
 void dod3_hud_aspect(int phase, uint32_t canvas, bool on);       /* src/patches/hud_aspect.cpp */
 bool dod3_dlc_jpvoice();                                          /* src/kernel/mods.cpp */
-bool dod3_menus_spanish();                                        /* src/kernel/mods.cpp */
+const char* dod3_menu_language();                                        /* src/kernel/mods.cpp */
 void dod3_fps_reload();             /* main.cpp: DOD3_FPS again */
 void dod3_unfocused_reload();       /* main.cpp: DOD3_UNFOCUSED again */
 extern "C" volatile int g_rsx_display_reload;   /* rsx_draw_engine.c: the renderer re-reads its display settings */
@@ -177,128 +178,189 @@ void set_fstring(ppu_context* ctx, uint32_t fs, const std::string& text)
     vm_write32(fs + 8, n);
 }
 
-/* ---- the pages in Spanish ---------------------------------------------------- */
+/* ---- the pages in Spanish and French ------------------------------------------ */
 
 /* The text in the Spanish translation's words: its menu is "Ajustes", with
  * "Ajustes de mando", "Ajustes visuales" and descriptions as "Ajustes
- * relacionados con ...". Values left out (1280x720, MSAA 4x, Xbox, ...) are
- * the same in both. */
+ * relacionados con ...". And in the game's own French (the disc's second
+ * language): its menu has "Réglages de la manette", "Réglages visuels" and
+ * descriptions as "Modifiez ...", with Oui and Non for On and Off. Values
+ * left out (1280x720, MSAA 4x, Xbox, ...) are the same in all three. */
 const struct {
     const char* en;
     const char* es;
-} kSpanish[] = {
+    const char* fr;
+} kTexts[] = {
     /* the Settings root's entries */
-    { "Graphics Settings", "Ajustes gráficos" },
-    { "Adjust settings related to graphics and the display.", "Ajustes relacionados con los gráficos y la pantalla." },
-    { "System Settings", "Ajustes del sistema" },
+    { "Graphics Settings", "Ajustes gráficos", "Réglages graphiques" },
+    { "Adjust settings related to graphics and the display.",
+      "Ajustes relacionados con los gráficos y la pantalla.",
+      "Modifiez les paramètres des graphismes et de l'affichage." },
+    { "System Settings", "Ajustes del sistema", "Réglages système" },
     { "Adjust the start-up, focus, prompt, mouse and renderer options.",
-      "Ajustes del inicio, el segundo plano, los botones y el ratón." },
-    { "Advanced Graphics", "Gráficos avanzados" },
+      "Ajustes del inicio, el segundo plano, los botones y el ratón.",
+      "Modifiez le démarrage, l'arrière-plan, les touches et la souris." },
+    { "Advanced Graphics", "Gráficos avanzados", "Graphismes avancés" },
     { "Adjust the engine's shadows, motion blur and post-processing.",
-      "Ajustes de sombras, desenfoque de movimiento y posprocesado." },
-    { "Picture Settings", "Ajustes de imagen" },
-    { "Adjust the post-processing quality and HDR.", "Ajustes de la calidad del posprocesado y del HDR." },
+      "Ajustes de sombras, desenfoque de movimiento y posprocesado.",
+      "Modifiez les ombres, le flou de mouvement et le post-traitement." },
+    { "Picture Settings", "Ajustes de imagen", "Réglages de l'image" },
+    { "Adjust the post-processing quality and HDR.",
+      "Ajustes de la calidad del posprocesado y del HDR.",
+      "Modifiez la qualité du post-traitement et le HDR." },
     /* Picture Settings */
-    { "On a display with HDR on in Windows. Direct3D 12.", "En una pantalla con el HDR activado en Windows. Direct3D 12." },
-    { "HDR Brightness", "Brillo del HDR" },
+    { "On a display with HDR on in Windows. Direct3D 12.",
+      "En una pantalla con el HDR activado en Windows. Direct3D 12.",
+      "Sur un écran avec le HDR activé dans Windows. Direct3D 12." },
+    { "HDR Brightness", "Brillo del HDR", "Luminosité HDR" },
     { "How bright white is in HDR. Auto: as Windows' SDR content.",
-      "El brillo del blanco en HDR. Auto: como el contenido SDR de Windows." },
+      "El brillo del blanco en HDR. Auto: como el contenido SDR de Windows.",
+      "La luminosité du blanc en HDR. Auto : comme le contenu SDR de Windows." },
     { "How bright white is in HDR. Default: 203 nits, as in HDR games.",
-      "El brillo del blanco en HDR. Predeterminado: 203 nits, como en los juegos HDR." },
-    { "As Windows", "Como Windows" },
-    { "HDR Peak Brightness", "Brillo máximo del HDR" },
+      "El brillo del blanco en HDR. Predeterminado: 203 nits, como en los juegos HDR.",
+      "La luminosité du blanc en HDR. Par défaut : 203 nits, comme les jeux HDR." },
+    { "As Windows", "Como Windows", "Comme Windows" },
+    { "HDR Peak Brightness", "Brillo máximo del HDR", "Luminosité maximale HDR" },
     { "The brightest the display shows. Auto: what the display reports.",
-      "Lo más brillante que muestra la pantalla. Auto: lo que indica la pantalla." },
-    { "HDR Highlight Colour", "Color de las luces del HDR" },
+      "Lo más brillante que muestra la pantalla. Auto: lo que indica la pantalla.",
+      "Le maximum que l'écran affiche. Auto : ce que l'écran indique." },
+    { "HDR Highlight Colour", "Color de las luces del HDR", "Couleur des hautes lumières HDR" },
     { "How much colour the brightest light, such as fire, keeps.",
-      "Cuánto color conservan las luces más intensas, como el fuego." },
-    { "Balanced", "Equilibrado" },
-    { "Full", "Completo" },
-    { "As SDR", "Como en SDR" },
-    { "Post-Processing Quality", "Calidad del posprocesado" },
+      "Cuánto color conservan las luces más intensas, como el fuego.",
+      "La couleur que gardent les lumières vives, comme le feu." },
+    { "Balanced", "Equilibrado", "Équilibrée" },
+    { "Full", "Completo", "Complète" },
+    { "As SDR", "Como en SDR", "Comme en SDR" },
+    { "Post-Processing Quality", "Calidad del posprocesado", "Qualité du post-traitement" },
     { "High: depth of field and bloom drawn smoothly above 720p.",
-      "Alta: profundidad de campo y resplandor suaves por encima de 720p." },
+      "Alta: profundidad de campo y resplandor suaves por encima de 720p.",
+      "Élevée : profondeur de champ et halo plus doux au-delà de 720p." },
     /* what rows add */
-    { " Applies after a restart.", " Se aplica al reiniciar." },
-    { " (next start)", " (al reiniciar)" },
-    { "Custom", "Personalizado" },
+    { " Applies after a restart.", " Se aplica al reiniciar.", " Appliqué au redémarrage." },
+    { " (next start)", " (al reiniciar)", " (au redémarrage)" },
+    { "Custom", "Personalizado", "Personnalisé" },
     /* values many rows have */
-    { "On", "Sí" },
-    { "Off", "No" },
-    { "Original", "Original" },
-    { "Default", "Predeterminado" },
-    { "Auto", "Auto" },
+    { "On", "Sí", "Oui" },
+    { "Off", "No", "Non" },
+    { "Original", "Original", "D'origine" },
+    { "Default", "Predeterminado", "Par défaut" },
+    { "Auto", "Auto", "Auto" },
     /* Graphics Settings */
-    { "Resolution", "Resolución" },
-    { "The resolution the game is drawn at.", "La resolución a la que se dibuja el juego." },
-    { "Display Mode", "Modo de pantalla" },
-    { "Window, borderless window or fullscreen.", "Ventana, ventana sin bordes o pantalla completa." },
-    { "Windowed", "Ventana" },
-    { "Borderless", "Sin bordes" },
-    { "Fullscreen", "Pantalla completa" },
-    { "Frame Rate", "Fotogramas por segundo" },
-    { "The frame rate limit. 60 is recommended.", "El límite de fotogramas por segundo. Se recomienda 60." },
-    { "30 (Original)", "30 (original)" },
-    { "Adaptive", "Adaptativo" },
-    { "Unlimited", "Sin límite" },
-    { "V-Sync", "Sincronización vertical" },
-    { "Wait for the display's refresh.", "Espera al refresco de la pantalla." },
-    { "Anti-Aliasing", "Suavizado de bordes" },
-    { "Smooths jagged edges. FXAA softens the picture slightly.", "Suaviza los bordes dentados. FXAA suaviza algo la imagen." },
-    { "Texture Filtering", "Filtrado de texturas" },
-    { "Sharper ground and walls when seen at an angle.", "Suelos y paredes más nítidos vistos en ángulo." },
-    { "Trilinear", "Trilineal" },
-    { "2x Anisotropic", "Anisotrópico 2x" },
-    { "4x Anisotropic", "Anisotrópico 4x" },
-    { "8x Anisotropic", "Anisotrópico 8x" },
-    { "16x Anisotropic", "Anisotrópico 16x" },
-    { "Field of View", "Campo de visión" },
-    { "Widens the gameplay camera. Cutscenes keep their framing.", "Amplía la cámara de juego. Las cinemáticas no cambian." },
+    { "Resolution", "Resolución", "Résolution" },
+    { "The resolution the game is drawn at.",
+      "La resolución a la que se dibuja el juego.",
+      "La résolution du rendu du jeu." },
+    { "Display Mode", "Modo de pantalla", "Mode d'affichage" },
+    { "Window, borderless window or fullscreen.",
+      "Ventana, ventana sin bordes o pantalla completa.",
+      "Fenêtre, fenêtre sans bordure ou plein écran." },
+    { "Windowed", "Ventana", "Fenêtre" },
+    { "Borderless", "Sin bordes", "Sans bordure" },
+    { "Fullscreen", "Pantalla completa", "Plein écran" },
+    { "Frame Rate", "Fotogramas por segundo", "Images par seconde" },
+    { "The frame rate limit. 60 is recommended.",
+      "El límite de fotogramas por segundo. Se recomienda 60.",
+      "La limite d'images par seconde. 60 est recommandé." },
+    { "30 (Original)", "30 (original)", "30 (d'origine)" },
+    { "Adaptive", "Adaptativo", "Adaptatif" },
+    { "Unlimited", "Sin límite", "Illimité" },
+    { "V-Sync", "Sincronización vertical", "Synchro verticale" },
+    { "Wait for the display's refresh.", "Espera al refresco de la pantalla.", "Attend le rafraîchissement de l'écran." },
+    { "Anti-Aliasing", "Suavizado de bordes", "Anticrénelage" },
+    { "Smooths jagged edges. FXAA softens the picture slightly.",
+      "Suaviza los bordes dentados. FXAA suaviza algo la imagen.",
+      "Lisse les bords crénelés. FXAA adoucit légèrement l'image." },
+    { "Texture Filtering", "Filtrado de texturas", "Filtrage des textures" },
+    { "Sharper ground and walls when seen at an angle.",
+      "Suelos y paredes más nítidos vistos en ángulo.",
+      "Sols et murs plus nets vus de biais." },
+    { "Trilinear", "Trilineal", "Trilinéaire" },
+    { "2x Anisotropic", "Anisotrópico 2x", "Anisotrope 2x" },
+    { "4x Anisotropic", "Anisotrópico 4x", "Anisotrope 4x" },
+    { "8x Anisotropic", "Anisotrópico 8x", "Anisotrope 8x" },
+    { "16x Anisotropic", "Anisotrópico 16x", "Anisotrope 16x" },
+    { "Field of View", "Campo de visión", "Champ de vision" },
+    { "Widens the gameplay camera. Cutscenes keep their framing.",
+      "Amplía la cámara de juego. Las cinemáticas no cambian.",
+      "Élargit la caméra en jeu. Les cinématiques gardent leur cadrage." },
     /* System Settings */
-    { "Skip Intro", "Saltar introducción" },
-    { "Skip the logos and the opening movie.", "Salta los logotipos y el vídeo de apertura." },
-    { "When Unfocused", "En segundo plano" },
-    { "What the game does while its window is in the background.", "Qué hace el juego con su ventana en segundo plano." },
-    { "Keep Running", "Seguir" },
-    { "Mute", "Silenciar" },
-    { "Pause", "Pausar" },
-    { "Button Prompts", "Iconos de botones" },
-    { "The buttons the game shows. Auto follows the pad you hold.", "Los botones que muestra el juego. Auto sigue a tu mando." },
-    { "Keyboard", "Teclado" },
-    { "Mouse Sensitivity", "Sensibilidad del ratón" },
-    { "How far the mouse turns the camera.", "Cuánto gira la cámara con el ratón." },
-    { "Renderer", "Renderizador" },
-    { "The graphics API the game is drawn with.", "La API gráfica con la que se dibuja el juego." },
+    { "Skip Intro", "Saltar introducción", "Passer l'introduction" },
+    { "Skip the logos and the opening movie.",
+      "Salta los logotipos y el vídeo de apertura.",
+      "Passe les logos et la vidéo d'ouverture." },
+    { "When Unfocused", "En segundo plano", "En arrière-plan" },
+    { "What the game does while its window is in the background.",
+      "Qué hace el juego con su ventana en segundo plano.",
+      "Ce que fait le jeu quand sa fenêtre est en arrière-plan." },
+    { "Keep Running", "Seguir", "Continuer" },
+    { "Mute", "Silenciar", "Couper le son" },
+    { "Pause", "Pausar", "Pause" },
+    { "Button Prompts", "Iconos de botones", "Icônes des touches" },
+    { "The buttons the game shows. Auto follows the pad you hold.",
+      "Los botones que muestra el juego. Auto sigue a tu mando.",
+      "Les touches affichées par le jeu. Auto suit votre manette." },
+    { "Keyboard", "Teclado", "Clavier" },
+    { "Mouse Sensitivity", "Sensibilidad del ratón", "Sensibilité de la souris" },
+    { "How far the mouse turns the camera.",
+      "Cuánto gira la cámara con el ratón.",
+      "L'ampleur de la rotation de la caméra à la souris." },
+    { "Renderer", "Renderizador", "Moteur de rendu" },
+    { "The graphics API the game is drawn with.",
+      "La API gráfica con la que se dibuja el juego.",
+      "L'API graphique utilisée pour afficher le jeu." },
     /* Advanced Graphics (src/patches/sysset.cpp) */
-    { "Aspect Ratio", "Relación de aspecto" },
-    { "Your screen's shape. Auto follows the window.", "La forma de tu pantalla. Auto sigue a la ventana." },
-    { "Shadow Quality", "Calidad de las sombras" },
-    { "Sharper, more defined shadows.", "Sombras más nítidas y definidas." },
-    { "High", "Alta" },
-    { "Ultra", "Ultra" },
-    { "Motion Blur", "Desenfoque de movimiento" },
-    { "Blur on fast movement of the camera and characters.", "Desenfoque al mover rápido la cámara y los personajes." },
-    { "Post-Processing", "Posprocesado" },
-    { "Depth of field, bloom and the game's colour grading.", "Profundidad de campo, resplandor y etalonaje del juego." },
-    { "Depth of Field", "Profundidad de campo" },
-    { "The blur of what is near and far. Off keeps the bloom.", "Desenfoque de lo cercano y lo lejano. Sin él queda el resplandor." },
-    { "Blood on Screen", "Sangre en pantalla" },
-    { "Blood splashes and the low-health border over the screen.", "Salpicaduras y borde de salud baja sobre la pantalla." },
-    { "Border Only", "Solo el borde" },
-    { "Draw Distance", "Distancia de dibujado" },
-    { "How far away props, plants and other scenery are drawn.", "Hasta dónde se dibujan objetos, plantas y escenario." },
-    { "Tree Detail", "Detalle de los árboles" },
-    { "How far trees show and stay detailed. From the next area.", "Distancia de detalle de los árboles. Desde la próxima zona." },
+    { "Aspect Ratio", "Relación de aspecto", "Format d'image" },
+    { "Your screen's shape. Auto follows the window.",
+      "La forma de tu pantalla. Auto sigue a la ventana.",
+      "La forme de votre écran. Auto suit la fenêtre." },
+    { "Shadow Quality", "Calidad de las sombras", "Qualité des ombres" },
+    { "Sharper, more defined shadows.", "Sombras más nítidas y definidas.", "Des ombres plus nettes et mieux définies." },
+    { "High", "Alta", "Élevée" },
+    { "Ultra", "Ultra", "Ultra" },
+    { "Motion Blur", "Desenfoque de movimiento", "Flou de mouvement" },
+    { "Blur on fast movement of the camera and characters.",
+      "Desenfoque al mover rápido la cámara y los personajes.",
+      "Flou lors des mouvements rapides de la caméra et des personnages." },
+    { "Post-Processing", "Posprocesado", "Post-traitement" },
+    { "Depth of field, bloom and the game's colour grading.",
+      "Profundidad de campo, resplandor y etalonaje del juego.",
+      "Profondeur de champ, halo et étalonnage des couleurs du jeu." },
+    { "Depth of Field", "Profundidad de campo", "Profondeur de champ" },
+    { "The blur of what is near and far. Off keeps the bloom.",
+      "Desenfoque de lo cercano y lo lejano. Sin él queda el resplandor.",
+      "Le flou du proche et du lointain. Sans lui, le halo reste." },
+    { "Blood on Screen", "Sangre en pantalla", "Sang à l'écran" },
+    { "Blood splashes and the low-health border over the screen.",
+      "Salpicaduras y borde de salud baja sobre la pantalla.",
+      "Éclaboussures de sang et bordure de santé faible à l'écran." },
+    { "Border Only", "Solo el borde", "Bordure seule" },
+    { "Draw Distance", "Distancia de dibujado", "Distance d'affichage" },
+    { "How far away props, plants and other scenery are drawn.",
+      "Hasta dónde se dibujan objetos, plantas y escenario.",
+      "La distance d'affichage des objets, des plantes et du décor." },
+    { "Tree Detail", "Detalle de los árboles", "Détail des arbres" },
+    { "How far trees show and stay detailed. From the next area.",
+      "Distancia de detalle de los árboles. Desde la próxima zona.",
+      "La distance de détail des arbres. Dès la prochaine zone." },
+    /* Picture Settings on a Mac */
+    { "On a display with HDR (EDR) headroom, such as a MacBook Pro's.",
+      "En una pantalla con margen HDR (EDR), como la de un MacBook Pro.",
+      "Sur un écran avec une marge HDR (EDR), comme celui d'un MacBook Pro." },
+    { "How bright white is in HDR. Auto: as the system's SDR white.",
+      "El brillo del blanco en HDR. Auto: como el blanco SDR del sistema.",
+      "La luminosité du blanc en HDR. Auto : comme le blanc SDR du système." },
 };
 
-bool s_spanish;   /* the Spanish translation's menus are on (init_rows) */
+enum { LANG_EN, LANG_ES, LANG_FR };
+int s_lang;   /* the pages' language (init_rows) */
 
-/* The text as the pages show it: in Spanish with the translation's menus, else as it is. */
+/* The text as the pages show it: in Spanish with the translation's menus, in French with the game
+ * in French, else as it is. */
 const char* tr(const char* en)
 {
-    if (!s_spanish || !en) return en;
-    for (const auto& t : kSpanish)
-        if (!strcmp(t.en, en)) return t.es;
+    if (s_lang == LANG_EN || !en) return en;
+    for (const auto& t : kTexts)
+        if (!strcmp(t.en, en)) return s_lang == LANG_FR ? t.fr : t.es;
     return en;
 }
 
@@ -645,7 +707,10 @@ void init_rows()
     if (s_init) return;
     s_init = true;
     set_fov(getenv("DOD3_FOV"));   /* (the aspect ratio is set at boot: dod3_settings_menu_install) */
-    s_spanish = dod3_menus_spanish();
+    {
+        const char* l = dod3_menu_language();
+        s_lang = !strcmp(l, "fr") ? LANG_FR : !strcmp(l, "es") ? LANG_ES : LANG_EN;
+    }
     std::vector<Dod3RowSpec> specs;
     build_rows(specs);
     for (const Dod3RowSpec& a : specs) {

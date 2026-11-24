@@ -29,6 +29,7 @@
  * 1.01 update's switch to English there (tools/menu_patch.py). */
 #include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -40,6 +41,7 @@
 #include "util.h"
 
 extern "C" void (*ps3_vfs_title_hook)(char* path, size_t cap);   /* runtime/syscalls/sys_fs.c */
+extern "C" int32_t ps3_sysutil_language(void);                   /* libs/system/cellSysutil.c */
 
 namespace fs = std::filesystem;
 
@@ -152,13 +154,16 @@ void hook(char* path, size_t cap)
  * join), bridge 18 keeps the chapters in Japanese. */
 bool dod3_dlc_jpvoice() { return s_jpvoice; }
 
-/* The Settings pages in Spanish (src/ui/settings_menu.cpp): the Spanish
- * translation's menus are installed and not switched off in the launcher.
- * DOD3_MENU_LANGUAGE=es|en says which instead (tests). */
-bool dod3_menus_spanish()
+/* The language of the Settings pages (src/ui/settings_menu.cpp): "fr" with
+ * the game in French (DOD3_LANGUAGE; a translation mod's text is English-named
+ * and not read then); "es" with the Spanish translation's menus installed and
+ * not switched off in the launcher; else "en". DOD3_MENU_LANGUAGE=en|es|fr
+ * says which instead (tests). */
+const char* dod3_menu_language()
 {
-    if (const char* l = getenv("DOD3_MENU_LANGUAGE")) return !strcmp(l, "es");
-    return s_spanish_menus;
+    if (const char* l = getenv("DOD3_MENU_LANGUAGE")) return !strcmp(l, "es") ? "es" : !strcmp(l, "fr") ? "fr" : "en";
+    if (ps3_sysutil_language() == 2 /* CELL_SYSUTIL_LANG_FRENCH */) return "fr";
+    return s_spanish_menus ? "es" : "en";
 }
 
 /* At boot: what game/mods and DLC_JPV/UNDUB hold, and the hook if either has

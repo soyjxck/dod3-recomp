@@ -194,6 +194,7 @@ folder above). It explains each setting:
 | DOD3_SCREEN_BLOOD | Blood over the screen in combat: border leaves out the splashes and keeps the blood around the edges at low health, a warning; 0 leaves out both. Unset is the original |
 | DOD3_DRAW_DISTANCE | 2, 3, 5 or 10: props, bushes and small trees are drawn from that many times as far away; unset is the original |
 | DOD3_TREE_LOD | 2, 3, 5 or 10: the large trees are drawn, and stay their full models, that many times as far away; unset is the original. From the next area loaded |
+| DOD3_LANGUAGE | fr: the game in French, the disc's other language -- its text and subtitles, the 1.01 update's and the DLC's too, and the port's Settings pages; the voices stay as they are. In the launcher: Settings > System > Language. Unset is English |
 | DOD3_SKIP_INTRO | 1 (default) skips the logos and the opening movie at start-up; 0 keeps them |
 | DOD3_LAUNCHER | 0 starts the game straight away, without the launcher; holding Shift (Option on a Mac) while it starts opens the launcher anyway. Unset opens it at every start |
 | DOD3_UPDATE_CHECK | Windows: 0 stops the launcher asking GitHub for a newer release when it opens. In the launcher: Settings > System > Check for Updates. Unset asks |
@@ -368,6 +369,13 @@ game/mods folder (and the voice pack's folder, for the DLC Undub).
 With both, the DLC chapters' text is the translation's in Japanese too,
 where the translation has its own (the undub's is English text timed for
 the Japanese voices).
+
+French needs no mod: the disc, the 1.01 update and the DLC carry the
+official French text, and Language (the launcher's Settings > System)
+switches the game to it. A translation mod replaces the English text, so
+it is not shown while the game is in French; and the DLC Undub's retimed
+subtitles are English, so in French the DLC chapters keep the official
+French timing under the Japanese voices.
 
 Other mods made as homebrew packages for this release, laid out as the
 console installs them (in the update's folder, the game-data folder, or

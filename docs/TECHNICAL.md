@@ -229,9 +229,11 @@ loaded packages against it). The pages reach the port through two natives
 the script already had (`GetString`, `UpdateDisplayParam`), whose exec
 thunks `src/ui/settings_menu.cpp` replaces; it owns the rows, the values
 and the `dod3.ini` writer. With the Spanish translation installed and
-switched on (`dod3_menus_spanish`, `src/kernel/mods.cpp`), the pages'
-names, rows and values are given in Spanish, in the translation's own
-words for the game's menus.
+switched on, the pages' names, rows and values are given in Spanish, in
+the translation's own words for the game's menus; with the game in
+French (`DOD3_LANGUAGE = fr`: the title is told the console's language
+is French and reads the disc's `_FRA` packages), in French, in the
+game's own words (`dod3_menu_language`, `src/kernel/mods.cpp`).
 
 A script package that is not the update's -- a mod copied over the update
 by hand -- is not patched: its own hash goes into the table instead, so it

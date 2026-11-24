@@ -275,8 +275,10 @@ runtime's function from then on.
   (close once settled, or once the install ends, printing `[launcher]
   done` or `failed`); `DOD3_SETUP_GRAB=<prefix>` saves its picture as
   `<prefix>_0.ppm`. `DOD3_LAUNCHER=0|1` overrides the setting.
-- `DOD3_MENU_LANGUAGE=es|en`: the Settings pages in Spanish or English
-  whatever is installed. `DOD3_MODS_LOG=1`: every path the mods serve, not
+- `DOD3_MENU_LANGUAGE=es|fr|en`: the Settings pages in Spanish, French or
+  English whatever is installed or set. `PS3_LANG=<code>`: the console
+  language the title is told, over `DOD3_LANGUAGE` (the data has `en` and
+  `fr` only; `[cellSysutil] system language` in the log is the answer). `DOD3_MODS_LOG=1`: every path the mods serve, not
   only the first 48.
 - `PS3_VFS_OVERLAY=<dir>` with `DOD3_SHA_OVERRIDE=<package>=<sha1>`: run with
   a menu patch made by `tools/menu_patch.py <dir>` without rebuilding its

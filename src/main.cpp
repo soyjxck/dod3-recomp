@@ -2178,9 +2178,14 @@ int main(int argc, char** argv)
     dod3_setenv("PS3_VERBOSE", "0", 0);
     /* The console language. With PS3_LANG unset the toolkit answers the host's
      * UI language; this title has always been told English (US), and the DLC
-     * English switch and the Spanish mod were made for that answer. An explicit
-     * PS3_LANG still picks another. */
-    dod3_setenv("PS3_LANG", "en", 0);
+     * English switch and the Spanish mod were made for that answer. The disc
+     * has one more language, French, complete through the update and the DLC:
+     * DOD3_LANGUAGE = fr (the launcher's Language row) asks for it. An
+     * explicit PS3_LANG still picks another. */
+    {
+        const char* l = getenv("DOD3_LANGUAGE");
+        dod3_setenv("PS3_LANG", l && !strcmp(l, "fr") ? "fr" : "en", 0);
+    }
     /* The one firmware file the title loads: MultiStream fetches its MP3
      * decoder from /dev_flash/sys/external/flashMP3.pic when the first MP3
      * stream starts (without it the audio SPU task dies and the game hangs on
