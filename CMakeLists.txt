@@ -419,6 +419,7 @@ set(PORT_PATCH_SOURCES               # native replacements of the game's own cod
     src/patches/cheats.cpp           # the launcher's Cheats tab (DOD3_CHEAT_*)
     src/patches/dragon_cursor.cpp    # the mouse moves the dragon's shooting cursor
     src/patches/pawn_step.cpp        # gravity in a part step, weighted as its move is (jumps above 60 fps)
+    src/patches/projectile_expiry.cpp # a projectile past its range ends above 100 fps too (the dragon's volley)
     src/patches/sysset.cpp)
 set(PORT_UI_SOURCES                  # the in-game settings pages
     src/ui/settings_menu.cpp
