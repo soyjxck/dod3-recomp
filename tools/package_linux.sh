@@ -56,6 +56,12 @@ echo "package_linux: needs $glibc or newer"
 for bad in EBOOT.ELF EBOOT_101.ELF EBOOT.BIN flashMP3.pic PARAM.SFO keys.txt guest_programs.bin libsre.prx; do
   if find "$out" -iname "$bad" | grep -q .; then echo "package_linux: $bad in the package"; exit 1; fi
 done
+# No firmware code in the program: the console's own MP3 decoder is lifted
+# only for a developer's comparisons (DOD3_FW_MP3=1, tools/lift_spu.sh), and
+# a build that holds it registers it by this name.
+if grep -qa 'spu_ovl_mp3_1A900' "$out/dod3"; then
+  echo "package_linux: this build holds the firmware's MP3 decoder; run tools/lift_spu.sh without DOD3_FW_MP3 and build again"; exit 1
+fi
 
 tar -C dist -czf "dist/$name.tar.gz" "$name"
 ls -la "dist/$name.tar.gz"

@@ -14,7 +14,9 @@ code into its own local store at run time:
     the mixer parses that, then GETs the body (the file from va 0x80) to LS
     0x1A900 and calls 0x1A900 + (e_entry - 0x80): va 0x80 is LS 0x1A900.
     Without the file the slot stays empty and the task dies on the first MP3
-    stream (opening movie, new game).
+    stream (opening movie, new game). The port serves a stand-in of its own
+    there and decodes natively; Sony's file is lifted only for comparing the
+    two, when asked for (DOD3_FW_MP3=1), and never for a release.
 
 Lifted code is only right at the address it was lifted for (a PIC module
 derives its data addresses from its own return address, and the lifter turns
@@ -203,19 +205,21 @@ def build_mp3_native(_root):
     return body, [MP3_LSA + MP3N_ENTRY - MP3_HEADER], body[:16], len(body)
 
 
-def have_firmware_mp3(root):
-    dev_flash = Path(os.environ.get("FW_DEV_FLASH") or (root / "fw" / "dev_flash"))
-    return (dev_flash / MP3_PIC).exists()
+def have_firmware_mp3(_root):
+    """Sony's decoder is lifted only when asked for, DOD3_FW_MP3=1, whether or
+    not the firmware is here: a build that holds it holds firmware code, which
+    a release must not (the packaging scripts look for it)."""
+    return os.environ.get("DOD3_FW_MP3") == "1"
 
 
 def overlays(root):
-    """Sony's MP3 decoder is lifted only if the firmware is here (for
-    DOD3_MP3_NATIVE=0 and the check modes); the stand-in always is."""
+    """Sony's MP3 decoder is lifted only on request (for DOD3_MP3_NATIVE=0 and
+    the check modes); the stand-in always is."""
     out = [(MSDSP_NAME, MSDSP_LSA, build_msdsp), (MP3N_NAME, MP3_LSA, build_mp3_native)]
     if have_firmware_mp3(root):
         out.append((MP3_NAME, MP3_LSA, build_mp3))
     else:
-        print("make_spu_overlays: no firmware flashMP3.pic -- only our MP3 decoder", file=sys.stderr)
+        print("make_spu_overlays: our MP3 decoder only (DOD3_FW_MP3=1 lifts the firmware's beside it)", file=sys.stderr)
     return out
 
 
@@ -224,7 +228,7 @@ def wrap(root):
     from wrap_spu_elf import wrap as wrap_elf
     images = root / "spu/images"
     args = []
-    if not have_firmware_mp3(root):   # a lift from an earlier firmware run
+    if not have_firmware_mp3(root):   # a lift from an earlier run that had it
         (images / f"{MP3_NAME}.elf").unlink(missing_ok=True)
     for name, lsa, build in overlays(root):
         image, entries, _sig, _span = build(root)

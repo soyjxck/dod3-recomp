@@ -52,6 +52,12 @@ sed 's/$/\r/' third_party/fonts/inter/LICENSE.txt > "$out/LICENSE-inter.txt"
 for bad in EBOOT.ELF EBOOT_101.ELF EBOOT.BIN flashMP3.pic PARAM.SFO keys.txt guest_programs.bin; do
   if find "$out" -iname "$bad" | grep -q .; then echo "package_win: $bad in the package"; exit 1; fi
 done
+# No firmware code in the program: the console's own MP3 decoder is lifted
+# only for a developer's comparisons (DOD3_FW_MP3=1, tools/lift_spu.sh), and
+# a build that holds it registers it by this name.
+if grep -qa 'spu_ovl_mp3_1A900' "$out/dod3.exe"; then
+  echo "package_win: this build holds the firmware's MP3 decoder; run tools/lift_spu.sh without DOD3_FW_MP3 and build again"; exit 1
+fi
 
 powershell -NoProfile -Command "Compress-Archive -Path '$out' -DestinationPath 'dist/$name.zip' -CompressionLevel Optimal"
 ls -la "dist/$name.zip"

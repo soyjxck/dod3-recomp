@@ -47,8 +47,9 @@
  * main.cpp): an SPU ELF of the same shape whose entry is
  * dod3_mp3_standin_hook, so nothing of the firmware is needed to build or
  * play. DOD3_MP3_NATIVE=0 loads Sony's file from a firmware dev_flash and
- * decodes with it (lifted; the build lifts it when it finds the firmware);
- * the check and recording modes below need it too.
+ * decodes with it, lifted: only a build whose SPU lift was made with
+ * DOD3_FW_MP3=1 has it (tools/lift_spu.sh), and no release is one. The
+ * check and recording modes below need it too.
  * DOD3_MP3_CHECK=1 runs Sony's decoder (its result stands) and ours side by
  * side on every frame -- each stream followed through Sony's state -- and
  * reports any difference in what the mixer sees (consumed, produced, return

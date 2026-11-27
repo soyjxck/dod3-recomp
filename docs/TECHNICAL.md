@@ -124,6 +124,14 @@ Hooks into lifted SPU code are declared in `tools/lift_spu.sh`
 (`--native-hook`): a hook is called first thing in a lifted function and
 either does its work or falls through.
 
+The same script lists the function entries the lifter does not find by
+following branches (`seed`): functions reached only through a pointer in a
+table. SPU code with no translation is not lost. The runtime interprets it
+from the local store until it reaches a lifted address, some fifty to a
+hundred times slower, and `[spu-smc]` in the log names the place and counts
+the instructions. One of PhysX's contact functions (`spu_0020`, 0xDF90) ran
+that way up to 0.6.0, about fifteen times a second in a battle.
+
 ## Rendering
 
 The draw engine (`ps3recomp/libs/video/rsx_draw_engine.c`) decodes the RSX

@@ -53,17 +53,19 @@ side of an emulator does:
 - **The system.** The PS3's libraries and kernel calls (threads, files,
   SPURS, sound, pads, trophies) are ps3recomp's own implementations. A few
   SPURS queue routines are the firmware's own code instead, translated like
-  the game's when the port is built; so is the firmware's MP3 decoder, which
-  a build keeps beside the port's own for comparing the two.
+  the game's when the port is built. (The Windows releases up to 0.6.0 also
+  held the firmware's MP3 decoder, translated, for a mode that compares it
+  with the port's own. Later releases do not.)
 - **The graphics.** The game still writes command lists for the PS3's
   graphics chip, the RSX. They are read every frame and drawn with
   Direct3D 12, Metal or Vulkan, and the game's shader programs are
   translated and compiled when they are first met (the Windows release
   brings them compiled).
-- **A little SPU code is interpreted.** Code that has no translation goes
-  through a small interpreter in the runtime. In this game that has been
-  one stretch of 53 instructions in one of its 40 SPU programs, about
-  fifteen times a second.
+- **A net under the SPU code.** SPU code that has no translation goes
+  through a small interpreter in the runtime. Up to 0.6.0 one function of
+  the physics code did, about fifteen times a second in a battle: the
+  translator had missed it. It is translated since, and no test run reaches
+  the interpreter now.
 
 [docs/TECHNICAL.md](docs/TECHNICAL.md) has how each part works.
 
