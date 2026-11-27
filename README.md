@@ -266,7 +266,7 @@ bloom drawn smoothly at high resolutions, depth of field and the blood on
 the screen each on or off, skipping the intro logos and movie, pausing or
 muting when the window is in the background, keyboard and mouse,
 third-party pads through the community's mapping list,
-quitting to the desktop from the game's menu, trophies (their list in the
+quitting to the desktop from the title menu and in play, trophies (their list in the
 launcher and, on Windows, a pop-up as you earn one), cheats, and the
 button prompts of the pad you hold -- set in the launcher, or in a Graphics
 Settings, a System Settings, an Advanced Graphics and a Picture Settings
@@ -276,10 +276,8 @@ the DLC Undub, and any other mod package for the US release), and on
 Windows updates the port from its releases.
 
 Known issues: the game has been tested on few machines; at 16:10, 21:9
-and 32:9 some of the HUD is still out of place; and above 60 fps two of the
-game's timings still follow the frame rate (how fast text types itself out,
-and a jump that meets a ceiling), with nothing tested above 120 fps. Each
-release's notes list the rest.
+and 32:9 some of the HUD is still out of place; and nothing has been tested
+above 120 fps. Each release's notes list the rest.
 
 ## How it fits together
 
