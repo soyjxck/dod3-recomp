@@ -36,7 +36,8 @@ rotation, 15 the camera's aspect ratio (and: is the view constrained to
 it?) -> the one to use, 16 the view's FOV -> the one to use, 17 the HUD's
 drawing (1 begin, with its canvas; 0 end; 2 and 3 around a full-screen
 rectangle; 4 and 5 around the radar; 7 and 8 around the pause screen),
-18 (1.01) entering a DLC mission: keep the Japanese voices?
+18 (1.01) entering a DLC mission: keep the Japanese voices?, 19 quit the
+game (Yes to the title menu's or the Select menu's question).
 
 Also: Sqex03GameCamera.UpdateViewTarget hands every view's final FOV to the
 port (bridge(9, FOV, the gameplay camera made it)) and takes back the one to
@@ -62,6 +63,10 @@ VersionCheck, Rogo -- the company, middleware and UE3 logos -- Moive -- the
 opening movie -- then Top, "Press START") goes from VersionCheck straight to
 Top when the bridge says to skip (DOD3_SKIP_INTRO, on unless 0).
 
+Also: a last entry on the title menu, Quit Game, and on the Select menu's
+root, Quit to Desktop (quit_entries below). Each asks first, in the title's
+Yes/No window, and Yes ends the game through the port (bridge 19).
+
 Also (1.01): entering a DLC mission from the book, a player who chose
 Japanese voices is switched to English (Sqex03GameHUDBook.UpdateFadeOut;
 the official voice pack has no lines for the DLC chapters) and back to
@@ -80,7 +85,7 @@ MAX_ROWS = 7     # the layout's
 PAGES = 5        # our root entries: Graphics, System, Advanced Graphics, Picture, Quit Game
 CMD_BEGIN, CMD_CHANGE, CMD_ISDEF, CMD_RESET, CMD_APPLY, CMD_CHANGED, CMD_SKIPINTRO, CMD_OPEN, CMD_ROWS, CMD_FOV, \
     CMD_GRAPHICS_SHOWN, CMD_CAM_DT, CMD_CAM_ACTIVE, CMD_CAM_AXIS, CMD_CAM_VIEW, \
-    CMD_ASPECT, CMD_ASPECT_FOV, CMD_HUD, CMD_DLC_JPVOICE = range(19)
+    CMD_ASPECT, CMD_ASPECT_FOV, CMD_HUD, CMD_DLC_JPVOICE, CMD_QUIT = range(20)
 
 GAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'game', 'disc')
 ROOT = os.path.join(GAME, 'PS3_GAME', 'USRDIR', 'SQEX03GAME')
@@ -423,6 +428,8 @@ def main():
         st[i].parts[1] = ('e', pk.cond(pk.native('NotEqual_IntInt', keep, pk.int_(0)), Node(0x28, []), dlc))
         new[f] = st
 
+    quit_entries(pk, new, bridge)
+
     if show:
         for f, st in new.items():
             print('\n== %s.%s' % (pk.outer(f), pk.exps[f - 1]['name']))
@@ -487,6 +494,187 @@ def write_header(path, bodies, size, sha):
         h.write('/* per function: u32 export, old size, new size, op count (LE); ops: 0 copy(off, len) | 1 insert(len, bytes) */\n')
         h.write('static const unsigned char k_menu_patch_ops[] = {\n%s\n};\n' % arr(stream))
     print('wrote %s (%d bytes of ops, version %s)' % (path, len(stream), ver))
+
+
+def quit_entries(pk, new, bridge):
+    """Quit Game on the title menu, Quit to Desktop on the Select menu.
+
+    Both ask first, in the title's own Yes/No window with No under the
+    cursor, and Yes tells the port (bridge CMD_QUIT), which ends the game once
+    no save is being written. Text: MAGIC+20 the title menu's entry and
+    MAGIC+29 its description (the menu looks nine entries on), MAGIC+21 and
+    +22 the Select menu's, MAGIC+23 and +24 the questions."""
+    T_LABEL, S_LABEL, S_DESC, T_ASK, S_ASK = MAGIC + 20, MAGIC + 21, MAGIC + 22, MAGIC + 23, MAGIC + 24
+    def swap_int(node, old, new_):
+        hits = []
+        def pred(n):
+            if (n.op, n.parts) == (old.op, old.parts):
+                hits.append(n)
+                return True
+            return False
+        subst(node, pred, lambda n: new_)
+        assert len(hits) == 1, (pk.text(node), len(hits))
+        return node
+    def unless(cond, target):
+        return Node(0x07, [('jmp', target), ('e', cond)])
+    def label(s, name):
+        s.label = (s.label or []) + [name]
+        return name
+    def ask(open_stmt, old_index, index):
+        """The Yes/No window opened on our question, with No under the cursor."""
+        s = swap_int(clone(open_stmt), pk.int_(old_index), pk.int_(index))
+        c = inner_call(s)
+        args = [x for x in c.parts if x[0] == 'e']
+        assert len(args) == 7, pk.text(s)
+        args[6] = ('e', pk.byte_(1))       # eDefault: No
+        c.parts = c.parts[:1] + args + [('u8', 0x16)]
+        return s
+
+    # ---- the Yes/No window draws its question with DrawMessage, which reads
+    # the message data's own table; a question of ours (an index from MAGIC
+    # up) is drawn as the window draws "Yes": GetString, which the port
+    # answers ----
+    f = pk.func('Sqex03GameHUDCommonSelect', 'DrawYesNo'); st = pk.parse(f)
+    i = pk.find(st, 'DrawMessage(self.m_xMessage, self.m_iMesIndex, xParam.m_fPosX, xParam.m_fPosY, 14f, b1)')
+    msg = findnode(st[i], 'self.m_xMessage')
+    idx = findnode(st[i], 'self.m_iMesIndex')
+    yes = [s for s in st if pk.text(s).startswith('DrawString(self.m_xHUD.self.m_MessageData[84].GetString(0),')]
+    assert len(yes) == 1
+    ds = clone(yes[0])
+    txt = findnode(ds, 'self.m_xHUD.self.m_MessageData[84].GetString(0)')
+    subst(txt, lambda n: pk.text(n) == 'self.m_xHUD.self.m_MessageData[84]', lambda n: clone(msg))
+    swap_int(txt, pk.int_(0), clone(idx))
+    assert pk.text(txt) == 'self.m_xMessage.GetString(self.m_iMesIndex)', pk.text(txt)
+    ret = pk.find(st, 'return nothing')
+    ours = unless(pk.native('GreaterEqual_IntInt', clone(idx), pk.int_(MAGIC)), label(st[i], 'title_msg'))
+    skip = Node(0x06, [('jmp', st[ret].mem)])
+    st[i:i] = [ours, ds, skip]
+    new[f] = st
+
+    # ---- the title menu: a last entry ----
+    TM = 'Sqex03GameHUDTitleMenu'
+    for fn in ('Initialize', 'SetIn'):
+        f = pk.func(TM, fn); st = pk.parse(f)
+        for i in reversed(pk.find(st, 'self.m_iSelectList.AddItem(4)', 2)):
+            st.insert(i + 1, swap_int(clone(st[i]), pk.int_(4), pk.int_(T_LABEL)))
+        new[f] = st
+    st = pk.parse(pk.func(TM, 'CursorAnim'))
+    picked = st[pk.find(st, 'self.m_iPreSelect = self.m_iSelectList[self.m_iSelect]')].parts[1][1]
+    f = pk.func(TM, 'CheckInput'); st = pk.parse(f)
+    state = findnode(st[pk.find(st, 'self.m_iState = 1')], 'self.m_iState')
+    def set_state(v):
+        return pk.let(clone(state), pk.int_(v))
+    def state_is(v):
+        return pk.native('EqualEqual_IntInt', clone(state), pk.int_(v))
+    i = pk.find(st, 'self.m_xHUD.self.m_Common.SetCommonCursorMode(b1)')
+    click = clone(st[pk.find(st, 'PlayHUDSound(obj(Click01))')])
+    open_ = st[pk.find(st, 'self.m_xHUD.OpenCommonSelectWindow(self.m_xHUD.self.m_MessageData[100], 17, none, b0, '
+                           '<empty>, <empty>, <empty>)')]
+    out = clone(st[pk.find(st, 'goto 0x0188', 3)[0]])
+    st[i:i] = [unless(pk.native('EqualEqual_IntInt', clone(picked), pk.int_(T_LABEL)), label(st[i], 'enter')),
+               click, ask(open_, 17, T_ASK), set_state(2), out]
+    new[f] = st
+    # state 2, the question asked: its answer is read where the title's own
+    # question's is (CheckMessage), and nothing else runs that frame
+    f = pk.func(TM, 'UpdataDraw'); st = pk.parse(f)
+    i = pk.find(st, 'switch(self.m_iState)')
+    ret = pk.find(st, 'return nothing')
+    st[i:i] = [unless(state_is(2), label(st[i], 'states')), clone(st[pk.find(st, 'CheckMessage()')]),
+               Node(0x06, [('jmp', st[ret].mem)])]
+    new[f] = st
+    f = pk.func(TM, 'CheckMessage'); st = pk.parse(f)
+    i = pk.find(st, 'if !(EqualEqual_IntInt(iResult, 0)) goto 0x00a7')
+    no = clone(st[i])                      # not Yes: on to the title's own "No", which goes back to state 0
+    ret = pk.find(st, 'return nothing')
+    st[i:i] = [unless(state_is(2), label(st[i], 'back')), no, bridge(CMD_QUIT), set_state(3),
+               Node(0x06, [('jmp', st[ret].mem)])]
+    new[f] = st
+
+    # ---- the Select menu's root: a last entry, 3 ----
+    # The layout has two rows and a third added for the DLC's music (its own
+    # sprites 33 and 34, text 36, cursor 35). An entry from the third on is
+    # drawn with the third's, a row lower each (ROW px).
+    SR = 'Sqex03GameHUDSelectMenu_Root'
+    ROW = 36.0
+    f = pk.func(SR, 'SetIn'); st = pk.parse(f)
+    i = pk.find(st, 'self.m_xList.AddItem(2)')
+    st.insert(i + 1, swap_int(clone(st[i]), pk.int_(2), pk.int_(3)))
+    new[f] = st
+
+    f = pk.func(SR, 'UpdateSelect'); st = pk.parse(f)
+    sstate = findnode(st[pk.find(st, 'self.m_iSelectState = 1')], 'self.m_iSelectState')
+    def set_sstate(v):
+        return pk.let(clone(sstate), pk.int_(v))
+    retire = pk.find(st, 'if !(EqualEqual_IntInt(self.m_xList[self.m_iSelect], 2)) goto 0x028c')
+    entry = findnode(st[retire], 'self.m_xList[self.m_iSelect]')
+    open_ = st[pk.find(st, 'self.m_xHUD.OpenCommonSelectWindow(self.m_xParent.self.m_MessageData, 4, none, b0, '
+                           '<empty>, <empty>, <empty>)')]
+    other = pk.find(st, 'self.m_xParent.self.m_iNextType = Add_IntInt(1, self.m_xList[self.m_iSelect])')
+    out = clone(st[pk.find(st, 'goto 0x02cd')])
+    quit_ = unless(pk.native('EqualEqual_IntInt', clone(entry), pk.int_(3)), label(st[other], 'child'))
+    quit_.mem = st[other].mem              # the jump past the Retire entry lands on this test
+    st[other:other] = [quit_, ask(open_, 4, S_ASK), set_sstate(4), out]
+    # state 4, the question asked; 5, Yes: nothing more happens
+    res = clone(st[pk.find(st, 'iResult = self.m_xHUD.GetCommonSelectWindowResult()')])
+    result = res.parts[0][1]
+    cursor = clone(st[pk.find(st, 'self.m_xHUD.self.m_Common.SetCommonCursorMode(b0)', 2)[0]])
+    ret_mem = st[pk.find(st, 'return nothing')].mem
+    def leave():
+        return Node(0x06, [('jmp', ret_mem)])
+    def result_is(v):
+        return pk.native('EqualEqual_IntInt', clone(result), pk.int_(v))
+    sw = pk.find(st, 'switch(self.m_iSelectState)')
+    assert sw == 0
+    not_yes = unless(result_is(1), ret_mem)
+    not_yes.label = ['not_yes']
+    st[0:0] = [unless(pk.native('EqualEqual_IntInt', clone(sstate), pk.int_(4)), label(st[0], 'states')),
+               res,
+               unless(result_is(0), 'not_yes'), bridge(CMD_QUIT), set_sstate(5), leave(),
+               not_yes, cursor, set_sstate(0), leave()]
+    new[f] = st
+
+    f = pk.func(SR, 'Draw'); st = pk.parse(f)
+    I = pk.local(f, 'I')
+    sel = findnode(st[pk.find(st, 'if !(Less_IntInt(self.m_iSelect, 2)) goto 0x0718')], 'self.m_iSelect')
+    lst = lambda at: findnode(st[pk.find(st, 'switch(self.m_xList[%s])' % at)],  # noqa: E731
+                              'self.m_xList[%s]' % at)
+    row_entry, sel_entry = lst('I'), lst('self.m_iSelect')
+    label_of = st[pk.find(st, 'sText = self.m_xParent.self.m_MessageData.GetString(1)')]
+    def text(index):
+        return swap_int(clone(label_of), pk.int_(1), pk.int_(index))
+    # the row's text, after the switch that finds the title's own
+    i = pk.find(st, 'if !(Less_IntInt(I, 2)) goto 0x0344')
+    t = unless(pk.native('EqualEqual_IntInt', clone(row_entry), pk.int_(3)), label(st[i], 'row_text'))
+    t.mem = st[i].mem
+    st[i:i] = [t, text(S_LABEL)]
+    # the rows from the third on: a row lower each
+    down = lambda n: pk.native('Multiply_FloatFloat', pk.float_(ROW),  # noqa: E731
+                               Node(0x38, [('u8', 0x3F), ('e', pk.native('Subtract_IntInt', n, pk.int_(2)))]))
+    def offset(n, off):
+        c = inner_call(n)
+        args = [x for x in c.parts if x[0] == 'e']
+        args[3] = ('e', off)
+        c.parts = c.parts[:1] + args + [('u8', 0x16)]
+    for k in (33, 34):
+        offset(st[pk.find(st, 'self.m_xMenu.Draw(%d, self.m_xHUD.self.Canvas, <empty>, <empty>, <empty>, <empty>, '
+                              '<empty>, <empty>)' % k)], down(clone(I)))
+    gp = pk.find(st, 'xParam = self.m_xMenu.GetFrameAnimParam(36, <empty>)')
+    ds = pk.find(st, 'self.m_xParent.DrawString(sText, xParam.m_fPosX, xParam.m_fPosY, <empty>, <empty>, false, fAlpha, '
+                     'b0, 14f, <empty>, <empty>)', 3)
+    posy = findnode(st[ds[0]], 'xParam.m_fPosY')
+    def lower(by):
+        return pk.let(clone(posy), pk.native('Add_FloatFloat', clone(posy), by))
+    st.insert(gp + 1, lower(down(clone(I))))
+    # the cursor
+    gp = pk.find(st, 'xParam = self.m_xMenu.GetFrameAnimParam(35, <empty>)')
+    st.insert(gp + 1, lower(down(clone(sel))))
+    # the selected entry's description, after the switch that finds the title's own
+    i = pk.find(st, 'self.m_xParent.DrawString(sText, xParam.m_fPosX, xParam.m_fPosY, <empty>, <empty>, false, fAlpha, '
+                    'b0, 14f, <empty>, <empty>)', 3)[2]
+    t = unless(pk.native('EqualEqual_IntInt', clone(sel_entry), pk.int_(3)), label(st[i], 'desc_text'))
+    t.mem = st[i].mem
+    st[i:i] = [t, text(S_DESC)]
+    new[f] = st
 
 
 def graphics_page(pk, new, show):

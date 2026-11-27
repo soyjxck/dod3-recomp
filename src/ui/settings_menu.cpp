@@ -15,6 +15,10 @@
  *     MAGIC+2 / +3         System Settings: the same
  *     MAGIC+4 / +5         Advanced Graphics (rows from src/patches/sysset.cpp)
  *     MAGIC+6 / +7         Picture Settings
+ *     MAGIC+8 / +9         Quit Game
+ *     MAGIC+20 / +29       the title menu's Quit Game entry / its description
+ *     MAGIC+21 / +22       the Select menu's Quit to Desktop entry / description
+ *     MAGIC+23 / +24       their questions, in the title's Yes/No window
  *     MAGIC+100+row        a row's label (of the open page)
  *     MAGIC+200+row        its value (the one being edited)
  *     MAGIC+300+row        its description
@@ -122,6 +126,7 @@ enum Cmd {
     CMD_ASPECT_FOV,
     CMD_HUD,
     CMD_DLC_JPVOICE,
+    CMD_QUIT,
 };
 
 /* The script passes floats as their bits in an int. */
@@ -212,6 +217,13 @@ const struct {
       "Fermez le jeu et revenez au bureau." },
     /* Quit Game */
     { "Exit to Desktop", "Salir al escritorio", "Retour au bureau" },
+    { "Quit to Desktop", "Salir al escritorio", "Retour au bureau" },
+    { "Quit the game and return to the desktop?",
+      "¿Salir del juego y volver al escritorio?",
+      "Quitter le jeu et revenir au bureau ?" },
+    { "Quit to the desktop? Unsaved progress is lost.",
+      "¿Salir al escritorio? Se pierde lo no guardado.",
+      "Retour au bureau ? La progression non sauvegardée sera perdue." },
     { "Unsaved progress is lost. Choose Yes, then confirm.",
       "Se pierde lo no guardado. Elige Sí y confirma.",
       "Progression non sauvegardée perdue. Choisissez Oui et validez." },
@@ -813,8 +825,16 @@ bool menu_text(int i, std::string& out)
         "Picture Settings",  "Adjust the post-processing quality and HDR.",
         "Quit Game",         "Close the game and return to the desktop.",
     };
+    static const char* const kQuit[] = {   /* the title menu's and the Select menu's entries, and their questions */
+        "Quit Game", "Quit to Desktop", "Close the game and return to the desktop.",
+        "Quit the game and return to the desktop?", "Quit to the desktop? Unsaved progress is lost.",
+    };
     if (k >= 0 && k < (int)std::size(kRoot))
         out = tr(kRoot[k]);
+    else if (k >= 20 && k < 25)
+        out = tr(kQuit[k - 20]);
+    else if (k == 29)   /* the title menu looks for an entry's description nine on */
+        out = tr(kQuit[2]);
     else if (k >= 100 && k < 200)
         out = r ? tr(r->label) : "";
     else if (k >= 200 && k < 300)
@@ -977,6 +997,9 @@ int bridge(int cmd, int a, int b)
         return 0;
     case CMD_DLC_JPVOICE: /* entering a DLC mission (1.01): keep the Japanese voices? */
         return dod3_dlc_jpvoice() ? 1 : 0;
+    case CMD_QUIT: /* Yes to the title menu's or the Select menu's question */
+        dod3_quit();
+        return 0;
     }
     return 0;
 }

@@ -159,9 +159,12 @@ the mouse's sensitivity, the renderer and the blood on the screen.
 Settings > Advanced Graphics sets the aspect ratio and the engine's own
 shadow quality, motion blur, post-processing, depth of field, draw distance
 and tree detail. Settings > Picture Settings sets the post-processing
-quality and HDR (Windows and macOS). Settings > Quit Game closes the game
-from the title menu or in play: set Exit to Desktop to Yes and confirm
-(what you did since the last save is lost, as when the window is closed).
+quality and HDR (Windows and macOS). The title menu's last entry, Quit
+Game, closes the game, and in play the Select menu's last entry, Quit to
+Desktop, does: each asks first, with No under the cursor (what you did
+since the last save is lost, as when the window is closed). Settings > Quit
+Game is the same from any Settings menu: set Exit to Desktop to Yes and
+confirm.
 Confirm with X to save them; everything but the renderer, Skip
 Intro, Shadow Quality and Post-Processing Quality changes at once (a second
 of black while the resolution or display mode switches; Tree Detail in the
@@ -334,7 +337,8 @@ Every key can be changed in dod3.ini, which lists them, and the prompts
 show the keys you chose. Settings > System Settings > Mouse Sensitivity
 sets how far the mouse turns the camera; the game's own camera settings
 apply to the mouse as they do to the stick. Escape pauses, so it no longer
-closes the game: Settings > Quit Game does, or Alt+F4 (Cmd+Q on a Mac).
+closes the game: Quit Game on the title menu does, Quit to Desktop on the
+Select menu, or Alt+F4 (Cmd+Q on a Mac).
 
 On the dragon in the sky, the mouse moves the aiming cursor (the red ring
 of the lock-on) and the cursor stays where you leave it; moving the mouse
