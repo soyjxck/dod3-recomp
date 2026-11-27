@@ -207,7 +207,14 @@ Each turns a change back off, to bisect a regression: `PPU_SLOW_STORES=1`
 buffer per cached mesh), `DOD3_RENDER_TICK_HZ=40` (the title's idle tick:
 movies on a 25 ms grid), `DOD3_LOAD_IDLE=0` (the loader only in its own
 5 ms of a frame; `DOD3_LOAD_IDLE_LOG=1` says what it did in the limiter's
-sleep), `RSX_SNAP_INCR=0` (full snapshot copies),
+sleep), `RSX_SNAP_INCR=0` (full snapshot copies; Direct3D 12's. The Vulkan
+engine makes whole copies unless its own switches are set to 1:
+`RSX_SNAPSHOT_ALPHA_REUSE`, `RSX_SNAPSHOT_DIRTY_RECTS`,
+`RSX_SNAPSHOT_BOUNDS_BOX`, `RSX_SNAPSHOT_READER_CULL`,
+`RSX_SNAPSHOT_SCOPED_BARRIERS`, `RSX_SNAPSHOT_IMAGE_BARRIERS`, described in
+`ps3recomp/libs/video/rsx_vulkan_engine.c`; Chapter 5's boss parts ask for
+200 to 560 copies a frame, and with the six "One" ran at 77 fps in place
+of 46 at 1280x720. `RSX_SNAPSHOT_STATS=1` counts the copies a frame),
 `SPU_TASK_POOL=0` (a thread per
 task), `SPURS_TASKSET_SERIAL=01AA7700` (PhysX one task at a time),
 `RSX_ASYNC_SHADERS=0` (build shaders on the walker), `RSX_QUERY_NOSYNC=1`,
