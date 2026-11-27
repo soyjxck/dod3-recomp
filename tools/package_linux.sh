@@ -62,6 +62,11 @@ done
 if grep -qa 'spu_ovl_mp3_1A900' "$out/dod3"; then
   echo "package_linux: this build holds the firmware's MP3 decoder; run tools/lift_spu.sh without DOD3_FW_MP3 and build again"; exit 1
 fi
+# ... nor libsre's queue routines, which a build made with -DDOD3_FW_LIBSRE=ON
+# holds beside the port's own to compare them; it says so in these words.
+if grep -qaF "holds libsre's own queue routines" "$out/dod3"; then
+  echo "package_linux: this build holds libsre's queue routines; configure with -DDOD3_FW_LIBSRE=OFF and build again"; exit 1
+fi
 
 tar -C dist -czf "dist/$name.tar.gz" "$name"
 ls -la "dist/$name.tar.gz"

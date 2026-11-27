@@ -242,13 +242,20 @@ if(PORT_ENABLE_SPU)
 endif()
 
 # ---------------------------------------------------------------------------
-# Parts of libsre (SPURS LFQueue push, SPURS queue), lifted at build time
+# libsre's own queue routines, to compare the port's with (off by default)
 # ---------------------------------------------------------------------------
-# src/kernel/spurs_lfqueue.cpp and src/kernel/spurs_queue.cpp drive Sony's own code out of
-# libsre.prx; tools/gen_libsre.py lifts it into the build tree. The result is
-# firmware-derived, so it is generated, never committed.
+# What the title needs of libsre on the PPU side -- the SPURS queue and the
+# LFQueue's push -- is written in src/kernel/spurs_queue.cpp and
+# src/kernel/spurs_lfqueue.cpp, and a build needs no firmware file. With
+# DOD3_FW_LIBSRE=ON it also holds libsre's own routines, which
+# tools/gen_libsre.py lifts from a decrypted libsre.prx into the build tree,
+# and src/kernel/sre_check.cpp, which runs the two side by side
+# (DOD3_LIBSRE_CHECK=1) or the title on libsre's (DOD3_LIBSRE=fw). Such a
+# build holds firmware code: the lift is generated, never committed, and the
+# packaging scripts refuse the executable.
+option(DOD3_FW_LIBSRE "Also build libsre's own queue routines, lifted from LIBSRE_PRX, to compare the port's with" OFF)
 set(LIBSRE_PRX "${PS3RECOMP_DIR}/fw_spu/libsre.prx" CACHE FILEPATH
-    "Decrypted libsre.prx the SPURS queue paths are lifted from")
+    "Decrypted libsre.prx, for DOD3_FW_LIBSRE")
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python")
     set(DOD3_PYTHON "${CMAKE_CURRENT_SOURCE_DIR}/.venv/bin/python")
 elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.venv/Scripts/python.exe")   # a Windows venv
@@ -257,18 +264,31 @@ else()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     set(DOD3_PYTHON "${Python3_EXECUTABLE}")
 endif()
-set(LIBSRE_LIFTED_CPP "${CMAKE_CURRENT_BINARY_DIR}/gen/libsre_lifted.cpp")
-add_custom_command(
-    OUTPUT "${LIBSRE_LIFTED_CPP}"
-    COMMAND "${DOD3_PYTHON}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_libsre.py"
-            "${PS3RECOMP_DIR}" "${LIBSRE_PRX}"
-            "${CMAKE_CURRENT_BINARY_DIR}/libsre" "${LIBSRE_LIFTED_CPP}"
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_libsre.py"
-            "${LIBSRE_PRX}"
-            "${PS3RECOMP_DIR}/tools/ppu_lifter.py"
-            "${PS3RECOMP_DIR}/tools/lift_prx.py"
-    COMMENT "Lifting libsre's SPURS queue paths")
-set_source_files_properties("${LIBSRE_LIFTED_CPP}" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off")
+set(LIBSRE_LIFTED_CPP "")
+set(LIBSRE_SOURCES "")
+if(DOD3_FW_LIBSRE)
+    if(NOT EXISTS "${LIBSRE_PRX}")
+        message(FATAL_ERROR "DOD3_FW_LIBSRE needs a decrypted libsre.prx: ${LIBSRE_PRX} is not there (LIBSRE_PRX)")
+    endif()
+    set(LIBSRE_LIFTED_CPP "${CMAKE_CURRENT_BINARY_DIR}/gen/libsre_lifted.cpp")
+    add_custom_command(
+        OUTPUT "${LIBSRE_LIFTED_CPP}"
+        COMMAND "${DOD3_PYTHON}" "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_libsre.py"
+                "${PS3RECOMP_DIR}" "${LIBSRE_PRX}"
+                "${CMAKE_CURRENT_BINARY_DIR}/libsre" "${LIBSRE_LIFTED_CPP}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/gen_libsre.py"
+                "${LIBSRE_PRX}"
+                "${PS3RECOMP_DIR}/tools/ppu_lifter.py"
+                "${PS3RECOMP_DIR}/tools/lift_prx.py"
+        COMMENT "Lifting libsre's queue routines (DOD3_FW_LIBSRE)")
+    set_source_files_properties("${LIBSRE_LIFTED_CPP}" PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off")
+    set(LIBSRE_SOURCES "${LIBSRE_LIFTED_CPP}" "${CMAKE_CURRENT_SOURCE_DIR}/src/kernel/sre_check.cpp")
+    set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/kernel/sre_check.cpp"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/src/kernel/spurs_queue.cpp"
+                        "${CMAKE_CURRENT_SOURCE_DIR}/src/kernel/spurs_lfqueue.cpp"
+                 APPEND PROPERTY COMPILE_DEFINITIONS DOD3_FW_LIBSRE)
+    message(STATUS "libsre:          its own queue routines are built in too (DOD3_FW_LIBSRE) -- not a build to release")
+endif()
 
 if(WIN32)
     list(APPEND PORT_PLATFORM_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/os/win32/prof.cpp"
@@ -452,7 +472,7 @@ add_executable(${PROJECT_NAME}
     ${PORT_SOURCES}
     ${PORT_PLATFORM_SOURCES}
     ${SETUP_SOURCES}
-    ${LIBSRE_LIFTED_CPP}
+    ${LIBSRE_SOURCES}
     ${PS3RECOMP_SCAFFOLD}
     ${HLE_NID_TABLE}
     ${RECOMP_SOURCES}
@@ -502,7 +522,7 @@ if(WIN32 AND DOD3_SYMBOLS)
     set_source_files_properties(${PORT_SOURCES} ${PORT_PLATFORM_SOURCES} ${PS3RECOMP_SCAFFOLD} ${HLE_NID_TABLE}
         PROPERTIES COMPILE_OPTIONS "/Z7")
     # These already carry options (set above); append rather than replace.
-    set_property(SOURCE ${SPU_SOURCES} "${LIBSRE_LIFTED_CPP}" ${SETUP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "/Z7")
+    set_property(SOURCE ${SPU_SOURCES} ${LIBSRE_SOURCES} ${SETUP_SOURCES} APPEND PROPERTY COMPILE_OPTIONS "/Z7")
     target_link_options(${PROJECT_NAME} PRIVATE /DEBUG /OPT:REF /OPT:ICF)
 endif()
 
@@ -797,7 +817,7 @@ endif()
 # memory model, which a header from an older lift does not have.
 option(DOD3_INLINE_VM "Inline the guest-memory fast path into the lifted code" ON)
 if(DOD3_INLINE_VM)
-    set_property(SOURCE ${RECOMP_SOURCES} "${LIBSRE_LIFTED_CPP}" APPEND PROPERTY COMPILE_DEFINITIONS PPU_INLINE_VM)
+    set_property(SOURCE ${RECOMP_SOURCES} ${LIBSRE_LIFTED_CPP} APPEND PROPERTY COMPILE_DEFINITIONS PPU_INLINE_VM)
 endif()
 set_property(SOURCE ${RECOMP_SOURCES} APPEND PROPERTY INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/runtime/ppu")
 

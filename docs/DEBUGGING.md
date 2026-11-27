@@ -299,6 +299,13 @@ runtime's function from then on.
   of: the distance, the radius, the share and the frame's factor;
   `DOD3_CAMERA_PUSH=0`: the push as the title has it, the same share every
   frame (twice as fast at 60 fps as at the console's 30).
+- In a build made with `-DDOD3_FW_LIBSRE=ON` (it holds the console's own
+  SPURS queue routines beside the port's; [BUILDING.md](BUILDING.md)):
+  `DOD3_LIBSRE_CHECK=1` runs each routine 200,000 times on made-up queues
+  when the title makes its first queue, once as the console has it and once
+  as the port does, and prints a line a routine and the first differences
+  (`=<n>`: n times); `DOD3_LIBSRE=fw` has the title's own calls go to the
+  console's routines.
 - `DOD3_MENU_LANGUAGE=es|fr|en`: the Settings pages in Spanish, French or
   English whatever is installed or set. `PS3_LANG=<code>`: the console
   language the title is told, over `DOD3_LANGUAGE` (the data has `en` and

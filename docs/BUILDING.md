@@ -70,14 +70,14 @@ Any other decrypted copy of the update's EBOOT.BIN with that hash works too
 package installed in RPCS3, then `rpcs3 --decrypt
 <dev_hdd0>/game/BLUS31197/USRDIR/EBOOT.BIN`, saved as `elf/EBOOT_101.ELF`.
 
-The build also lifts part of the console's SPURS library (the queue paths,
-`tools/gen_libsre.py`), so it needs a decrypted `libsre.prx` at
-`ps3recomp/fw_spu/libsre.prx` (git-ignored; `LIBSRE_PRX` points elsewhere).
-It is the firmware's `dev_flash/sys/external/libsre.sprx`, decrypted: with
-the firmware installed in RPCS3 (*File > Install Firmware*, the PS3UPDAT.PUP
-from PlayStation's site), `rpcs3 --decrypt
-<rpcs3>/dev_flash/sys/external/libsre.sprx` writes `libsre.prx` beside it.
-Firmware 4.91 is known to work.
+The build needs nothing of the console's firmware. (Up to 0.6.0 it lifted
+the queue routines of the console's SPURS library from a decrypted
+`libsre.prx`; they are written out in `src/kernel` since. A build can still
+hold the firmware's beside them, to compare the two: `-DDOD3_FW_LIBSRE=ON`
+with `libsre.prx` at `ps3recomp/fw_spu/libsre.prx` or where `LIBSRE_PRX`
+points -- the firmware's `dev_flash/sys/external/libsre.sprx`, which `rpcs3
+--decrypt` turns into it; see [DEBUGGING.md](DEBUGGING.md). Such a build is
+not one to release, and the packaging scripts refuse it.)
 
 ## Lifting the PPU code
 
@@ -173,7 +173,8 @@ CMake options:
 | `DOD3_INLINE_VM` | ON | inline the guest-memory fast path into the lifted code |
 | `DOD3_SYMBOLS` | ON | Windows: `/Z7` on the port's and the runtime's sources, `/DEBUG` at link, for the profiler and the crash handler |
 | `DOD3_CONSOLE` | OFF | Windows: link as a console program |
-| `LIBSRE_PRX` | the submodule's | the module the SPURS queue paths are lifted from at build time (`tools/gen_libsre.py`) |
+| `DOD3_FW_LIBSRE` | OFF | also build the console's own SPURS queue routines, lifted from `LIBSRE_PRX` (`tools/gen_libsre.py`), to compare the port's with (`DOD3_LIBSRE_CHECK=1`). Holds firmware code: not for a release |
+| `LIBSRE_PRX` | the submodule's | the decrypted `libsre.prx` for `DOD3_FW_LIBSRE` |
 | `DOD3_PGO` | empty | profile-guided optimisation of the lifted code alone, in a build folder of its own: `generate` instruments it (the game then writes the profile named by `LLVM_PROFILE_FILE` every 30 s and on exit), `use:<profdata>` compiles it on a merged profile (`llvm-profdata merge -o lifted.profdata *.profraw`) |
 
 The replay tool (`rsx_replay`, for the rendering regression) is not part of

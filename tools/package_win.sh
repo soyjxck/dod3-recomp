@@ -58,6 +58,11 @@ done
 if grep -qa 'spu_ovl_mp3_1A900' "$out/dod3.exe"; then
   echo "package_win: this build holds the firmware's MP3 decoder; run tools/lift_spu.sh without DOD3_FW_MP3 and build again"; exit 1
 fi
+# ... nor libsre's queue routines, which a build made with -DDOD3_FW_LIBSRE=ON
+# holds beside the port's own to compare them; it says so in these words.
+if grep -qaF "holds libsre's own queue routines" "$out/dod3.exe"; then
+  echo "package_win: this build holds libsre's queue routines; configure with -DDOD3_FW_LIBSRE=OFF and build again"; exit 1
+fi
 
 powershell -NoProfile -Command "Compress-Archive -Path '$out' -DestinationPath 'dist/$name.zip' -CompressionLevel Optimal"
 ls -la "dist/$name.zip"

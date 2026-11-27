@@ -51,11 +51,12 @@ code is not there, though, and what stands in for it works as the high-level
 side of an emulator does:
 
 - **The system.** The PS3's libraries and kernel calls (threads, files,
-  SPURS, sound, pads, trophies) are ps3recomp's own implementations. A few
-  SPURS queue routines are the firmware's own code instead, translated like
-  the game's when the port is built. (The Windows releases up to 0.6.0 also
-  held the firmware's MP3 decoder, translated, for a mode that compares it
-  with the port's own. Later releases do not.)
+  SPURS, sound, pads, trophies) are ps3recomp's own implementations and the
+  port's. None of the firmware's code is in a build, or needed to make one.
+  (The releases up to 0.6.0 held a few SPURS queue routines of the
+  firmware's, translated like the game's code, and the Windows ones its MP3
+  decoder too, for a mode that compares it with the port's own. Later
+  releases hold neither.)
 - **The graphics.** The game still writes command lists for the PS3's
   graphics chip, the RSX. They are read every frame and drawn with
   Direct3D 12, Metal or Vulkan, and the game's shader programs are
@@ -174,9 +175,7 @@ the game's executable, so you need your own copy of the game first.
    from Homebrew, `cmake ninja python zlib sdl2 glslang spirv-cross`.
    Linux: Clang, CMake, Ninja, Python and the SDL2, zlib, Vulkan and glslang
    development files (Ubuntu 24.04 package names, and the Steam Deck's
-   distrobox, in [docs/BUILDING.md](docs/BUILDING.md#prerequisites)). All
-   three also need a decrypted `libsre.prx` from the PS3 firmware
-   ([docs/BUILDING.md](docs/BUILDING.md#the-games-files)).
+   distrobox, in [docs/BUILDING.md](docs/BUILDING.md#prerequisites)).
 
 2. **The sources.**
 

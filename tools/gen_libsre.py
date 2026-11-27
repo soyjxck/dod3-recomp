@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """gen_libsre.py -- lift parts of the real libsre (cellSpurs/cellSync) into a C++ TU.
 
-Some SPURS primitives are shared with lifted SPU code, which reads and writes
-them straight out of guest memory with lock-line atomics, so the PPU side has
-to speak Sony's protocol exactly. Where the toolkit's HLE does not -- or has no
-implementation at all -- this lifts Sony's own code out of libsre.prx instead
-of guessing at a hand port:
+For a comparison build only (cmake -DDOD3_FW_LIBSRE=ON). Some SPURS
+primitives are shared with lifted SPU code, which reads and writes them
+straight out of guest memory with lock-line atomics, so the PPU side has to
+speak Sony's protocol exactly. The port has them written out
+(src/kernel/spurs_queue.cpp, src/kernel/spurs_lfqueue.cpp); this lifts Sony's
+own out of libsre.prx so that src/kernel/sre_check.cpp can run the two side
+by side:
 
   SPURS LFQueue push (Drakengard 3's zlib task; ANY2ANY, which RPCS3 leaves TODO)
     0x010024F4  _cellSyncLFQueueGetPushPointer
