@@ -45,15 +45,37 @@ BLUS31197) for Windows, macOS and Linux, made by static recompilation of the gam
 code on the [ps3recomp](https://github.com/sp00nznet/ps3recomp) toolkit.
 
 The game's PowerPC and SPU code is translated to C++ ahead of time and built
-into a normal executable, with the PS3's system libraries replaced by native
-implementations and the RSX graphics by Direct3D 12, Metal or Vulkan. There
-is no emulation at run time.
+into a normal executable. No PS3 emulator and no firmware is needed to play,
+and the game's code is not recompiled as it runs. The console around that
+code is not there, though, and what stands in for it works as the high-level
+side of an emulator does:
+
+- **The system.** The PS3's libraries and kernel calls (threads, files,
+  SPURS, sound, pads, trophies) are ps3recomp's own implementations. A few
+  SPURS queue routines are the firmware's own code instead, translated like
+  the game's when the port is built; so is the firmware's MP3 decoder, which
+  a build keeps beside the port's own for comparing the two.
+- **The graphics.** The game still writes command lists for the PS3's
+  graphics chip, the RSX. They are read every frame and drawn with
+  Direct3D 12, Metal or Vulkan, and the game's shader programs are
+  translated and compiled when they are first met (the Windows release
+  brings them compiled).
+- **A little SPU code is interpreted.** Code that has no translation goes
+  through a small interpreter in the runtime. In this game that has been
+  one stretch of 53 instructions in one of its 40 SPU programs, about
+  fifteen times a second.
+
+[docs/TECHNICAL.md](docs/TECHNICAL.md) has how each part works.
 
 ![The start of the game, running natively on Windows](docs/images/opening.jpg)
 
-**Nothing of the game is in this repository.** You need your own copy of
-Drakengard 3: the US disc and the game's 1.01 update, plus whatever DLC you
-own. The installer takes them from there.
+**None of the game's data is in this repository or in a release:** no
+textures, models, sound, text or movies. You need your own copy of
+Drakengard 3: the US disc or the US PSN release, the game's 1.01 update, and
+whatever DLC you own. The installer takes them from there. What a release
+does carry of the game is its program code, as the translation described
+above, and its shaders, translated and compiled (`shaders/dxbc`, which is in
+the repository too).
 
 If this helped you, consider [buying me a coffee](https://ko-fi.com/soyjack)
 
@@ -98,7 +120,8 @@ Windows:
    order, then Install. The game's files are copied into the `game` folder
    next to `dod3.exe` (a few minutes).
 4. Play. From then on `dod3.exe` opens the launcher: Play, and the game's
-   mods, DLC and settings.
+   mods, DLC, settings and trophies. The launcher also offers a newer
+   release when there is one.
 
 macOS:
 
@@ -128,7 +151,8 @@ Linux (x86-64; the Steam Deck included), experimental:
    happened if it does not start.
 
 Settings (resolution, display mode, frame-rate cap, anti-aliasing, field of
-view, draw distance, skipping the intro, the keyboard's keys) are in the
+view, draw distance, the language (English or the game's own French text),
+skipping the intro, the keyboard's keys) are in the
 launcher's Settings, in the game's own Settings menu (Graphics Settings,
 System Settings, Advanced Graphics and Picture Settings), or in `dod3.ini`.
 [docs/PLAYING.md](docs/PLAYING.md) has the controls, the saves, the Japanese
@@ -239,8 +263,10 @@ distance for scenery and for trees, HDR (Windows and macOS: the light the
 game clips at white goes up to your display's peak), a depth of field and
 bloom drawn smoothly at high resolutions, depth of field and the blood on
 the screen each on or off, skipping the intro logos and movie, pausing or
-muting when the window is in the background, keyboard and mouse, trophies
-(a pop-up as you earn one, and their list in the launcher), cheats, and the
+muting when the window is in the background, keyboard and mouse,
+third-party pads through the community's mapping list,
+quitting to the desktop from the game's menu, trophies (their list in the
+launcher and, on Windows, a pop-up as you earn one), cheats, and the
 button prompts of the pad you hold -- set in the launcher, or in a Graphics
 Settings, a System Settings, an Advanced Graphics and a Picture Settings
 page added to the game's own Settings menu. The launcher also installs your
@@ -248,8 +274,11 @@ DLC and mods (the Spanish translation, with the added pages in Spanish,
 the DLC Undub, and any other mod package for the US release), and on
 Windows updates the port from its releases.
 
-Known issues: the game has been tested on few machines, and at 16:10, 21:9
-and 32:9 some of the HUD is still out of place.
+Known issues: the game has been tested on few machines; at 16:10, 21:9
+and 32:9 some of the HUD is still out of place; and above 60 fps two of the
+game's timings still follow the frame rate (how fast text types itself out,
+and a jump that meets a ceiling), with nothing tested above 120 fps. Each
+release's notes list the rest.
 
 ## How it fits together
 
@@ -267,13 +296,16 @@ DLC and settings, and runs it.
 ## Legal
 
 This project is not affiliated with or endorsed by Square Enix, Access Games
-or Sony Interactive Entertainment. Drakengard 3 and all of its assets belong
-to their owners; none are included, and the port only runs from a copy of the
-game you own.
+or Sony Interactive Entertainment. Drakengard 3, its code and all of its
+assets belong to their owners. None of its assets are included, and the port
+only runs from a copy of the game you own; a release's executable is a
+translation of the game's own program code.
 
 The code in this repository is under the [MIT License](LICENSE). It builds on
-ps3recomp (MIT) and includes Dear ImGui (MIT) and the Inter typeface (SIL
-Open Font License 1.1); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+ps3recomp (MIT) and includes Dear ImGui (MIT), the Inter typeface (SIL
+Open Font License 1.1) and SDL_GameControllerDB's controller mappings (zlib
+licence); [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) lists these and
+the rest.
 
 ## Credits
 
@@ -281,12 +313,18 @@ Open Font License 1.1); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
   recompiler, the runtime and the PS3 library implementations. This port's
   changes to it are in the [soyjxck/ps3recomp](https://github.com/soyjxck/ps3recomp)
   fork, the `ps3recomp/` submodule.
-- [RPCS3](https://rpcs3.net): the reference for much of the PS3's behaviour,
-  and the source of two techniques used here (write-watched texture memory,
-  a guest clock that stops while the game is paused).
+- [RPCS3](https://rpcs3.net): the reference for much of the PS3's behaviour
+  (the trophy library's among it), the source of two techniques used here
+  (write-watched texture memory, a guest clock that stops while the game is
+  paused), and the home of the game patches this port's fixes above 60 fps
+  and its Final Song Auto-Play follow (the latter by bucanero).
 - [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) and
   [Unleashed Recompiled](https://github.com/hedge-dev/UnleashedRecomp): the
   model for a recompiled port, and for its installer.
+- King Kong Recompiled: the approach of the launcher's updater.
+- Luma's Unreal Engine 3 ports: the way the HDR picture is graded.
+- [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB):
+  the community's controller mappings.
 - [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut: the
   setup's and the launcher's user interface.
 - [Inter](https://github.com/rsms/inter) by Rasmus Andersson: their
