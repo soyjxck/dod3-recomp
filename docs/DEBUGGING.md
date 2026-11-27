@@ -289,6 +289,16 @@ runtime's function from then on.
   down, what was taken off it and in how many frames;
   `DOD3_GAUGE_DRAIN=0`: the drain as the title has it, each frame's share
   cut to a whole number (slower above 30 fps, none above 150).
+- `DOD3_TEXT_REVEAL_LOG=1`: each text that is uncovered a letter at a time
+  (a talk window's line, a result message, a quest's outline in the book),
+  once its last letter is full: its letters, the step, the time and the
+  calls it took; `DOD3_TEXT_REVEAL=0`: the wave as the title has it, a step
+  a frame (twice the console's speed at 60 fps, four times at 120).
+- `DOD3_CAMERA_PUSH_LOG=1`: at most ten times a second, the frames in which
+  the player's pawn is inside the radius its boxed-in camera pushes it out
+  of: the distance, the radius, the share and the frame's factor;
+  `DOD3_CAMERA_PUSH=0`: the push as the title has it, the same share every
+  frame (twice as fast at 60 fps as at the console's 30).
 - `DOD3_MENU_LANGUAGE=es|fr|en`: the Settings pages in Spanish, French or
   English whatever is installed or set. `PS3_LANG=<code>`: the console
   language the title is told, over `DOD3_LANGUAGE` (the data has `en` and

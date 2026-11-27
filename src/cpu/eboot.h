@@ -67,6 +67,8 @@
 #define DOD3_FN_MODE_UPDATE            func_00986C40 /* a pawn's mode update: the Intoner gauge's drain (patches/gauge_drain.cpp) */
 #define DOD3_FN_PAWN_RATE              func_00959B28 /* one of a pawn's rates (r4) */
 #define DOD3_FN_GAUGE_CHANGE           func_0095BA40 /* a pawn's gauge (r4) changed by f1 */
+#define DOD3_FN_PAWN_FRAME_MOVE        func_00955740 /* a pawn's frame move, with the push away from its camera (patches/camera_push.cpp) */
+#define DOD3_FN_TEXT_REVEAL            func_009FCB78 /* a text's letters uncovered, one call a frame (patches/text_reveal.cpp) */
 #define DOD3_FN_SHOOTING_CURSOR_ON     func_0096B9A8 /* ASqex03GamePawn::IsEnableShootingCursor */
 #define DOD3_FN_UBER_CREATE_PROXY      func_00306728 /* UUberPostProcessEffect::CreateSceneProxy (patches/sysset.cpp) */
 #define DOD3_FN_DOFBLOOM_CREATE_PROXY  func_001B1B64 /* UDOFAndBloomEffect::CreateSceneProxy */
@@ -125,6 +127,8 @@
 #define DOD3_A_MODE_UPDATE            0x00986C40u
 #define DOD3_A_PAWN_RATE              0x00959B28u
 #define DOD3_A_GAUGE_CHANGE           0x0095BA40u
+#define DOD3_A_PAWN_FRAME_MOVE        0x00955740u
+#define DOD3_A_TEXT_REVEAL            0x009FCB78u
 #define DOD3_A_PLAYER_CONTROLLER_VTABLE 0x0173ADA0u /* the player's controller (patches/cheats.cpp) */
 #define DOD3_O_PAWN_CONTROLLER        0x1E8u /* APawn::Controller */
 #define DOD3_O_CONTROLLER_PAWN        0x1CCu /* AController::Pawn */

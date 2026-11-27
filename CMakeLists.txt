@@ -421,6 +421,8 @@ set(PORT_PATCH_SOURCES               # native replacements of the game's own cod
     src/patches/pawn_step.cpp        # gravity in a part step, weighted as its move is (jumps above 60 fps)
     src/patches/projectile_expiry.cpp # a projectile past its range ends above 100 fps too (the dragon's volley)
     src/patches/gauge_drain.cpp      # the Intoner gauge runs down at the same speed at any frame rate
+    src/patches/camera_push.cpp      # the push away from a boxed-in camera, the same at any frame rate
+    src/patches/text_reveal.cpp      # text uncovered a letter at a time, at the same speed at any frame rate
     src/patches/sysset.cpp)
 set(PORT_UI_SOURCES                  # the in-game settings pages
     src/ui/settings_menu.cpp
