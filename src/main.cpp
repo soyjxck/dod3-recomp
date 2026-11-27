@@ -2234,6 +2234,17 @@ int main(int argc, char** argv)
      * Here image 22 is a PhysX task; it never returned and the serialised
      * taskset stalled behind it a few seconds into the first level. */
     dod3_setenv("SPU_CRI_IMAGE", "-1", 0);
+    /* The modes that run a stretch of lifted SPU code up to an address
+     * (cpu/spu_check.h: the native paths' checks, Sony's MP3 decoder) step it
+     * through the trampoline. A lifted branch that calls its target directly
+     * never comes back to that loop and runs on past the address, so these
+     * modes keep the runtime's direct tail calls off. */
+    {
+        const char* n = getenv("DOD3_MP3_NATIVE");
+        if (getenv("DOD3_SPU_NATIVE_CHECK") || getenv("DOD3_MP3_CHECK") || getenv("DOD3_MP3_TRACE") ||
+            getenv("DOD3_MP3_DUMP") || (n && n[0] == '0'))
+            dod3_setenv("PS3_SPU_DIRECT", "0", 0);
+    }
     /* Drakengard 3's libgcm keeps NV0039 (memory-to-memory copy) on
      * subchannel 1: cellGcmSetTransferReportData is how its occlusion
      * queries come back. The runtime's default routes subchannel 1 to the 3D
