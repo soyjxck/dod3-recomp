@@ -1,5 +1,6 @@
 /* The look the launcher and the installer share (ui/look.h). */
 #include "ui/look.h"
+#include "lang.h"
 #include "util.h"
 #include "launcher_fonts.h"   /* generated: kFont_* */
 
@@ -39,11 +40,25 @@ float ease_out(float t)
 std::string size_text(uint64_t bytes)
 {
     char s[32];
-    if (bytes >= (1ull << 30))
-        snprintf(s, sizeof s, "%.1f GB", bytes / 1073741824.0);
-    else
-        snprintf(s, sizeof s, "%.0f MB", bytes / 1048576.0);
-    return s;
+    if (bytes >= (1ull << 30)) {
+        snprintf(s, sizeof s, "%.1f", bytes / 1073741824.0);
+        return dod3::trf("{1} GB", s);
+    }
+    snprintf(s, sizeof s, "%.0f", bytes / 1048576.0);
+    return dod3::trf("{1} MB", s);
+}
+
+std::string fit_line(ImFont* f, float size, const std::string& t, float w)
+{
+    if (f->CalcTextSizeA(size, FLT_MAX, 0, t.c_str()).x <= w) return t;
+    std::string s = t;
+    while (!s.empty() && f->CalcTextSizeA(size, FLT_MAX, 0, (s + "\xE2\x80\xA6").c_str()).x > w) {
+        /* a whole UTF-8 character: its later bytes, then its first */
+        while (!s.empty() && ((unsigned char)s.back() & 0xC0) == 0x80) s.pop_back();
+        if (!s.empty()) s.pop_back();
+    }
+    while (!s.empty() && s.back() == ' ') s.pop_back();
+    return s + "\xE2\x80\xA6";
 }
 
 ImU32 grade_colour(char grade)
@@ -469,20 +484,21 @@ void Kit::progress(float f)
 
 void Kit::install_progress(const std::string& what, uint64_t done, uint64_t total, const std::string& more)
 {
-    label(F.semibold, 19, kText, what.empty() ? "Starting..." : what.c_str());
+    label(F.semibold, 19, kText, what.empty() ? dod3::tr("Starting...") : what.c_str());
     ImGui::Dummy(ImVec2(0, px(14)));
     progress(total ? (float)((double)done / (double)total) : 0.0f);
     ImGui::Dummy(ImVec2(0, px(8)));
-    if (!what.empty()) para(F.regular, 13, kDim, (size_text(done) + " of " + size_text(total) + more).c_str());
+    if (!what.empty())
+        para(F.regular, 13, kDim, (dod3::trf("{1} of {2}", size_text(done), size_text(total)) + more).c_str());
 }
 
 void Kit::checking(size_t files)
 {
     if (!files) return;
     static const char* const dots[] = { "", ".", "..", "..." };
-    char t[64];
-    snprintf(t, sizeof t, "Checking %zu file%s%s", files, files == 1 ? "" : "s", dots[(int)(now * 3) % 4]);
-    para(F.regular, 14, kDim, t);
+    const std::string t =
+        dod3::trnf(files, "Checking {1} file", "Checking {1} files", files) + dots[(int)(now * 3) % 4];
+    para(F.regular, 14, kDim, t.c_str());
 }
 
 bool Kit::confirm_pressed()

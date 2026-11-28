@@ -4,6 +4,7 @@
 #endif
 #include "ui/trophies.h"
 
+#include "lang.h"          /* tr: the text in the player's language */
 #include "util.h"          /* utf8 */
 #include "trophy_pack.h"   /* ps3recomp: the disc's trophy list, the unlocks' file */
 
@@ -23,6 +24,8 @@ bool png_rgba(const std::vector<uint8_t>& file, std::vector<uint8_t>* rgba, int*
 
 namespace fs = std::filesystem;
 using namespace look;
+using dod3::tr;
+using dod3::trf;
 
 namespace {
 
@@ -36,7 +39,7 @@ const char kSep[] = " \xC2\xB7 ";
 
 std::string date_text(uint64_t at)
 {
-    if (!at) return "Earned";
+    if (!at) return tr("Earned");
     const time_t t = (time_t)at;
     struct tm tmv;
 #ifdef _WIN32
@@ -44,22 +47,23 @@ std::string date_text(uint64_t at)
 #else
     localtime_r(&t, &tmv);
 #endif
-    char s[32];
-    strftime(s, sizeof s, "%d %b %Y", &tmv);
-    return s[0] == '0' ? s + 1 : s;   /* "4 Oct 2026" */
+    static const char* const kMonths[12] = { TR_NOOP("Jan"), TR_NOOP("Feb"), TR_NOOP("Mar"), TR_NOOP("Apr"),
+                                             TR_NOOP("May"), TR_NOOP("Jun"), TR_NOOP("Jul"), TR_NOOP("Aug"),
+                                             TR_NOOP("Sep"), TR_NOOP("Oct"), TR_NOOP("Nov"), TR_NOOP("Dec") };
+    /* TRANSLATORS: a date: {1} the day, {2} the month's short name, {3} the year ("4 Oct 2026") */
+    return trf("{1} {2} {3}", tmv.tm_mday, tr(kMonths[tmv.tm_mon % 12]), tmv.tm_year + 1900);
 }
 
-/* `t` on one line of `w` pixels, an ellipsis where it is cut */
-std::string fit_line(ImFont* f, float size, const std::string& t, float w)
+/* a trophy's grade, in the player's language (trophy_grade_name's words) */
+const char* grade_name(char grade)
 {
-    if (f->CalcTextSizeA(size, FLT_MAX, 0, t.c_str()).x <= w) return t;
-    std::string s = t;
-    while (!s.empty() && f->CalcTextSizeA(size, FLT_MAX, 0, (s + "\xE2\x80\xA6").c_str()).x > w) {
-        s.pop_back();
-        while (!s.empty() && ((unsigned char)s.back() & 0xC0) == 0x80) s.pop_back();   /* whole UTF-8 characters */
+    switch (grade) {
+    case 'P': return tr("Platinum");
+    case 'G': return tr("Gold");
+    case 'S': return tr("Silver");
+    case 'B': return tr("Bronze");
+    default: return tr("Trophy");
     }
-    while (!s.empty() && s.back() == ' ') s.pop_back();
-    return s + "\xE2\x80\xA6";
 }
 
 }  // namespace
@@ -146,11 +150,9 @@ void TrophiesPanel::start(const fs::path& base)
 std::string TrophiesPanel::summary() const
 {
     if (!st->loaded) return "";
-    if (!st->pack) return "No trophy list in this install";
+    if (!st->pack) return tr("No trophy list in this install");
     const int got = st->earned(), all = st->pack->count;
-    char t[96];
-    snprintf(t, sizeof t, "%d of %d earned%s%d%%", got, all, kSep, all ? (got * 100 + all / 2) / all : 0);
-    return t;
+    return trf("{1} of {2} earned", got, all) + kSep + std::to_string(all ? (got * 100 + all / 2) / all : 0) + "%";
 }
 
 bool TrophiesPanel::typing() const { return ImGui::GetIO().WantTextInput; }
@@ -223,14 +225,15 @@ void trophy_row(Kit& k, TrophiesState& s, int id)
     const float rw = k.px(128), rx = p.x + w - rw - k.px(12);
     const ImU32 gc = got ? grade_colour(t.grade) : alpha(grade_colour(t.grade), 0.5f);
     trophy_cup(dl, ImVec2(rx + k.px(7), p.y + k.px(22)), k.px(13), gc);
-    dl->AddText(k.F.semibold, k.px(12.5f), ImVec2(rx + k.px(19), p.y + k.px(14)), gc, trophy_grade_name(t.grade));
-    const std::string when = got ? date_text(s.u.at[id]) : "Not earned";
+    dl->AddText(k.F.semibold, k.px(12.5f), ImVec2(rx + k.px(19), p.y + k.px(14)), gc, grade_name(t.grade));
+    const std::string when = got ? date_text(s.u.at[id]) : tr("Not earned");
     dl->AddText(k.F.regular, k.px(12.5f), ImVec2(rx + k.px(1), p.y + k.px(36)), got ? kDim : kFaint, when.c_str());
 
     /* the name and what it is for */
     const float tx = i1.x + k.px(14), tw = rx - tx - k.px(12);
-    const std::string name = fit_line(k.F.semibold, k.px(15.5f), secret ? "Hidden Trophy" : t.name, tw);
-    const std::string detail = fit_line(k.F.regular, k.px(13), secret ? "Earn it to see what it is." : t.detail, tw);
+    const std::string name = fit_line(k.F.semibold, k.px(15.5f), secret ? tr("Hidden Trophy") : t.name, tw);
+    const std::string detail =
+        fit_line(k.F.regular, k.px(13), secret ? tr("Earn it to see what it is.") : t.detail, tw);
     dl->AddText(k.F.semibold, k.px(15.5f), ImVec2(tx, p.y + k.px(15)), got ? kText : alpha(kText, 0.72f), name.c_str());
     dl->AddText(k.F.regular, k.px(13), ImVec2(tx, p.y + k.px(37)), got ? kDim : alpha(kDim, 0.75f), detail.c_str());
     ImGui::Dummy(ImVec2(0, k.px(4)));
@@ -252,15 +255,15 @@ void TrophiesPanel::draw(Kit& k, ImVec2 body, ImVec2 size, bool focus)
     }
     ImGui::BeginChild("##trophies", size, ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground);
     if (!s.loaded) {
-        k.para(k.F.regular, 14, kDim, "Reading the trophy list...");
+        k.para(k.F.regular, 14, kDim, tr("Reading the trophy list..."));
         ImGui::EndChild();
         return;
     }
     if (!s.pack) {
-        k.label(k.F.semibold, 19, kText, "No trophy list");
+        k.label(k.F.semibold, 19, kText, tr("No trophy list"));
         ImGui::Dummy(ImVec2(0, k.px(6)));
         k.para(k.F.regular, 14, kDim,
-               "This install has no PS3_GAME/TROPDIR. Game Files, at the bottom, installs the disc again with it.");
+               tr("This install has no PS3_GAME/TROPDIR. Game Files, at the bottom, installs the disc again with it."));
         ImGui::EndChild();
         return;
     }
@@ -269,13 +272,13 @@ void TrophiesPanel::draw(Kit& k, ImVec2 body, ImVec2 size, bool focus)
     /* how far along: the percentage, the count, the bar, the grades */
     const int got = s.earned(), all = s.pack->count;
     const int pct = all ? (got * 100 + all / 2) / all : 0;
-    char big[16], line[96];
+    char big[16];
     snprintf(big, sizeof big, "%d%%", pct);
-    snprintf(line, sizeof line, "%d of %d trophies earned", got, all);
+    const std::string line = trf("{1} of {2} trophies earned", got, all);
     const ImVec2 p = ImGui::GetCursorScreenPos();
     dl->AddText(k.F.display, k.px(38), p, kText, big);
     const float bx = p.x + k.text_size(k.F.display, 38, big).x + k.px(16);
-    dl->AddText(k.F.semibold, k.px(15), ImVec2(bx, p.y + k.px(6)), kText, line);
+    dl->AddText(k.F.semibold, k.px(15), ImVec2(bx, p.y + k.px(6)), kText, line.c_str());
     dl->AddText(k.F.regular, k.px(13), ImVec2(bx, p.y + k.px(26)), kDim, s.pack->title);
     ImGui::Dummy(ImVec2(0, k.px(50)));
     k.progress(all ? (float)got / (float)all : 0.0f);
@@ -284,14 +287,15 @@ void TrophiesPanel::draw(Kit& k, ImVec2 body, ImVec2 size, bool focus)
     ImGui::Dummy(ImVec2(0, k.px(4)));
 
     /* All / Earned / Not Earned, and Show Hidden */
-    static const char* const kFilters[3] = { "All", "Earned", "Not Earned" };
+    static const char* const kFilters[3] = { TR_NOOP("All"), TR_NOOP("Earned"), TR_NOOP("Not Earned") };
     if (ImGui::IsKeyPressed(ImGuiKey_GamepadL1)) s.filter = (s.filter + 2) % 3;
     if (ImGui::IsKeyPressed(ImGuiKey_GamepadR1)) s.filter = (s.filter + 1) % 3;
     const float x0 = ImGui::GetCursorScreenPos().x, right = x0 + ImGui::GetContentRegionAvail().x;
     float x = x0;
     const float y = ImGui::GetCursorScreenPos().y;
     for (int f = 0; f < 3; f++) {
-        const ImVec2 ts = k.text_size(k.F.semibold, 14, kFilters[f]);
+        const char* name = tr(kFilters[f]);
+        const ImVec2 ts = k.text_size(k.F.semibold, 14, name);
         const ImVec2 tp(x, y), tsz(ts.x + k.px(32), k.px(36));
         ImGui::SetCursorScreenPos(tp);
         ImGui::PushID(f);
@@ -304,12 +308,12 @@ void TrophiesPanel::draw(Kit& k, ImVec2 body, ImVec2 size, bool focus)
         else if (hot)
             dl->AddRectFilled(tp, tp + tsz, IM_COL32(255, 255, 255, 12), k.px(18));
         dl->AddText(k.F.semibold, k.px(14), ImVec2(tp.x + k.px(16), tp.y + (tsz.y - ts.y) / 2), f == s.filter ? kText : kDim,
-                    kFilters[f]);
+                    name);
         x += tsz.x + k.px(6);
     }
     {   /* Show Hidden, at the right of the tabs */
         const ImVec2 ts = k.toggle_size();
-        const char* lt = "Show Hidden";
+        const char* lt = tr("Show Hidden");
         const ImVec2 ls = k.text_size(k.F.semibold, 13, lt);
         ImGui::SetCursorScreenPos(ImVec2(right - ts.x - k.px(4), y + (k.px(36) - ts.y) / 2));
         if (k.toggle("##hidden", s.show_hidden)) s.show_hidden = !s.show_hidden;

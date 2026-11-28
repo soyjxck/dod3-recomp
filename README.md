@@ -242,7 +242,8 @@ run form, packaging a release and regenerating the committed tables;
 [docs/TECHNICAL.md](docs/TECHNICAL.md) how the port works;
 [docs/DEBUGGING.md](docs/DEBUGGING.md) the switches, profiling and the
 regression tests; [CONTRIBUTING.md](CONTRIBUTING.md) the layout of the tree
-and the conventions.
+and the conventions; [docs/TRANSLATING.md](docs/TRANSLATING.md) how to
+translate the launcher and the setup into another language.
 
 ## Status
 

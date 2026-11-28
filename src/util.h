@@ -9,6 +9,10 @@
  *   dod3::open_file(path, mode)      fopen that takes any path on Windows too
  *                                    (path::string() throws there for names
  *                                    outside the ANSI code page)
+ *   dod3::error_text(ec)             an error code's message as UTF-8 (on
+ *                                    Windows ec.message() is in the ANSI code
+ *                                    page: unreadable in a window that draws
+ *                                    UTF-8, on a system in another language)
  */
 #pragma once
 #include <stdint.h>
@@ -39,6 +43,7 @@ int dod3_unsetenv(const char* name);
 
 #include <filesystem>
 #include <string>
+#include <system_error>
 
 namespace dod3 {
 
@@ -49,6 +54,8 @@ inline std::string utf8(const std::filesystem::path& p)
 }
 
 FILE* open_file(const std::filesystem::path& p, const char* mode);
+
+std::string error_text(const std::error_code& ec);
 
 }  // namespace dod3
 #endif

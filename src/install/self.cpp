@@ -2,6 +2,7 @@
  * in the file is checked before it is used. */
 #include "install/self.h"
 #include "install/crypto.h"
+#include "lang.h"
 #include "util.h"
 
 #include <zlib.h>
@@ -42,7 +43,7 @@ bool header(const std::vector<uint8_t>& self, Header* h, std::string* err)
 {
     Reader r{ self };
     if (r.u32(0) != kSelfMagic || r.u16(0x0A) != 1) {
-        *err = "not a SELF";
+        *err = dod3::tr("not a SELF");
         return false;
     }
     h->key_revision = r.u16(0x08);
@@ -56,7 +57,7 @@ bool header(const std::vector<uint8_t>& self, Header* h, std::string* err)
     h->ctrl_size = r.u64(0x60);
     if (!r.ok || h->header_len > self.size() || !r.has(h->app_info, 0x20) || !r.has(h->elf, 0x40) ||
         !r.has(0x20 + (uint64_t)h->meta_off, 0x40) || !r.has(h->ctrl, h->ctrl_size)) {
-        *err = "the SELF's header is damaged";
+        *err = dod3::tr("the SELF's header is damaged");
         return false;
     }
     return true;
@@ -91,19 +92,19 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
 {
     *wrong_keys = false;
     if (!crypto_selftest()) {
-        *err = "internal error: the cryptography self-test failed";
+        *err = dod3::tr("internal error: the cryptography self-test failed");
         return false;
     }
     Header h;
     SelfInfo info;
     if (!header(self, &h, err) || !self_info(self, &info, err)) return false;
     if (info.self_type != 4 && info.self_type != 8) {
-        *err = "not an application SELF (type " + std::to_string(info.self_type) + ")";
+        *err = dod3::trf("not an application SELF (type {1})", info.self_type);
         return false;
     }
     if (info.self_type == 8 && info.npd_license != 3) {
-        *err = "this NPDRM SELF has a per-console licence (type " + std::to_string(info.npd_license) +
-               "), which the setup cannot open";
+        *err = dod3::trf("this NPDRM SELF has a per-console licence (type {1}), which the setup cannot open",
+                         info.npd_license);
         return false;
     }
 
@@ -128,26 +129,26 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
     for (int i = 0; i < 16; i++)
         if (meta[0x10 + i] || meta[0x30 + i]) {
             *wrong_keys = true;
-            *err = "the keys do not open this EBOOT.BIN";
+            *err = dod3::tr("the keys do not open this EBOOT.BIN");
             return false;
         }
 
     /* the metadata headers, the section headers and the keys */
     const uint64_t mh = mi + 0x40;
     if (h.header_len <= mh) {
-        *err = "the SELF's metadata is damaged";
+        *err = dod3::tr("the SELF's metadata is damaged");
         return false;
     }
     std::vector<uint8_t> md(self.begin() + (long)mh, self.begin() + (long)h.header_len);
     aes.set_key(meta, 128);
     aes_ctr(aes, meta + 0x20, 0, md.data(), md.size());
     if (md.size() < 0x20) {
-        *err = "the SELF's metadata is damaged";
+        *err = dod3::tr("the SELF's metadata is damaged");
         return false;
     }
     const uint32_t nsec = dod3_be32(&md[0x0C]), nkeys = dod3_be32(&md[0x10]);
     if (nsec > 256 || nkeys > 1024 || 0x20 + (uint64_t)nsec * 0x30 + (uint64_t)nkeys * 16 > md.size()) {
-        *err = "the SELF's metadata is damaged";
+        *err = dod3::tr("the SELF's metadata is damaged");
         return false;
     }
     const uint8_t* sec = &md[0x20];
@@ -161,7 +162,7 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
                "ELF",
                4) != 0 ||
         eh[4] != 2 || eh[5] != 2) {
-        *err = "the SELF does not hold a 64-bit big-endian ELF";
+        *err = dod3::tr("the SELF does not hold a 64-bit big-endian ELF");
         return false;
     }
     const uint64_t e_phoff = dod3_be64(eh + 0x20), e_shoff = dod3_be64(eh + 0x28);
@@ -169,7 +170,7 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
                    e_shentsize = dod3_be16(eh + 0x3A), e_shnum = dod3_be16(eh + 0x3C);
     if (e_phentsize != 0x38 || e_phnum == 0 || e_phnum > 64 || !r.has(h.phdr, (uint64_t)e_phnum * 0x38) ||
         (e_shnum && (e_shentsize != 0x40 || e_shnum > 4096 || !r.has(h.shdr, (uint64_t)e_shnum * 0x40)))) {
-        *err = "the SELF's ELF headers are damaged";
+        *err = dod3::tr("the SELF's ELF headers are damaged");
         return false;
     }
     const uint8_t* ph = &self[(size_t)h.phdr];
@@ -178,7 +179,7 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
     for (int i = 0; i < e_phnum; i++)
         end = std::max(end, dod3_be64(ph + i * 0x38 + 0x08) + dod3_be64(ph + i * 0x38 + 0x20));
     if (end > (1ull << 30)) {
-        *err = "the SELF's ELF headers are damaged";
+        *err = dod3::tr("the SELF's ELF headers are damaged");
         return false;
     }
     elf->assign((size_t)end, 0);
@@ -194,14 +195,14 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
         const uint32_t key_idx = dod3_be32(s + 0x24), iv_idx = dod3_be32(s + 0x28), compressed = dod3_be32(s + 0x2C);
         if (type != 2) continue;   /* 2: a program segment */
         if (prog >= e_phnum || !r.has(off, size)) {
-            *err = "the SELF's segment table is damaged";
+            *err = dod3::tr("the SELF's segment table is damaged");
             return false;
         }
         const uint64_t p_offset = dod3_be64(ph + prog * 0x38 + 0x08), p_filesz = dod3_be64(ph + prog * 0x38 + 0x20);
         std::vector<uint8_t> data(self.begin() + (long)off, self.begin() + (long)(off + size));
         if (encrypted == 3) {
             if (key_idx >= nkeys || iv_idx >= nkeys) {
-                *err = "the SELF's segment table is damaged";
+                *err = dod3::tr("the SELF's segment table is damaged");
                 return false;
             }
             aes.set_key(dkeys + key_idx * 16, 128);
@@ -210,7 +211,7 @@ bool self_decrypt(const std::vector<uint8_t>& self, const SelfKeys& keys, std::v
         if (compressed == 2) {
             uLongf got = (uLongf)p_filesz;
             if (uncompress(elf->data() + p_offset, &got, data.data(), (uLong)data.size()) != Z_OK || got != p_filesz) {
-                *err = "a segment of the SELF does not decompress (damaged, or the wrong keys)";
+                *err = dod3::tr("a segment of the SELF does not decompress (damaged, or the wrong keys)");
                 return false;
             }
         } else {

@@ -1,0 +1,2256 @@
+# Drakengard 3 Recompiled: the launcher's and the setup's text, for translators.
+# Written by tools/lang.py from the source; docs/TRANSLATING.md says how to use it.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: dod3-recomp\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: \n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. This language's own name, as the launcher's Settings list shows it (a German translation has "Deutsch" here).
+msgctxt "language"
+msgid "English"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not move {1} into place: {2}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not read {1}: {2}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not put the previous copy back from {1}: {2}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "{1} is both in the new copy and in {2}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not move {1} back from {2}: {3}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not write the list of installed mods (game/mods/installed.txt)"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the PSN package's file list (PS3TOC.TXT) is not the one expected"
+msgstr ""
+
+#: src/install/install.cpp src/install/iso.cpp
+msgid "could not write {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the DLC chapters' Japanese voices need the Japanese Voice Pack: add its package too"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "no DLC chapter files in {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not copy {1}: {2}"
+msgstr ""
+
+#: src/install/install.cpp src/install/iso.cpp src/install/pkg.cpp src/install/zip.cpp
+msgid "cancelled"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not move the DLC chapters' Japanese voices into place: {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the DLC chapters' Japanese voices installed, but the voice pack's file lists could not be written"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not move {1} to {2}: {3}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "{1} and {2} both replace {3}, and two mods that replace the same file cannot be on together: switch {2} off first, on the launcher's Mods page"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "{1} and {2} both replace {3} and {4} other file, and two mods that replace the same file cannot be on together: switch {2} off first, on the launcher's Mods page"
+msgid_plural "{1} and {2} both replace {3} and {4} other files, and two mods that replace the same file cannot be on together: switch {2} off first, on the launcher's Mods page"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/install/install.cpp src/install/iso.cpp
+msgid "could not read {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not remove {1}: {2}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not write the voice pack's file lists again"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the files of {1} were not listed when it was installed: add the update package and remove all the mods"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not put back {1}: {2}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "{1} goes into the 1.01 update's folder: add the update package too"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Its EBOOT.BIN is not used: the port is its own executable, so a mod that needs a changed one may not work as its author meant."
+msgstr ""
+
+#: src/install/install.cpp
+msgid "{1} file in it has no use here and is left out (system files, or a folder the game does not read)."
+msgid_plural "{1} files in it have no use here and are left out (system files, or a folder the game does not read)."
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/install/install.cpp
+msgid "It has a script package of its own (SQEX03GAME.XXX). If that is not the update's, the port's additions to the Settings menu are not there while the mod is on: the Graphics Settings, System Settings, Advanced Graphics and Picture Settings pages, Quit Game, and what works through them (the wider field of view, the Aspect Ratio setting's wider view, skipping the intro)."
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this mod was installed without a list of its files; install it again to switch it on and off"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Japanese voices for the DLC chapters (DLC Undub)"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Spanish translation: the game"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Spanish translation: title screen and menus"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Spanish translation: movies"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Spanish translation: the DLC"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Spanish translation: the Japanese voices' movies"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Japanese Voice Pack"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Zero's Prologue"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "One's Prologue"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Two's Prologue"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Three's Prologue"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Four's Prologue"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Five's Prologue"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Drakengard BGM Remix Pack"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "NieR BGM Remix Pack"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "BGM Remix Pack"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Zero's Garb (Variety Pack)"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Caim's Garb"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Furiae's Garb"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Manah's Garb"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Eris's Garb"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Nier's Garb"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Kainé's Garb"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Beautiful Child"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Tokyo Tower"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Experimental Weapon 7"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this is a licence fix package, not the DLC itself. It is not needed: add the DLC packages"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "a homebrew package for another game ({1})"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "a package for another game ({1})"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "a package with no file the game reads here ({1})"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "a package that holds only an executable (EBOOT.BIN), which the port, being its own, cannot use"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "a package with nothing in it to install"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "mods are for the 1.01 build"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this is the PSN release's own update, which is not needed: both releases take the disc release's 1.01 update, UP0082-BLUS31197_00-DOD3PATCH0000000-A0101-V0101-PE.pkg"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this is not the US PSN release's game package (version 1.00), or it is damaged"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this build plays version 1.00, made from the disc's executable; the PSN package is for the 1.01 build"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Drakengard 3 PSN package (NPUB31251)"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this package is from the European PSN release (NPEB01407), a build of its own; only the US release is supported, as the disc (BLUS31197) or the PSN package (NPUB31251)"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this update package is not version 1.01, or it is damaged"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this build plays version 1.00, which takes no update"
+msgstr ""
+
+#: src/install/install.cpp src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Update 1.01"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this is a licence fix package, not the DLC itself. It is not needed: add the {1} package"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "an unreadable PS3 package"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "a .zip that is not a mod's movies: unpack it and add what is inside"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this is the disc's executable (1.00); this build plays 1.01, and makes its executable from the update"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this is the update's executable (1.01); this build plays 1.00"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "this EBOOT.ELF is not Drakengard 3's (BLUS31197) {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the DLC chapters' Japanese voices are for the 1.01 build"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Drakengard 3 disc (BLUS31197)"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "not a file or a folder"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "EBOOT.BIN is not needed: the setup takes the game's executable from the update package"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "EBOOT.BIN is not needed: the setup takes the game's executable from the disc"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "not a file the setup takes: it takes the disc (a decrypted .iso, or the folder holding PS3_GAME), packages (.pkg), a mod's movies (.zip) and a mod's folder"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Drakengard 3 disc image (BLUS31197)"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "cannot read the disc's EBOOT.BIN"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the update is not installed"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the disc is not installed"
+msgstr ""
+
+#: src/install/install.cpp src/install/pkg.cpp src/install/update.cpp
+msgid "cannot read {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the keys for the game's executable are missing"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the executable made from EBOOT.BIN is not the expected one (SHA-256 {1})"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "{1}. Also, {2}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Removing the mods"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Removing a mod"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Making the game's executable"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Copying the game"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not replace the game's files: {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not move the game into place: {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Copying EBOOT.ELF"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "could not copy EBOOT.ELF: {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Installing update 1.01"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Writing the game's executable"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "Installing {1}"
+msgstr ""
+
+#: src/install/install.cpp
+msgid "the Japanese Voice Pack installed, but its file lists could not be written"
+msgstr ""
+
+#: src/install/install.cpp src/install/update.cpp src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Done"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "the disc image's folders nest too deep (not an ISO 9660 image?)"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "the disc image is truncated"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "the disc image has a file split over several extents, which is not supported"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "the disc image could not be opened"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "this is not an ISO 9660 disc image"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "the folder could not be read: {1}"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "no PS3_GAME/PARAM.SFO in this disc image: it is not a PS3 game disc, or it is still disc-encrypted"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "no PS3_GAME/PARAM.SFO in this folder: choose the folder that contains PS3_GAME"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "this is {1}, not Drakengard 3 (US) {2}. Only the US disc is supported."
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "this disc is version {1}; only version {2} is supported."
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "the disc has no PS3_GAME/USRDIR/EBOOT.BIN"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "this disc image's EBOOT.BIN does not match the supported release. If the image came straight from a disc drive it is still disc-encrypted: make a decrypted one (for example with PS3 Disc Dumper)."
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "this folder's EBOOT.BIN does not match the supported release (BLUS31197 v01.00, no update)."
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "a read failed in {1} (the disc image is truncated?)"
+msgstr ""
+
+#: src/install/iso.cpp
+msgid "a write failed for {1} (disk full?)"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "NPDRM ERK (key revision 0x1C)"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "NPDRM RIV (key revision 0x1C)"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "NP klic free"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "NP klic key"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "APP ERK (key revision 0x1C)"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "APP RIV (key revision 0x1C)"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "not hex"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "{1} byte; this key is {2} ({3} hex digits)"
+msgid_plural "{1} bytes; this key is {2} ({3} hex digits)"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/install/keys.cpp
+msgid "line {1} is not name=hex"
+msgstr ""
+
+#: src/install/keys.cpp
+msgid "cannot read the key file"
+msgstr ""
+
+#: src/install/pkg.cpp src/install/self.cpp
+msgid "internal error: the cryptography self-test failed"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "not a PS3 package"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "the package is cut short"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "cannot read the package"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "the package's file table is damaged"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "the package names a file outside its folder"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "cannot open {1}"
+msgstr ""
+
+#: src/install/pkg.cpp src/install/zip.cpp
+msgid "cannot write {1}"
+msgstr ""
+
+#: src/install/pkg.cpp src/install/zip.cpp
+msgid "disk full or not writable"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "the package is damaged (its checksum does not match): {1}"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "the package has no {1}"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "{1} is too large to read whole"
+msgstr ""
+
+#: src/install/pkg.cpp
+msgid "cannot read {1} from {2}"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "not a SELF"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "the SELF's header is damaged"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "not an application SELF (type {1})"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "this NPDRM SELF has a per-console licence (type {1}), which the setup cannot open"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "the keys do not open this EBOOT.BIN"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "the SELF's metadata is damaged"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "the SELF does not hold a 64-bit big-endian ELF"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "the SELF's ELF headers are damaged"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "the SELF's segment table is damaged"
+msgstr ""
+
+#: src/install/self.cpp
+msgid "a segment of the SELF does not decompress (damaged, or the wrong keys)"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "not an https address: {1}"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "GitHub could not be reached (error {1})"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "GitHub answered {1}"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "the download stopped (error {1})"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "could not write the download"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "Downloading"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "Checking the download"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "Unpacking"
+msgstr ""
+
+#: src/install/update.cpp src/ui/wizard.cpp
+msgid "Installing"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "Updates are installed this way on Windows only."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "Could not make the folder {1}."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "Not enough space on the drive: the update needs about {1} MB while it is installed."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "Could not write {1}."
+msgstr ""
+
+#: src/install/update.cpp src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Cancelled"
+msgstr ""
+
+#: src/install/update.cpp
+msgid "The download failed: {1}."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "The download is not the size GitHub lists for it. Nothing was installed."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "The download does not match the SHA-256 GitHub lists for it. Nothing was installed."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "The download could not be unpacked: {1}."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "The download names a file outside its folder ({1}). Nothing was installed."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "The download has no dod3.exe. Nothing was installed."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "The download could not be unpacked ({1}): {2}."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "{1} could not be replaced (is another program using it?). Every file was put back as it was."
+msgstr ""
+
+#: src/install/update.cpp
+msgid "{1} could not be replaced (is another program using it?). Some files could not be put back: unzip the release over this folder to finish."
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "cannot read the archive"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "not a .zip archive"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "a ZIP64 archive, which the setup does not read: unpack it and add what is inside"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "the archive is cut short"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "the archive's directory is damaged"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "an encrypted archive"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "the archive uses a compression the setup does not read ({1})"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "the archive names a file outside its folder"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "cannot read {1} from the archive"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "internal error: zlib"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "{1} in the archive is damaged"
+msgstr ""
+
+#: src/install/zip.cpp
+msgid "{1} in the archive is damaged (its checksum does not match)"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Shadow Quality"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Sharper, more defined shadows."
+msgstr ""
+
+#: src/patches/sysset.cpp src/ui/launcher.cpp src/ui/settings_menu.cpp
+msgid "Original"
+msgstr ""
+
+#: src/patches/sysset.cpp src/ui/settings_menu.cpp
+msgid "High"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Ultra"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Motion Blur"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Blur on fast movement of the camera and characters."
+msgstr ""
+
+#: src/patches/sysset.cpp src/ui/launcher.cpp src/ui/settings_menu.cpp
+msgid "On"
+msgstr ""
+
+#: src/patches/sysset.cpp src/ui/launcher.cpp src/ui/settings_menu.cpp
+msgid "Off"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Post-Processing"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Depth of field, bloom and the game's colour grading."
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Depth of Field"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "The blur of what is near and far. Off keeps the bloom."
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Draw Distance"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "How far away props, plants and other scenery are drawn."
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Tree Detail"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "How far trees show and stay detailed. From the next area."
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Blood on Screen"
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Blood splashes and the low-health border over the screen."
+msgstr ""
+
+#: src/patches/sysset.cpp
+msgid "Border Only"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Display"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Graphics"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Controls"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "System"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Cheats"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Window Size"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The window's size when the display mode is Windowed."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Mouse Camera"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The mouse turns the camera while the game is in front."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Camera Speed"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Console keeps the stick's speed at any frame rate."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Console"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Language"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The game's text and subtitles. The disc has English and French."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Launcher Language"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "This launcher's and the setup's own text. Auto follows the system's language."
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/settings_menu.cpp
+msgid "Auto"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Trophy Pop-ups"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Show a trophy at the top right of the game as you earn it."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Launcher at Start"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Open this at start. Off, DOD3_LAUNCHER=1 in the environment opens it anyway."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Open this at start. Hold Shift (Option on a Mac) to open it anyway."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Infinite Health"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Your health stays full, Zero's or the dragon's. Enemies are hurt as usual."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Full Intoner Gauge"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The Intoner gauge fills at the first blood and stays full, in Intoner mode too."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Infinite Items"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Items are not used up."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Frozen Time Limits"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "A mission's time limit does not count down."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Final Song Auto-Play"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Branch D's final song presses every note for you, on its time."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Check for Updates"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Ask GitHub for a newer release when this opens; Update, at the bottom, installs it."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Move Forward"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Move Back"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Move Left"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Move Right"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Cross"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Circle"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Square"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Triangle"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Start"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Select"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "D-Pad Up"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "D-Pad Down"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "D-Pad Left"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "D-Pad Right"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Camera Up"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Camera Down"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Camera Left"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Camera Right"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Switched off: the game starts without it. Its files are kept, to switch it on again."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Drakengard 3 packages and archives (.pkg, .zip)"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "All files"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1}: this is the game itself. To install it again, use Game Files."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} on"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} off"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} was not switched on"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} was not switched off"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Could not save dod3.ini"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Saved"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Spanish translation"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Spanish translation (off)"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/setup_shared.cpp
+msgid "DLC Undub"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} other"
+msgid_plural "{1} others"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/ui/launcher.cpp
+msgid "None installed"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} fps"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Play"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Mods"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "{1} of {2} installed"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "DLC"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Settings"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Trophies"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Quit"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Version {1}"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Update to {1}"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Game Files"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Installed"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Partly installed"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Not installed"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Needs the Japanese Voice Pack: add its package on the DLC page first."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Remove"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Add Files..."
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Add DLC Packages..."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Add mods"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Add DLC packages"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Add Folder..."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "A mod's folder (the DLC Undub's holds GAME and ISO)"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Any mod package for the game (.pkg), a movie archive (.zip) or a mod's folder, as downloaded. Your own game files are never changed."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The PSN packages you own (UP0082-NPUB31251_00-...). No licence files are needed."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Story"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Voices"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Music"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Outfits and Weapons"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The Japanese Voice Pack brings Japanese voices to the main story (Change Outfits/Music > Voice), and with the DLC Undub to the DLC chapters too."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgctxt "heading"
+msgid "Remove"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Ready to Install"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The DLC Undub needs the Japanese Voice Pack: add its package too (or install it first)."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "An older version of the setup installed this mod, without a list of its files. Add the 1.01 update package (Add Files) to remove it: the update puts back the files the mod replaced, and all the mods are removed."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "All the installed mods are removed, and the update installed again."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Needs {1}; {2} free."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Not enough space on the drive."
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Install"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Add files"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Cancel"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Cancelling..."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Removed"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "Failed"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/wizard.cpp
+msgid "The part that was being installed has been taken out again; the parts before it stay."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} is out: Update, at the bottom"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Close the launcher and start dod3.exe again to play {1}."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} of {2} files"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Its SHA-256 against the one GitHub lists"
+msgstr ""
+
+#: src/ui/launcher.cpp src/ui/look.cpp src/ui/wizard.cpp
+msgid "{1} of {2}"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The launcher starts again when it is done."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Install Update"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Release Page"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Your game, saves and settings stay as they are. The launcher starts again when it is done."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Released {1}"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "{1} download"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "you have {1}"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Unzip the release from its page into this folder to finish."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Custom ({1})"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Press a key or a mouse button  ·  Esc cancels"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Not set"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Reset"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "KEYBOARD"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Click a row, then press the key or mouse button for it. The game's Controller Settings page says what each button does."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Restore Defaults"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Defaults restored"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgctxt "heading"
+msgid "Update"
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Fan-made additions, installed beside your own game files."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "The downloadable content you own."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Earned as you play; kept with your saves."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "A newer release of the port, from its GitHub page."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Saved to dod3.ini as you change them; used at the next start."
+msgstr ""
+
+#: src/ui/launcher.cpp
+msgid "Updated from {1} to {2}"
+msgstr ""
+
+#: src/ui/look.cpp
+msgid "{1} GB"
+msgstr ""
+
+#: src/ui/look.cpp
+msgid "{1} MB"
+msgstr ""
+
+#: src/ui/look.cpp
+msgid "Starting..."
+msgstr ""
+
+#: src/ui/look.cpp
+msgid "Checking {1} file"
+msgid_plural "Checking {1} files"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/ui/settings_menu.cpp
+msgid "Resolution"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "The resolution the game is drawn at."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Display Mode"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Window, borderless window or fullscreen."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Windowed"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Borderless"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Fullscreen"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Frame Rate"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "The frame rate limit. 60 is recommended."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "30 (Original)"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Adaptive"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Unlimited"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "V-Sync"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Wait for the display's refresh."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Anti-Aliasing"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Smooths jagged edges. FXAA softens the picture slightly."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Texture Filtering"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Sharper ground and walls when seen at an angle."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Trilinear"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "2x Anisotropic"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "4x Anisotropic"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "8x Anisotropic"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "16x Anisotropic"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Field of View"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Widens the gameplay camera. Cutscenes keep their framing."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Default"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Aspect Ratio"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Your screen's shape. Auto follows the window."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Skip Intro"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Skip the logos and the opening movie."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "When Unfocused"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "What the game does while its window is in the background."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Keep Running"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Mute"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Pause"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Button Prompts"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "The buttons the game shows. Auto follows the pad you hold."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Keyboard"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Mouse Sensitivity"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "How far the mouse turns the camera."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Renderer"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "The graphics API the game is drawn with."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "HDR"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "On a display with HDR (EDR) headroom, such as a MacBook Pro's."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "On a display with HDR on in Windows. Direct3D 12."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "HDR Brightness"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "How bright white is in HDR. Auto: as the system's SDR white."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "How bright white is in HDR. Default: 203 nits, as in HDR games."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "As Windows"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "100 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "150 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "200 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "250 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "300 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "400 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "HDR Peak Brightness"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "The brightest the display shows. Auto: what the display reports."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "600 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "800 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "1000 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "1500 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "2000 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "4000 nits"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "HDR Highlight Colour"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "How much colour the brightest light, such as fire, keeps."
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Balanced"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Full"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "As SDR"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "Post-Processing Quality"
+msgstr ""
+
+#: src/ui/settings_menu.cpp
+msgid "High: depth of field and bloom drawn smoothly above 720p."
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "Spanish Translation"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "The whole game in Spanish: text, menus, the title screen and subtitled movies. Add the US release's downloads as they are: the two .pkg files and MOVIES.zip, and the DLC and voice packages if you have those."
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "Story and mission text"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "Title screen and menus"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "Movies"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "DLC chapters"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "with the DLC"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "Japanese voices' movies"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "with the Japanese Voice Pack"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "Canzah and Slow · prototype 0.707"
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "Japanese voices for the six DLC chapters, retimed to match. Follows the game's own Voice setting (Change Outfits/Music > Voice). Add its folder, the one holding GAME and ISO, with Add Folder."
+msgstr ""
+
+#: src/ui/setup_shared.cpp
+msgid "Japanese voices for the DLC chapters"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Earned"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Jan"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Feb"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Mar"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Apr"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "May"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Jun"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Jul"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Aug"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Sep"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Oct"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Nov"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Dec"
+msgstr ""
+
+#. a date: {1} the day, {2} the month's short name, {3} the year ("4 Oct 2026")
+#: src/ui/trophies.cpp
+msgid "{1} {2} {3}"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Platinum"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Gold"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Silver"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Bronze"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Trophy"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "No trophy list in this install"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "{1} of {2} earned"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Not earned"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Hidden Trophy"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Earn it to see what it is."
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Reading the trophy list..."
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "No trophy list"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "This install has no PS3_GAME/TROPDIR. Game Files, at the bottom, installs the disc again with it."
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "{1} of {2} trophies earned"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "All"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Not Earned"
+msgstr ""
+
+#: src/ui/trophies.cpp
+msgid "Show Hidden"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add Drakengard 3 files"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Drakengard 3 files (.iso, .pkg, .zip)"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The folder that holds PS3_GAME, or a mod's folder"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Adding {1}"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Added"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Required"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Optional"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The disc, as a decrypted .iso or the folder holding PS3_GAME; or the US PSN package (.pkg)."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The disc, as a decrypted .iso or the folder holding PS3_GAME."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The update package, UP0082-BLUS31197_00-DOD3PATCH0000000 (.pkg)."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The DLC packages (.pkg) you own. No licence files are needed."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Fan-made additions: the Spanish translation, the DLC Undub, any other mod package."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Keys"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The keys that open the update's EBOOT.BIN, the game's executable."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The keys that open the disc's EBOOT.BIN, the game's executable."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add files on the next pages to replace any of the game's, or to add DLC."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Files can be added on any page; each one is recognised by itself. Nothing is changed in the files you add."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Installed in "
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Installing to "
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Needed"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Installed. Add it again to replace it."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Game"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The disc (BLUS31197) or the US PSN package (NPUB31251)"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The disc (BLUS31197)"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add a decrypted .iso or the PSN package (UP0082-NPUB31251_00-DOD3MAINGAME0000) with Add Files, or the folder holding PS3_GAME with Add Folder."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add a decrypted .iso with Add Files, or the folder holding PS3_GAME with Add Folder."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "PSN package"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Disc folder"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Disc image"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add the update package (.pkg) with Add Files: the disc release's, which the PSN release takes too."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Package"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "STORY"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "VOICES"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "MUSIC"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "OUTFITS AND WEAPONS"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Switched off"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Not added"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "added"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "installed"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Needs the Japanese Voice Pack: add its package on the DLC page too."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Any other mod package for the game (.pkg) can be added too."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Installed mods are taken out with Remove, in the launcher's Mods page."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game's executable is made from the update's EBOOT.BIN, which is encrypted. Enter the keys that open it, as hex. They are checked by decrypting it, and kept in this install for next time."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game's executable is made from the disc's EBOOT.BIN, which is encrypted. Enter the keys that open it, as hex. They are checked by decrypting it, and kept in this install for next time."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "{1} byte"
+msgid_plural "{1} bytes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/ui/wizard.cpp
+msgid "Load Key File..."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "A key file (name=hex lines)"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Key files (.txt)"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "{1} of {2} keys found in {3}"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add the update package on the Game Files page: the executable is made from it."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add the disc on the Game Files page: the executable is made from it."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Checking the keys..."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "These keys open the game's executable."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "These keys do not open EBOOT.BIN. Check each one against your key set (key revision 0x1C)."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Everything added is installed already."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add the game's files first."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Game (PSN package)"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Game disc"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game's executable, made with your keys"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game's executable, made from the update"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game's executable, made from the disc"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Needs {1}; {2} free on the drive."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "To "
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Not enough space. Free {1}, or install fewer DLC packs."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "  ·  {1} MB/s  ·  about {2} min {3} s left"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "none"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "From now on the game opens on its launcher: Play, and the mods, the DLC and the settings."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game is needed"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The update is needed"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "{1} added"
+msgid_plural "{1} added"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/ui/wizard.cpp
+msgid "{1} installed"
+msgid_plural "{1} installed"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/ui/wizard.cpp
+msgid "Checked"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Needed for the executable"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Welcome"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgctxt "heading"
+msgid "Install"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Version {1}  ·  Setup"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Add More"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Close"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Next"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Back"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Skip"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Drakengard 3 is installed. Add DLC here, or replace any of the game's files."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Drakengard 3 Recompiled installs the game from your own copy of it."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game and its 1.01 update."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game disc."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Optional: the packs you own. More can be added later, from the launcher."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Optional: fan-made additions, installed beside your own game files."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The keys that open the game's executable, EBOOT.BIN."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Ready to install."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Nothing new to install."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "The game's files are copied beside the game; this takes a few minutes."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Drakengard 3 is ready to play."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Nothing more was installed."
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Installation Failed"
+msgstr ""
+
+#: src/ui/wizard.cpp
+msgid "Something went wrong while installing."
+msgstr ""

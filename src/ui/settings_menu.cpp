@@ -67,6 +67,7 @@
 #include "input/camera.h"    /* bridge 11 to 14: the camera's stick and the mouse */
 #include "patches/prompts.h"     /* DOD3_PROMPTS: the button prompts' glyphs */
 #include "patches/sysset.h"      /* the Advanced Graphics page's rows */
+#include "lang.h"                /* TR_NOOP: the rows' text, for the launcher's translations */
 #include "ui/ini.h"             /* dod3.ini, edited in place */
 #include "util.h"
 #include <stdio.h>
@@ -380,7 +381,7 @@ int s_lang;   /* the pages' language (init_rows) */
 
 /* The text as the pages show it: in Spanish with the translation's menus, in French with the game
  * in French, else as it is. */
-const char* tr(const char* en)
+const char* page_text(const char* en)
 {
     if (s_lang == LANG_EN || !en) return en;
     for (const auto& t : kTexts)
@@ -544,8 +545,8 @@ void read_current(Row& r, int& idx)
 void build_rows(std::vector<Dod3RowSpec>& rows)
 {
     rows.push_back({ "RSX_SCALE",
-                     "Resolution",
-                     "The resolution the game is drawn at.",
+                     TR_NOOP("Resolution"),
+                     TR_NOOP("The resolution the game is drawn at."),
                      { { "1", "1280x720" },
                        { "1.5", "1920x1080" },
                        { "2", "2560x1440" },
@@ -556,37 +557,39 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
                      nullptr,
                      PAGE_GRAPHICS });
     rows.push_back({ "RSX_DISPLAY",
-                     "Display Mode",
-                     "Window, borderless window or fullscreen.",
-                     { { "windowed", "Windowed" }, { "borderless", "Borderless" }, { "fullscreen", "Fullscreen" } },
+                     TR_NOOP("Display Mode"),
+                     TR_NOOP("Window, borderless window or fullscreen."),
+                     { { "windowed", TR_NOOP("Windowed") },
+                       { "borderless", TR_NOOP("Borderless") },
+                       { "fullscreen", TR_NOOP("Fullscreen") } },
                      0,
                      LIVE_DISPLAY,
                      nullptr,
                      PAGE_GRAPHICS });
     rows.push_back({ "DOD3_FPS",
-                     "Frame Rate",
-                     "The frame rate limit. 60 is recommended.",
-                     { { NULL, "30 (Original)" },
+                     TR_NOOP("Frame Rate"),
+                     TR_NOOP("The frame rate limit. 60 is recommended."),
+                     { { NULL, TR_NOOP("30 (Original)") },
                        { "60", "60" },
                        { "120", "120" },
-                       { "adaptive", "Adaptive" },
-                       { "uncapped", "Unlimited" } },
+                       { "adaptive", TR_NOOP("Adaptive") },
+                       { "uncapped", TR_NOOP("Unlimited") } },
                      0,
                      true,
                      nullptr,
                      PAGE_GRAPHICS });
     rows.push_back({ "RSX_VSYNC",
-                     "V-Sync",
-                     "Wait for the display's refresh.",
-                     { { "1", "On" }, { "0", "Off" } },
+                     TR_NOOP("V-Sync"),
+                     TR_NOOP("Wait for the display's refresh."),
+                     { { "1", TR_NOOP("On") }, { "0", TR_NOOP("Off") } },
                      0,
                      LIVE_DISPLAY,
                      nullptr,
                      PAGE_GRAPHICS });
     rows.push_back({ "RSX_AA",
-                     "Anti-Aliasing",
-                     "Smooths jagged edges. FXAA softens the picture slightly.",
-                     { { NULL, "Off" },
+                     TR_NOOP("Anti-Aliasing"),
+                     TR_NOOP("Smooths jagged edges. FXAA softens the picture slightly."),
+                     { { NULL, TR_NOOP("Off") },
                        { "fxaa", "FXAA" },
                        { "msaa2", "MSAA 2x" },
                        { "msaa4", "MSAA 4x" },
@@ -596,21 +599,21 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
                      nullptr,
                      PAGE_GRAPHICS });
     rows.push_back({ "RSX_ANISO",
-                     "Texture Filtering",
-                     "Sharper ground and walls when seen at an angle.",
-                     { { "1", "Trilinear" },
-                       { "2", "2x Anisotropic" },
-                       { "4", "4x Anisotropic" },
-                       { "8", "8x Anisotropic" },
-                       { "16", "16x Anisotropic" } },
+                     TR_NOOP("Texture Filtering"),
+                     TR_NOOP("Sharper ground and walls when seen at an angle."),
+                     { { "1", TR_NOOP("Trilinear") },
+                       { "2", TR_NOOP("2x Anisotropic") },
+                       { "4", TR_NOOP("4x Anisotropic") },
+                       { "8", TR_NOOP("8x Anisotropic") },
+                       { "16", TR_NOOP("16x Anisotropic") } },
                      4,
                      true,
                      nullptr,
                      PAGE_GRAPHICS });
     rows.push_back({ "DOD3_FOV",
-                     "Field of View",
-                     "Widens the gameplay camera. Cutscenes keep their framing.",
-                     { { NULL, "Default" },
+                     TR_NOOP("Field of View"),
+                     TR_NOOP("Widens the gameplay camera. Cutscenes keep their framing."),
+                     { { NULL, TR_NOOP("Default") },
                        { "5", "+5" },
                        { "10", "+10" },
                        { "15", "+15" },
@@ -624,47 +627,51 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
     /* Advanced Graphics: the aspect ratio, then the engine's own switches
      * (below). The Graphics page has the layout's seven rows. */
     rows.push_back({ "DOD3_ASPECT",
-                     "Aspect Ratio",
-                     "Your screen's shape. Auto follows the window.",
-                     { { NULL, "16:9" }, { "16:10", "16:10" }, { "21:9", "21:9" }, { "32:9", "32:9" }, { "auto", "Auto" } },
+                     TR_NOOP("Aspect Ratio"),
+                     TR_NOOP("Your screen's shape. Auto follows the window."),
+                     { { NULL, "16:9" },
+                       { "16:10", "16:10" },
+                       { "21:9", "21:9" },
+                       { "32:9", "32:9" },
+                       { "auto", TR_NOOP("Auto") } },
                      0,
                      true,
                      [](const char* v) { set_aspect(v); },
                      PAGE_ADVANCED });
     /* System Settings */
     rows.push_back({ "DOD3_SKIP_INTRO",
-                     "Skip Intro",
-                     "Skip the logos and the opening movie.",
-                     { { "1", "On" }, { "0", "Off" } },
+                     TR_NOOP("Skip Intro"),
+                     TR_NOOP("Skip the logos and the opening movie."),
+                     { { "1", TR_NOOP("On") }, { "0", TR_NOOP("Off") } },
                      0,
                      false,
                      nullptr,
                      PAGE_SYSTEM });
     rows.push_back({ "DOD3_UNFOCUSED",
-                     "When Unfocused",
-                     "What the game does while its window is in the background.",
-                     { { NULL, "Keep Running" }, { "mute", "Mute" }, { "pause", "Pause" } },
+                     TR_NOOP("When Unfocused"),
+                     TR_NOOP("What the game does while its window is in the background."),
+                     { { NULL, TR_NOOP("Keep Running") }, { "mute", TR_NOOP("Mute") }, { "pause", TR_NOOP("Pause") } },
                      0,
                      true,
                      nullptr,
                      PAGE_SYSTEM });
     rows.push_back({ "DOD3_PROMPTS",
-                     "Button Prompts",
-                     "The buttons the game shows. Auto follows the pad you hold.",
-                     { { NULL, "Auto" },
+                     TR_NOOP("Button Prompts"),
+                     TR_NOOP("The buttons the game shows. Auto follows the pad you hold."),
+                     { { NULL, TR_NOOP("Auto") },
                        { "ps3", "PlayStation 3" },
                        { "ps4", "PlayStation 4" },
                        { "ps5", "PlayStation 5" },
                        { "xbox", "Xbox" },
                        { "switch", "Nintendo Switch" },
-                       { "keyboard", "Keyboard" } },
+                       { "keyboard", TR_NOOP("Keyboard") } },
                      0,
                      true,
                      [](const char*) { dod3_prompts_poll(true); },
                      PAGE_SYSTEM });
     rows.push_back({ "DOD3_MOUSE_SENS",
-                     "Mouse Sensitivity",
-                     "How far the mouse turns the camera.",
+                     TR_NOOP("Mouse Sensitivity"),
+                     TR_NOOP("How far the mouse turns the camera."),
                      { { "0.25", "1" },
                        { "0.4", "2" },
                        { "0.55", "3" },
@@ -680,8 +687,8 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
                      [](const char*) { dod3_camera_reload(); },
                      PAGE_SYSTEM });
     rows.push_back({ "RSX_BACKEND",
-                     "Renderer",
-                     "The graphics API the game is drawn with.",
+                     TR_NOOP("Renderer"),
+                     TR_NOOP("The graphics API the game is drawn with."),
 #ifdef _WIN32
                      { { NULL, "Direct3D 12" }, { "vulkan", "Vulkan" } },
 #elif defined(__APPLE__)
@@ -698,33 +705,33 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
     /* Picture Settings */
 #if defined(_WIN32) || defined(__APPLE__)
     rows.push_back({ "RSX_HDR",
-                     "HDR",
+                     TR_NOOP("HDR"),
 #ifdef __APPLE__
-                     "On a display with HDR (EDR) headroom, such as a MacBook Pro's.",
+                     TR_NOOP("On a display with HDR (EDR) headroom, such as a MacBook Pro's."),
 #else
-                     "On a display with HDR on in Windows. Direct3D 12.",
+                     TR_NOOP("On a display with HDR on in Windows. Direct3D 12."),
 #endif
-                     { { NULL, "Off" }, { "1", "On" } },
+                     { { NULL, TR_NOOP("Off") }, { "1", TR_NOOP("On") } },
                      0,
                      LIVE_DISPLAY,
                      nullptr,
                      PAGE_PICTURE });
     rows.push_back({ "RSX_HDR_WHITE",
-                     "HDR Brightness",
+                     TR_NOOP("HDR Brightness"),
 #ifdef __APPLE__
-                     "How bright white is in HDR. Auto: as the system's SDR white.",
-                     { { NULL, "Auto" },
+                     TR_NOOP("How bright white is in HDR. Auto: as the system's SDR white."),
+                     { { NULL, TR_NOOP("Auto") },
 #else
-                     "How bright white is in HDR. Default: 203 nits, as in HDR games.",
-                     { { NULL, "Default" },
-                       { "windows", "As Windows" },
+                     TR_NOOP("How bright white is in HDR. Default: 203 nits, as in HDR games."),
+                     { { NULL, TR_NOOP("Default") },
+                       { "windows", TR_NOOP("As Windows") },
 #endif
-                       { "100", "100 nits" },
-                       { "150", "150 nits" },
-                       { "200", "200 nits" },
-                       { "250", "250 nits" },
-                       { "300", "300 nits" },
-                       { "400", "400 nits" } },
+                       { "100", TR_NOOP("100 nits") },
+                       { "150", TR_NOOP("150 nits") },
+                       { "200", TR_NOOP("200 nits") },
+                       { "250", TR_NOOP("250 nits") },
+                       { "300", TR_NOOP("300 nits") },
+                       { "400", TR_NOOP("400 nits") } },
                      0,
                      LIVE_DISPLAY,
                      nullptr,
@@ -734,33 +741,33 @@ void build_rows(std::vector<Dod3RowSpec>& rows)
     /* The reworked HDR's (Direct3D 12 and Vulkan): the peak the highlights
      * roll off toward, and how much of their own colour they keep. */
     rows.push_back({ "RSX_HDR_PEAK",
-                     "HDR Peak Brightness",
-                     "The brightest the display shows. Auto: what the display reports.",
-                     { { NULL, "Auto" },
-                       { "400", "400 nits" },
-                       { "600", "600 nits" },
-                       { "800", "800 nits" },
-                       { "1000", "1000 nits" },
-                       { "1500", "1500 nits" },
-                       { "2000", "2000 nits" },
-                       { "4000", "4000 nits" } },
+                     TR_NOOP("HDR Peak Brightness"),
+                     TR_NOOP("The brightest the display shows. Auto: what the display reports."),
+                     { { NULL, TR_NOOP("Auto") },
+                       { "400", TR_NOOP("400 nits") },
+                       { "600", TR_NOOP("600 nits") },
+                       { "800", TR_NOOP("800 nits") },
+                       { "1000", TR_NOOP("1000 nits") },
+                       { "1500", TR_NOOP("1500 nits") },
+                       { "2000", TR_NOOP("2000 nits") },
+                       { "4000", TR_NOOP("4000 nits") } },
                      0,
                      LIVE_DISPLAY,
                      nullptr,
                      PAGE_PICTURE });
     rows.push_back({ "RSX_HDR_HUE",
-                     "HDR Highlight Colour",
-                     "How much colour the brightest light, such as fire, keeps.",
-                     { { NULL, "Balanced" }, { "1", "Full" }, { "0", "As SDR" } },
+                     TR_NOOP("HDR Highlight Colour"),
+                     TR_NOOP("How much colour the brightest light, such as fire, keeps."),
+                     { { NULL, TR_NOOP("Balanced") }, { "1", TR_NOOP("Full") }, { "0", TR_NOOP("As SDR") } },
                      0,
                      LIVE_DISPLAY,
                      nullptr,
                      PAGE_PICTURE });
 #endif
     rows.push_back({ "DOD3_POSTFX_QUALITY",
-                     "Post-Processing Quality",
-                     "High: depth of field and bloom drawn smoothly above 720p.",
-                     { { NULL, "Original" }, { "high", "High" } },
+                     TR_NOOP("Post-Processing Quality"),
+                     TR_NOOP("High: depth of field and bloom drawn smoothly above 720p."),
+                     { { NULL, TR_NOOP("Original") }, { "high", TR_NOOP("High") } },
                      0,
                      false,
                      nullptr,
@@ -801,15 +808,15 @@ void init_rows()
 
 std::string value_text(const Row& r, int idx)
 {
-    std::string t = idx >= 0 ? tr(r.choices[idx].text) : std::string(tr("Custom")) + " (" + r.other + ")";
-    if (!r.live && idx != r.running) t += tr(" (next start)");
+    std::string t = idx >= 0 ? page_text(r.choices[idx].text) : std::string(page_text("Custom")) + " (" + r.other + ")";
+    if (!r.live && idx != r.running) t += page_text(" (next start)");
     return t;
 }
 
 /* a row's description, and that it waits for the next start if it does */
 std::string desc_text(const Row& r)
 {
-    return std::string(tr(r.desc)) + (r.live ? "" : tr(" Applies after a restart."));
+    return std::string(page_text(r.desc)) + (r.live ? "" : page_text(" Applies after a restart."));
 }
 
 bool menu_text(int i, std::string& out)
@@ -830,13 +837,13 @@ bool menu_text(int i, std::string& out)
         "Quit the game and return to the desktop?", "Quit to the desktop? Unsaved progress is lost.",
     };
     if (k >= 0 && k < (int)std::size(kRoot))
-        out = tr(kRoot[k]);
+        out = page_text(kRoot[k]);
     else if (k >= 20 && k < 25)
-        out = tr(kQuit[k - 20]);
+        out = page_text(kQuit[k - 20]);
     else if (k == 29)   /* the title menu looks for an entry's description nine on */
-        out = tr(kQuit[2]);
+        out = page_text(kQuit[2]);
     else if (k >= 100 && k < 200)
-        out = r ? tr(r->label) : "";
+        out = r ? page_text(r->label) : "";
     else if (k >= 200 && k < 300)
         out = r ? value_text(*r, r->pending) : "";
     else if (k >= 300 && k < 400)

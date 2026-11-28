@@ -44,6 +44,8 @@ ImU32 alpha(ImU32 c, float a);
 ImU32 mix(ImU32 a, ImU32 b, float t);
 float ease_out(float t);
 std::string size_text(uint64_t bytes);   /* "1.4 GB", "31 MB" */
+/* `t` on one line of `w` pixels in `f` at `size` pixels, an ellipsis where it is cut */
+std::string fit_line(ImFont* f, float size, const std::string& t, float w);
 
 /* A button's look: quiet, the page's main one (in the accent), or one that removes */
 enum class ButtonKind { Quiet, Main, Danger };

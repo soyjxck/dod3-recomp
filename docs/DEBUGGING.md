@@ -283,6 +283,11 @@ runtime's function from then on.
   (close once settled, or once the install ends, printing `[launcher]
   done` or `failed`); `DOD3_SETUP_GRAB=<prefix>` saves its picture as
   `<prefix>_0.ppm`. `DOD3_LAUNCHER=0|1` overrides the setting.
+- The two windows' language: `DOD3_UI_LANGUAGE=<code>` (a translation in `lang/`, or in a `lang` folder beside
+  the executable; `en` is English). `python tools/lang.py pseudo <folder>/lang/qps.po` writes a made-up
+  translation of every string (accented, a third longer, Cyrillic at its end): with `DOD3_UI_LANGUAGE=qps`, what
+  a page still shows in plain English was not marked for translation, and what is cut off does not fit;
+  `DOD3_UI_LANGUAGE_LOG=1` prints each string the language in use has no line for (`[lang] no translation:`).
 - `DOD3_STEP_LOG=1`: each jump of the player's pawn, its height and its
   1/60 s steps, whole and part (`2`: every step of it too);
   `DOD3_STEP_GRAVITY=0`: gravity in a part step as the title has it, a

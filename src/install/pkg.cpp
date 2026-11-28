@@ -7,6 +7,7 @@
 #include "install/pkg.h"
 #include "install/crypto.h"
 #include "install/file.h"
+#include "lang.h"
 #include "ps3recomp_pkg_key.h"
 #include "util.h"
 
@@ -85,7 +86,7 @@ std::string pkg_footer_sha1(const fs::path& p)
 bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
 {
     if (!crypto_selftest()) {
-        *err = "internal error: the cryptography self-test failed";
+        *err = dod3::tr("internal error: the cryptography self-test failed");
         return false;
     }
     std::error_code ec;
@@ -94,7 +95,7 @@ bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
     File f(p, "rb");
     uint8_t h[0x80];
     if (ec || !f.f || !f.read(h, sizeof h) || dod3_be32(h) != kPkgMagic || dod3_be16(h + 6) != 1) {
-        *err = "not a PS3 package";   /* the type at 6: 1 is the PS3's */
+        *err = dod3::tr("not a PS3 package");   /* the type at 6: 1 is the PS3's */
         return false;
     }
     pkg->debug = !(h[4] & 0x80);   /* the revision's top bit: retail */
@@ -105,14 +106,14 @@ bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
     pkg->content_id.assign((const char*)h + 0x30, strnlen((const char*)h + 0x30, 0x24));
     memcpy(pkg->riv, h + 0x70, 16);
     if (pkg->data_offset + pkg->data_size > pkg->file_size || items > 1000000) {
-        *err = "the package is cut short";
+        *err = dod3::tr("the package is cut short");
         return false;
     }
     Aes aes;
     aes.set_key(k_ps3recomp_pkg_key, 128);
     std::vector<uint8_t> tab((size_t)items * 32);
     if (!f.seek(pkg->data_offset) || fread(tab.data(), 1, tab.size(), f.f) != tab.size()) {
-        *err = "cannot read the package";
+        *err = dod3::tr("cannot read the package");
         return false;
     }
     decrypt_range(*pkg, aes, 0, tab.data(), tab.size());
@@ -127,12 +128,12 @@ bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
         ent.dir = type == 4 || type == 0x12;
         if (name_size > 1024 || name_off + (uint64_t)name_size > pkg->data_size ||
             ent.offset + ent.size > pkg->data_size) {
-            *err = "the package's file table is damaged";
+            *err = dod3::tr("the package's file table is damaged");
             return false;
         }
         std::vector<uint8_t> nm(name_size);
         if (!f.seek(pkg->data_offset + name_off) || fread(nm.data(), 1, nm.size(), f.f) != nm.size()) {
-            *err = "cannot read the package";
+            *err = dod3::tr("cannot read the package");
             return false;
         }
         decrypt_range(*pkg, aes, name_off, nm.data(), nm.size());
@@ -142,7 +143,7 @@ bool pkg_open(const fs::path& p, Pkg* pkg, std::string* err)
         for (unsigned char c : ent.name) odd |= c < 0x20 || c == ':';
         if (ent.name.empty() || ent.name.find("..") != std::string::npos || ent.name[0] == '/' || ent.name[0] == '\\' ||
             odd) {
-            *err = "the package names a file outside its folder";
+            *err = dod3::tr("the package names a file outside its folder");
             return false;
         }
         pkg->entries.push_back(ent);
@@ -169,7 +170,7 @@ bool pkg_extract(const Pkg& pkg, const fs::path& dest, const std::function<bool(
 
     File in(pkg.path, "rb");
     if (!in.f) {
-        *err = "cannot open " + utf8(pkg.path);
+        *err = dod3::trf("cannot open {1}", utf8(pkg.path));
         return false;
     }
     Sha1 sha;
@@ -182,7 +183,7 @@ bool pkg_extract(const Pkg& pkg, const fs::path& dest, const std::function<bool(
     for (uint64_t pos = 0; pos < pkg.file_size;) {
         const size_t n = (size_t)std::min<uint64_t>(kChunk, pkg.file_size - pos);
         if (fread(buf.data(), 1, n, in.f) != n) {
-            *err = "cannot read " + utf8(pkg.path);
+            *err = dod3::trf("cannot read {1}", utf8(pkg.path));
             return false;
         }
         if (pos < hashed_end) sha.update(buf.data(), (size_t)std::min<uint64_t>(n, hashed_end - pos));
@@ -200,7 +201,7 @@ bool pkg_extract(const Pkg& pkg, const fs::path& dest, const std::function<bool(
                     fs::create_directories(t.parent_path(), ec);
                     out.reset(new File(t, "wb"));
                     if (!out->f) {
-                        *err = "cannot write " + utf8(t);
+                        *err = dod3::trf("cannot write {1}", utf8(t));
                         return false;
                     }
                 }
@@ -216,7 +217,7 @@ bool pkg_extract(const Pkg& pkg, const fs::path& dest, const std::function<bool(
                 work.assign(buf.begin() + (size_t)(a - lo), buf.begin() + (size_t)(b - lo));
                 decrypt_range(pkg, aes, a - pkg.data_offset, work.data(), work.size());
                 if (fwrite(work.data(), 1, work.size(), out->f) != work.size()) {
-                    *err = "disk full or not writable";
+                    *err = dod3::tr("disk full or not writable");
                     return false;
                 }
             }
@@ -229,17 +230,17 @@ bool pkg_extract(const Pkg& pkg, const fs::path& dest, const std::function<bool(
         }
         pos = hi;
         if (progress && !progress(pos, pkg.file_size)) {
-            *err = "cancelled";
+            *err = dod3::tr("cancelled");
             return false;
         }
     }
     if (cur) {
-        *err = "the package is cut short";
+        *err = dod3::tr("the package is cut short");
         return false;
     }
     const std::string want = pkg.expect_sha1.empty() ? pkg_footer_sha1(pkg.path) : pkg.expect_sha1;
     if (want != std::string(40, '0') && sha.hex() != want) {
-        *err = "the package is damaged (its checksum does not match): " + utf8(pkg.path.filename());
+        *err = dod3::trf("the package is damaged (its checksum does not match): {1}", utf8(pkg.path.filename()));
         return false;
     }
     return true;
@@ -251,17 +252,17 @@ bool pkg_read_file(const Pkg& pkg, const std::string& name, std::vector<uint8_t>
     for (const PkgEntry& x : pkg.entries)
         if (!x.dir && x.name == name) e = &x;
     if (!e) {
-        *err = "the package has no " + name;
+        *err = dod3::trf("the package has no {1}", name);
         return false;
     }
     if (e->size > (1ull << 30)) {
-        *err = name + " is too large to read whole";
+        *err = dod3::trf("{1} is too large to read whole", name);
         return false;
     }
     File f(pkg.path, "rb");
     out->resize((size_t)e->size);
     if (!f.f || !f.seek(pkg.data_offset + e->offset) || fread(out->data(), 1, out->size(), f.f) != out->size()) {
-        *err = "cannot read " + name + " from " + utf8(pkg.path.filename());
+        *err = dod3::trf("cannot read {1} from {2}", name, utf8(pkg.path.filename()));
         return false;
     }
     Aes aes;

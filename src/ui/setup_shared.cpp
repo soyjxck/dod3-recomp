@@ -1,5 +1,6 @@
 /* What the launcher and the setup share besides their look (ui/setup_shared.h). */
 #include "ui/setup_shared.h"
+#include "lang.h"   /* TR_NOOP: shown through tr() */
 #include "util.h"
 
 #include <cstdlib>
@@ -93,22 +94,24 @@ void InstallJob::stop()
     thread.join();
 }
 
-const ModGroup kSpanish = { "Spanish Translation",
+/* (the text is shown through tr(): ui/launcher.cpp, ui/wizard.cpp) */
+const ModGroup kSpanish = { TR_NOOP("Spanish Translation"),
                             "Traducciones Vacuno \xC2\xB7 TraduSquare v1.1",
-                            "The whole game in Spanish: text, menus, the title screen and subtitled movies. "
-                            "Add the US release's downloads as they are: the two .pkg files and MOVIES.zip, "
-                            "and the DLC and voice packages if you have those.",
-                            { { "ES-GAME", "Story and mission text", nullptr },
-                              { "ES-DATA", "Title screen and menus", nullptr },
-                              { "ES-MOVIES", "Movies", nullptr },
-                              { "ES-DLC", "DLC chapters", "with the DLC" },
-                              { "ES-JPV", "Japanese voices' movies", "with the Japanese Voice Pack" } } };
-const ModGroup kUndub = { "DLC Undub",
-                          "Canzah and Slow \xC2\xB7 prototype 0.707",
-                          "Japanese voices for the six DLC chapters, retimed to match. Follows the game's own "
-                          "Voice setting (Change Outfits/Music > Voice). Add its folder, the one holding GAME "
-                          "and ISO, with Add Folder.",
-                          { { "UNDUB", "Japanese voices for the DLC chapters", nullptr } } };
+                            TR_NOOP("The whole game in Spanish: text, menus, the title screen and subtitled movies. "
+                                    "Add the US release's downloads as they are: the two .pkg files and MOVIES.zip, "
+                                    "and the DLC and voice packages if you have those."),
+                            { { "ES-GAME", TR_NOOP("Story and mission text"), nullptr },
+                              { "ES-DATA", TR_NOOP("Title screen and menus"), nullptr },
+                              { "ES-MOVIES", TR_NOOP("Movies"), nullptr },
+                              { "ES-DLC", TR_NOOP("DLC chapters"), TR_NOOP("with the DLC") },
+                              { "ES-JPV", TR_NOOP("Japanese voices' movies"),
+                                TR_NOOP("with the Japanese Voice Pack") } } };
+const ModGroup kUndub = { TR_NOOP("DLC Undub"),
+                          TR_NOOP("Canzah and Slow \xC2\xB7 prototype 0.707"),
+                          TR_NOOP("Japanese voices for the six DLC chapters, retimed to match. Follows the game's own "
+                                  "Voice setting (Change Outfits/Music > Voice). Add its folder, the one holding GAME "
+                                  "and ISO, with Add Folder."),
+                          { { "UNDUB", TR_NOOP("Japanese voices for the DLC chapters"), nullptr } } };
 
 bool has_mod(const Status& have, std::string_view id)
 {

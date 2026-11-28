@@ -4,6 +4,7 @@
 #include "install/file.h"
 #include "install/install.h"   /* free_bytes */
 #include "install/zip.h"
+#include "lang.h"
 #include "util.h"
 #include "app_version.h"       /* generated: the port's version label */
 
@@ -302,6 +303,9 @@ bool kept(const std::string& rel, const fs::path& dir)
 /* ---- HTTPS ---------------------------------------------------------------------- */
 
 #ifdef _WIN32
+/* http_get's error when it was cancelled: a cancel is told from a failure by it; it is not what is shown */
+const char kCancelled[] = "Cancelled";
+
 std::wstring wide(const std::string& s)
 {
     std::wstring w(s.size(), L'\0');
@@ -329,7 +333,7 @@ bool http_get(const std::string& url, bool api, const std::function<bool(const u
     parts.dwStructSize = sizeof parts;
     parts.dwHostNameLength = parts.dwUrlPathLength = parts.dwExtraInfoLength = (DWORD)-1;
     if (!WinHttpCrackUrl(w.c_str(), 0, 0, &parts) || parts.nScheme != INTERNET_SCHEME_HTTPS) {
-        *err = "not an https address: " + url;
+        *err = dod3::trf("not an https address: {1}", url);
         return false;
     }
     const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
@@ -349,14 +353,14 @@ bool http_get(const std::string& url, bool api, const std::function<bool(const u
     if (!q.h || !WinHttpSendRequest(q.h, headers ? headers : WINHTTP_NO_ADDITIONAL_HEADERS, headers ? (DWORD)-1L : 0,
                                     WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
         !WinHttpReceiveResponse(q.h, nullptr)) {
-        *err = "GitHub could not be reached (error " + std::to_string(GetLastError()) + ")";
+        *err = dod3::trf("GitHub could not be reached (error {1})", GetLastError());
         return false;
     }
     DWORD code = 0, len = sizeof code;
     WinHttpQueryHeaders(q.h, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &code,
                         &len, WINHTTP_NO_HEADER_INDEX);
     if (code != 200) {
-        *err = "GitHub answered " + std::to_string(code);
+        *err = dod3::trf("GitHub answered {1}", code);
         return false;
     }
     DWORD clen = 0;
@@ -367,21 +371,21 @@ bool http_get(const std::string& url, bool api, const std::function<bool(const u
     std::vector<uint8_t> buf(1 << 16);
     for (;;) {
         if (cancel && *cancel) {
-            *err = "Cancelled";
+            *err = kCancelled;
             return false;
         }
         DWORD avail = 0, read = 0;
         if (!WinHttpQueryDataAvailable(q.h, &avail)) {
-            *err = "the download stopped (error " + std::to_string(GetLastError()) + ")";
+            *err = dod3::trf("the download stopped (error {1})", GetLastError());
             return false;
         }
         if (!avail) return true;
         if (!WinHttpReadData(q.h, buf.data(), std::min<DWORD>(avail, (DWORD)buf.size()), &read)) {
-            *err = "the download stopped (error " + std::to_string(GetLastError()) + ")";
+            *err = dod3::trf("the download stopped (error {1})", GetLastError());
             return false;
         }
         if (!sink(buf.data(), read)) {
-            *err = "could not write the download";
+            *err = dod3::tr("could not write the download");
             return false;
         }
         if (got) *got += read;
@@ -521,11 +525,11 @@ UpdateJob::~UpdateJob()
 std::string UpdateJob::what() const
 {
     switch (step.load()) {
-    case kDownloading: return "Downloading";
-    case kChecking: return "Checking the download";
-    case kUnpacking: return "Unpacking";
-    case kInstalling: return "Installing";
-    default: return "Done";
+    case kDownloading: return dod3::tr("Downloading");
+    case kChecking: return dod3::tr("Checking the download");
+    case kUnpacking: return dod3::tr("Unpacking");
+    case kInstalling: return dod3::tr("Installing");
+    default: return dod3::tr("Done");
     }
 }
 
@@ -549,17 +553,18 @@ void UpdateJob::start(const fs::path& dir, const Release& r)
 #ifndef _WIN32
         (void)dir;
         (void)r;
-        fail("Updates are installed this way on Windows only.");
+        fail(dod3::tr("Updates are installed this way on Windows only."));
 #else
         std::error_code ec;
         const fs::path work = dir / kWorkDir, files = work / "files";
         fs::remove_all(files, ec);   /* a cancelled or failed attempt's */
         fs::create_directories(files, ec);
-        if (ec) return fail("Could not make the folder " + dod3::utf8(files) + ".");
+        if (ec) return fail(dod3::trf("Could not make the folder {1}.", dod3::utf8(files)));
         const uint64_t space = free_bytes(dir);
         if (space && r.size && space < r.size * 4)
-            return fail("Not enough space on the drive: the update needs about " + std::to_string(r.size * 4 >> 20) +
-                        " MB while it is installed.");
+            return fail(dod3::trf("Not enough space on the drive: the update needs about {1} MB while it is "
+                                  "installed.",
+                                  r.size * 4 >> 20));
 
         /* 1. the download, hashed as it is written */
         step = kDownloading;
@@ -570,7 +575,7 @@ void UpdateJob::start(const fs::path& dir, const Release& r)
         uint64_t got = 0;
         {
             File out(zip, "wb");
-            if (!out.f) return fail("Could not write " + dod3::utf8(zip) + ".");
+            if (!out.f) return fail(dod3::trf("Could not write {1}.", dod3::utf8(zip)));
             const auto sink = [&](const uint8_t* p, size_t n) {
                 sha.update(p, n);
                 got += n;
@@ -586,25 +591,27 @@ void UpdateJob::start(const fs::path& dir, const Release& r)
                     whole = sink(b.data(), n) && !cancel;
                     done += n;
                 }
-                if (!whole) err = cancel ? "Cancelled" : std::string("cannot read ") + test;
+                if (!whole) err = cancel ? kCancelled : dod3::trf("cannot read {1}", test);
             } else {
                 whole = http_get(r.url, false, sink, &done, &total, &cancel, &err);
             }
-            if (!whole) return fail(err == "Cancelled" ? err : "The download failed: " + err + ".");
+            if (!whole)
+                return fail(err == kCancelled ? dod3::tr("Cancelled") : dod3::trf("The download failed: {1}.", err));
         }
 
         /* 2. its size and hash, as GitHub lists them */
         step = kChecking;
         if (r.size && got != r.size)
-            return fail("The download is not the size GitHub lists for it. Nothing was installed.");
+            return fail(dod3::tr("The download is not the size GitHub lists for it. Nothing was installed."));
         if (sha.hex() != r.sha256)
-            return fail("The download does not match the SHA-256 GitHub lists for it. Nothing was installed.");
+            return fail(
+                dod3::tr("The download does not match the SHA-256 GitHub lists for it. Nothing was installed."));
 
         /* 3. unpacked, every entry checked against its CRC-32 */
         step = kUnpacking;
         std::vector<ZipEntry> entries;
         std::string err;
-        if (!zip_list(zip, &entries, &err)) return fail("The download could not be unpacked: " + err + ".");
+        if (!zip_list(zip, &entries, &err)) return fail(dod3::trf("The download could not be unpacked: {1}.", err));
         /* the release's files sit in one folder named after it: its name is left off */
         std::string top;
         for (const ZipEntry& e : entries) {
@@ -632,13 +639,14 @@ void UpdateJob::start(const fs::path& dir, const Release& r)
             if (e.dir || n.empty() || n.back() == '/') continue;
             if (n.compare(0, top.size(), top) != 0) continue;
             const std::string rel = n.substr(top.size());
-            if (!safe_path(rel)) return fail("The download names a file outside its folder (" + n + "). Nothing was installed.");
+            if (!safe_path(rel))
+                return fail(dod3::trf("The download names a file outside its folder ({1}). Nothing was installed.", n));
             if (kept(rel, dir)) continue;
             has_exe |= rel == "dod3.exe";
             items.push_back({ &e, rel });
             packed += e.csize;
         }
-        if (!has_exe) return fail("The download has no dod3.exe. Nothing was installed.");
+        if (!has_exe) return fail(dod3::tr("The download has no dod3.exe. Nothing was installed."));
         done = 0;
         total = packed ? packed : 1;
         uint64_t before = 0;
@@ -649,7 +657,8 @@ void UpdateJob::start(const fs::path& dir, const Release& r)
                                  return !cancel;
                              },
                              &err))
-                return fail(cancel ? "Cancelled" : "The download could not be unpacked (" + it.rel + "): " + err + ".");
+                return fail(cancel ? dod3::tr("Cancelled")
+                                   : dod3::trf("The download could not be unpacked ({1}): {2}.", it.rel, err));
             before += it.e->csize;
         }
         fs::remove(zip, ec);
@@ -689,9 +698,12 @@ void UpdateJob::start(const fs::path& dir, const Release& r)
                 if (s->had && !move_file(old, s->target, true)) back = false;
             }
             changed = !back;
-            return fail(failed + " could not be replaced (is another program using it?). " +
-                        (back ? "Every file was put back as it was." : "Some files could not be put back: unzip the "
-                                                                        "release over this folder to finish."));
+            return fail(back ? dod3::trf("{1} could not be replaced (is another program using it?). Every file was put "
+                                         "back as it was.",
+                                         failed)
+                             : dod3::trf("{1} could not be replaced (is another program using it?). Some files could "
+                                         "not be put back: unzip the release over this folder to finish.",
+                                         failed));
         }
 
         /* 5. what is left goes at the new version's first start (update_cleanup): the running program's .old

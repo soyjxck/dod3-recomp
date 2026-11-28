@@ -203,6 +203,7 @@ folder above). It explains each setting:
 | DOD3_LANGUAGE | fr: the game in French, the disc's other language -- its text and subtitles, the 1.01 update's and the DLC's too, and the port's Settings pages; the voices stay as they are. In the launcher: Settings > System > Language. Unset is English |
 | DOD3_SKIP_INTRO | 1 (default) skips the logos and the opening movie at start-up; 0 keeps them |
 | DOD3_LAUNCHER | 0 starts the game straight away, without the launcher; holding Shift (Option on a Mac) while it starts opens the launcher anyway. Unset opens it at every start |
+| DOD3_UI_LANGUAGE | The launcher's and the setup's own language (not the game's text): a translation's code, such as ru, or en for English. The translations are those a release was built with and any in a `lang` folder beside the executable ([TRANSLATING.md](TRANSLATING.md)). In the launcher: Settings > System > Launcher Language, once there is a translation. Unset follows the system's language |
 | DOD3_UPDATE_CHECK | Windows: 0 stops the launcher asking GitHub for a newer release when it opens. In the launcher: Settings > System > Check for Updates. Unset asks |
 | DOD3_UNFOCUSED | While the window is in the background: unset keeps running, mute silences the audio, pause stops the game until you come back |
 | DOD3_SONG_AUTOPLAY | 1 plays the song of branch D's final mission for you: every note is pressed on its time (the RPCS3 patch "Auto Play Song of The D Branch Final Mission", by bucanero). In the launcher: Settings > Cheats > Final Song Auto-Play. Unset is off |

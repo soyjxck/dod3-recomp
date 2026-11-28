@@ -47,6 +47,7 @@
 #include "install/install.h"
 #include "patches/sysset.h"    /* Dod3RowSpec, dod3_setting_rows */
 #include "cpu/eboot.h"         /* what this EBOOT's build can patch */
+#include "lang.h"              /* tr: the text in the player's language */
 #include "util.h"
 #include "app_version.h"       /* generated: the port's version label */
 
@@ -71,6 +72,10 @@ namespace dod3setup {
 namespace {
 
 using namespace look;
+using dod3::tr;
+using dod3::trc;
+using dod3::trf;
+using dod3::trnf;
 
 const char kSep[] = " \xC2\xB7 ";   /* " · ", between the parts of a line */
 
@@ -84,73 +89,86 @@ std::string join(const std::vector<std::string>& parts)
 /* ---- the settings ------------------------------------------------------------ */
 
 enum Tab { kDisplay, kGraphics, kControls, kSystem, kCheats, kTabs };
-const char* const kTabNames[kTabs] = { "Display", "Graphics", "Controls", "System", "Cheats" };
+const char* const kTabNames[kTabs] = { TR_NOOP("Display"), TR_NOOP("Graphics"), TR_NOOP("Controls"), TR_NOOP("System"),
+                                       TR_NOOP("Cheats") };
 
 /* The rows only the file has (the in-game pages have the rest). */
 void extra_rows(std::vector<Dod3RowSpec>& rows)
 {
     rows.push_back({ .key = "RSX_WINDOW",
-                     .label = "Window Size",
-                     .desc = "The window's size when the display mode is Windowed.",
+                     .label = TR_NOOP("Window Size"),
+                     .desc = TR_NOOP("The window's size when the display mode is Windowed."),
                      .choices = { { "1280x720", "1280x720" },
                                   { "1600x900", "1600x900" },
                                   { "1920x1080", "1920x1080" },
                                   { "2560x1440", "2560x1440" },
                                   { "3840x2160", "3840x2160" } } });
     rows.push_back({ .key = "DOD3_MOUSE",
-                     .label = "Mouse Camera",
-                     .desc = "The mouse turns the camera while the game is in front.",
-                     .choices = { { nullptr, "On" }, { "0", "Off" } } });
+                     .label = TR_NOOP("Mouse Camera"),
+                     .desc = TR_NOOP("The mouse turns the camera while the game is in front."),
+                     .choices = { { nullptr, TR_NOOP("On") }, { "0", TR_NOOP("Off") } } });
     rows.push_back({ .key = "DOD3_CAMERA_SPEED",
-                     .label = "Camera Speed",
-                     .desc = "Console keeps the stick's speed at any frame rate.",
-                     .choices = { { nullptr, "Console" }, { "original", "Original" } } });
+                     .label = TR_NOOP("Camera Speed"),
+                     .desc = TR_NOOP("Console keeps the stick's speed at any frame rate."),
+                     .choices = { { nullptr, TR_NOOP("Console") }, { "original", TR_NOOP("Original") } } });
     rows.push_back({ .key = "DOD3_LANGUAGE",
-                     .label = "Language",
-                     .desc = "The game's text and subtitles. The disc has English and French.",
+                     .label = TR_NOOP("Language"),
+                     .desc = TR_NOOP("The game's text and subtitles. The disc has English and French."),
                      .choices = { { nullptr, "English" }, { "fr", "Français" } } });
+    /* this window's own language (lang.h): the system's, unless one is chosen;
+     * each language under its own name */
+    static const std::vector<dod3::Language> langs = dod3::languages();
+    if (!langs.empty()) {
+        Dod3RowSpec r{ .key = "DOD3_UI_LANGUAGE",
+                       .label = TR_NOOP("Launcher Language"),
+                       .desc = TR_NOOP("This launcher's and the setup's own text. Auto follows the system's language."),
+                       .choices = { { nullptr, TR_NOOP("Auto") }, { "en", "English" } } };
+        for (const dod3::Language& l : langs) r.choices.push_back({ l.code.c_str(), l.name.c_str() });
+        rows.push_back(r);
+    }
     rows.push_back({ .key = "DOD3_TROPHY_POPUPS",
-                     .label = "Trophy Pop-ups",
-                     .desc = "Show a trophy at the top right of the game as you earn it.",
-                     .choices = { { nullptr, "On" }, { "0", "Off" } } });
+                     .label = TR_NOOP("Trophy Pop-ups"),
+                     .desc = TR_NOOP("Show a trophy at the top right of the game as you earn it."),
+                     .choices = { { nullptr, TR_NOOP("On") }, { "0", TR_NOOP("Off") } } });
     rows.push_back({ .key = "DOD3_LAUNCHER",
-                     .label = "Launcher at Start",
+                     .label = TR_NOOP("Launcher at Start"),
 #ifdef __linux__
-                     .desc = "Open this at start. Off, DOD3_LAUNCHER=1 in the environment opens it anyway.",
+                     .desc = TR_NOOP("Open this at start. Off, DOD3_LAUNCHER=1 in the environment opens it anyway."),
 #else
-                     .desc = "Open this at start. Hold Shift (Option on a Mac) to open it anyway.",
+                     .desc = TR_NOOP("Open this at start. Hold Shift (Option on a Mac) to open it anyway."),
 #endif
-                     .choices = { { nullptr, "On" }, { "0", "Off" } } });
+                     .choices = { { nullptr, TR_NOOP("On") }, { "0", TR_NOOP("Off") } } });
     /* the Cheats tab (src/patches/cheats.cpp, src/patches/song_autoplay.cpp) */
 #ifdef DOD3_FN_GAUGE_SET
     rows.push_back({ .key = "DOD3_CHEAT_HEALTH",
-                     .label = "Infinite Health",
-                     .desc = "Your health stays full, Zero's or the dragon's. Enemies are hurt as usual.",
-                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+                     .label = TR_NOOP("Infinite Health"),
+                     .desc = TR_NOOP("Your health stays full, Zero's or the dragon's. Enemies are hurt as usual."),
+                     .choices = { { nullptr, TR_NOOP("Off") }, { "1", TR_NOOP("On") } } });
     rows.push_back({ .key = "DOD3_CHEAT_INTONER",
-                     .label = "Full Intoner Gauge",
-                     .desc = "The Intoner gauge fills at the first blood and stays full, in Intoner mode too.",
-                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+                     .label = TR_NOOP("Full Intoner Gauge"),
+                     .desc = TR_NOOP("The Intoner gauge fills at the first blood and stays full, in Intoner mode too."),
+                     .choices = { { nullptr, TR_NOOP("Off") }, { "1", TR_NOOP("On") } } });
     rows.push_back({ .key = "DOD3_CHEAT_ITEMS",
-                     .label = "Infinite Items",
-                     .desc = "Items are not used up.",
-                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+                     .label = TR_NOOP("Infinite Items"),
+                     .desc = TR_NOOP("Items are not used up."),
+                     .choices = { { nullptr, TR_NOOP("Off") }, { "1", TR_NOOP("On") } } });
     rows.push_back({ .key = "DOD3_CHEAT_TIME",
-                     .label = "Frozen Time Limits",
-                     .desc = "A mission's time limit does not count down.",
-                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+                     .label = TR_NOOP("Frozen Time Limits"),
+                     .desc = TR_NOOP("A mission's time limit does not count down."),
+                     .choices = { { nullptr, TR_NOOP("Off") }, { "1", TR_NOOP("On") } } });
 #endif
 #ifdef DOD3_FN_SONG_JUDGE
     rows.push_back({ .key = "DOD3_SONG_AUTOPLAY",
-                     .label = "Final Song Auto-Play",
-                     .desc = "Branch D's final song presses every note for you, on its time.",
-                     .choices = { { nullptr, "Off" }, { "1", "On" } } });
+                     .label = TR_NOOP("Final Song Auto-Play"),
+                     .desc = TR_NOOP("Branch D's final song presses every note for you, on its time."),
+                     .choices = { { nullptr, TR_NOOP("Off") }, { "1", TR_NOOP("On") } } });
 #endif
 #ifdef _WIN32
-    rows.push_back({ .key = "DOD3_UPDATE_CHECK",
-                     .label = "Check for Updates",
-                     .desc = "Ask GitHub for a newer release when this opens; Update, at the bottom, installs it.",
-                     .choices = { { nullptr, "On" }, { "0", "Off" } } });
+    rows.push_back(
+        { .key = "DOD3_UPDATE_CHECK",
+          .label = TR_NOOP("Check for Updates"),
+          .desc = TR_NOOP("Ask GitHub for a newer release when this opens; Update, at the bottom, installs it."),
+          .choices = { { nullptr, TR_NOOP("On") }, { "0", TR_NOOP("Off") } } });
 #endif
 }
 
@@ -164,7 +182,7 @@ const struct {
     { "DOD3_ASPECT", kDisplay },    { "DOD3_FPS", kDisplay },        { "RSX_VSYNC", kDisplay },
     { "RSX_AA", kGraphics },        { "RSX_ANISO", kGraphics },      { "DOD3_FOV", kGraphics },
     { "DOD3_PROMPTS", kControls },  { "DOD3_MOUSE", kControls },     { "DOD3_MOUSE_SENS", kControls },
-    { "DOD3_CAMERA_SPEED", kControls }, { "DOD3_LANGUAGE", kSystem },
+    { "DOD3_CAMERA_SPEED", kControls }, { "DOD3_LANGUAGE", kSystem }, { "DOD3_UI_LANGUAGE", kSystem },
     { "DOD3_SKIP_INTRO", kSystem }, { "DOD3_UNFOCUSED", kSystem },
     { "DOD3_TROPHY_POPUPS", kSystem }, { "RSX_BACKEND", kSystem }, { "DOD3_LAUNCHER", kSystem },
     { "DOD3_UPDATE_CHECK", kSystem },
@@ -191,18 +209,30 @@ struct Bind {
     const char* defaults;
 };
 const Bind kBinds[] = {
-    { "KEY_MOVE_UP", "Move Forward", "W" },      { "KEY_MOVE_DOWN", "Move Back", "S" },
-    { "KEY_MOVE_LEFT", "Move Left", "A" },       { "KEY_MOVE_RIGHT", "Move Right", "D" },
-    { "KEY_CROSS", "Cross", "Space" },           { "KEY_CIRCLE", "Circle", "E Backspace" },
-    { "KEY_SQUARE", "Square", "Mouse1" },        { "KEY_TRIANGLE", "Triangle", "Mouse2" },
-    { "KEY_L1", "L1", "Q Mouse3" },              { "KEY_R1", "R1", "Shift" },
-    { "KEY_L2", "L2", "R" },                     { "KEY_R2", "R2", "F" },
-    { "KEY_L3", "L3", "V C" },                   { "KEY_R3", "R3", "V X" },
-    { "KEY_START", "Start", "Esc Enter" },       { "KEY_SELECT", "Select", "Tab" },
-    { "KEY_UP", "D-Pad Up", "Up 1" },            { "KEY_DOWN", "D-Pad Down", "Down 3" },
-    { "KEY_LEFT", "D-Pad Left", "Left 4" },      { "KEY_RIGHT", "D-Pad Right", "Right 2" },
-    { "KEY_LOOK_UP", "Camera Up", "none" },      { "KEY_LOOK_DOWN", "Camera Down", "none" },
-    { "KEY_LOOK_LEFT", "Camera Left", "WheelUp" }, { "KEY_LOOK_RIGHT", "Camera Right", "WheelDown" },
+    { "KEY_MOVE_UP", TR_NOOP("Move Forward"), "W" },
+    { "KEY_MOVE_DOWN", TR_NOOP("Move Back"), "S" },
+    { "KEY_MOVE_LEFT", TR_NOOP("Move Left"), "A" },
+    { "KEY_MOVE_RIGHT", TR_NOOP("Move Right"), "D" },
+    { "KEY_CROSS", TR_NOOP("Cross"), "Space" },
+    { "KEY_CIRCLE", TR_NOOP("Circle"), "E Backspace" },
+    { "KEY_SQUARE", TR_NOOP("Square"), "Mouse1" },
+    { "KEY_TRIANGLE", TR_NOOP("Triangle"), "Mouse2" },
+    { "KEY_L1", "L1", "Q Mouse3" },
+    { "KEY_R1", "R1", "Shift" },
+    { "KEY_L2", "L2", "R" },
+    { "KEY_R2", "R2", "F" },
+    { "KEY_L3", "L3", "V C" },
+    { "KEY_R3", "R3", "V X" },
+    { "KEY_START", TR_NOOP("Start"), "Esc Enter" },
+    { "KEY_SELECT", TR_NOOP("Select"), "Tab" },
+    { "KEY_UP", TR_NOOP("D-Pad Up"), "Up 1" },
+    { "KEY_DOWN", TR_NOOP("D-Pad Down"), "Down 3" },
+    { "KEY_LEFT", TR_NOOP("D-Pad Left"), "Left 4" },
+    { "KEY_RIGHT", TR_NOOP("D-Pad Right"), "Right 2" },
+    { "KEY_LOOK_UP", TR_NOOP("Camera Up"), "none" },
+    { "KEY_LOOK_DOWN", TR_NOOP("Camera Down"), "none" },
+    { "KEY_LOOK_LEFT", TR_NOOP("Camera Left"), "WheelUp" },
+    { "KEY_LOOK_RIGHT", TR_NOOP("Camera Right"), "WheelDown" },
 };
 
 /* An ImGui key as kbm.cpp names it; nullptr if it has no name there. */
@@ -323,10 +353,11 @@ std::vector<NoteLine> note_lines(const std::string& md)
 #endif
 
 const float kPanelSlide = 0.25f;   /* seconds a panel takes to come in */
-const char kOffNote[] = "Switched off: the game starts without it. Its files are kept, to switch it on again.";
-const std::vector<std::pair<std::string, std::string>> kModFilter = {
-    { "Drakengard 3 packages and archives (.pkg, .zip)", "*.pkg;*.zip" }, { "All files", "*.*" }
-};
+const char kOffNote[] = TR_NOOP("Switched off: the game starts without it. Its files are kept, to switch it on again.");
+std::vector<std::pair<std::string, std::string>> mod_filter()
+{
+    return { { tr("Drakengard 3 packages and archives (.pkg, .zip)"), "*.pkg;*.zip" }, { tr("All files"), "*.*" } };
+}
 
 struct Launcher : Kit {
     fs::path base, ini;
@@ -360,6 +391,7 @@ struct Launcher : Kit {
     std::vector<Dod3RowSpec> rows;
     int tab = kDisplay;
     int capture = -1, capture_frames = 0;   /* a key binding being set */
+    float bind_labels_w = 0;                /* the keyboard list's widest label, this frame */
 
 #ifdef _WIN32
     /* updates (install/update.h) */
@@ -415,7 +447,7 @@ struct Launcher : Kit {
     {
         for (const FileChecks::Finished& f : checks.take_finished()) {
             if (f.src.kind == SourceKind::Disc || f.src.kind == SourceKind::Eboot)
-                notes.push_back(f.name + ": this is the game itself. To install it again, use Game Files.");
+                notes.push_back(trf("{1}: this is the game itself. To install it again, use Game Files.", f.name));
             else if (!f.src.set())
                 notes.push_back(f.name + ": " + f.err);
             else if (const std::string clash = mod_conflict(base, f.src); !clash.empty())
@@ -499,7 +531,11 @@ struct Launcher : Kit {
         /* why not stays on the card: it is a sentence, and may name another mod to switch off */
         card_notes.erase(name);
         if (!moved) card_notes[name] = err + ".";
-        say(moved ? name + (on ? " on" : " off") : name + " was not switched " + (on ? "on" : "off"));
+        const char* shown = tr(name.c_str());   /* a mod the setup knows by name: in the player's language */
+        if (moved)
+            say(on ? trf("{1} on", shown) : trf("{1} off", shown));
+        else
+            say(on ? trf("{1} was not switched on", shown) : trf("{1} was not switched off", shown));
     }
 
     /* ---- dod3.ini ---- */
@@ -511,11 +547,12 @@ struct Launcher : Kit {
             kv[key] = v;
         else
             kv.erase(key);
+        if (key == "DOD3_UI_LANGUAGE") dod3::set_language(v ? v : "");   /* this window's own language, at once */
     }
     /* the keys written to the file; the toast says `said`, or that it failed */
-    void save(const std::vector<std::pair<std::string, const char*>>& keys, const std::string& said = "Saved")
+    void save(const std::vector<std::pair<std::string, const char*>>& keys, const std::string& said = "")
     {
-        say(dod3::ini_write(ini, keys) ? said : "Could not save dod3.ini");
+        say(!dod3::ini_write(ini, keys) ? tr("Could not save dod3.ini") : said.empty() ? tr("Saved") : said);
     }
 
     /* ---- the title's side: the menu, the footer ---- */
@@ -524,12 +561,12 @@ struct Launcher : Kit {
     {
         std::vector<std::string> parts;
         const std::vector<std::string> es = installed_parts(kSpanish, have);
-        if (!es.empty()) parts.push_back(all_on(es) ? "Spanish translation" : "Spanish translation (off)");
-        if (has_mod(have, "UNDUB")) parts.push_back("DLC Undub");
+        if (!es.empty()) parts.push_back(all_on(es) ? tr("Spanish translation") : tr("Spanish translation (off)"));
+        if (has_mod(have, "UNDUB")) parts.push_back(tr("DLC Undub"));
         size_t other = 0;
         for (const auto& m : have.mods) other += !known_mod(m.first);
-        if (other) parts.push_back(std::to_string(other) + (other == 1 ? " other" : " others"));
-        return parts.empty() ? "None installed" : join(parts);
+        if (other) parts.push_back(trnf(other, "{1} other", "{1} others", other));
+        return parts.empty() ? tr("None installed") : join(parts);
     }
 
     std::string settings_summary() const
@@ -541,7 +578,7 @@ struct Launcher : Kit {
                     std::string v = value_text(r);
                     const size_t paren = v.find(" (");
                     if (paren != std::string::npos) v.resize(paren);
-                    if (!strcmp(key, "DOD3_FPS") && !v.empty() && v[0] >= '0' && v[0] <= '9') v += " fps";
+                    if (!strcmp(key, "DOD3_FPS") && !v.empty() && v[0] >= '0' && v[0] <= '9') v = trf("{1} fps", v);
                     parts.push_back(v);
                 }
         return join(parts);
@@ -566,7 +603,8 @@ struct Launcher : Kit {
         ImGui::EndDisabled();
         float& a = anim_of(ImGui::GetItemID());
         approach(a, hot ? 1.0f : 0.0f, 16.0f);
-        const ImVec2 ls = text_size(F.display, 34, "Play");
+        const char* play = tr("Play");
+        const ImVec2 ls = text_size(F.display, 34, play);
         const float tx = x + px(12) * a, ty = y + (h - ls.y) / 2, cy = ty + ls.y / 2;
         entry_bar(dl, x, cy, ls.y, a);
         const float r = px(9);
@@ -574,7 +612,7 @@ struct Launcher : Kit {
         dl->AddTriangleFilled(ImVec2(c.x - r * 0.55f, c.y - r), ImVec2(c.x - r * 0.55f, c.y + r), ImVec2(c.x + r, c.y),
                               mix(kAccent, kAccentHi, a));
         dl->AddText(F.display, px(34), ImVec2(tx + px(28), ty),
-                    enabled ? mix(kText, IM_COL32(255, 255, 255, 255), a) : alpha(kText, 0.3f), "Play");
+                    enabled ? mix(kText, IM_COL32(255, 255, 255, 255), a) : alpha(kText, 0.3f), play);
         return pressed && enabled;
     }
 
@@ -626,22 +664,21 @@ struct Launcher : Kit {
             refocus = Panel::None;
         };
         back_here(Panel::Mods);
-        if (menu_item("##mods", "Mods", mods_summary().c_str(), y, panel == Panel::Mods, true)) open(Panel::Mods);
+        if (menu_item("##mods", tr("Mods"), mods_summary().c_str(), y, panel == Panel::Mods, true)) open(Panel::Mods);
         y += px(62);
-        char dlc[64];
-        snprintf(dlc, sizeof dlc, "%zu of %zu installed", have.dlc.size(), known_dlc().size());
+        const std::string dlc = trf("{1} of {2} installed", have.dlc.size(), known_dlc().size());
         back_here(Panel::Dlc);
-        if (menu_item("##dlc", "DLC", dlc, y, panel == Panel::Dlc, true)) open(Panel::Dlc);
+        if (menu_item("##dlc", tr("DLC"), dlc.c_str(), y, panel == Panel::Dlc, true)) open(Panel::Dlc);
         y += px(62);
         back_here(Panel::Settings);
-        if (menu_item("##settings", "Settings", settings_summary().c_str(), y, panel == Panel::Settings, true))
+        if (menu_item("##settings", tr("Settings"), settings_summary().c_str(), y, panel == Panel::Settings, true))
             open(Panel::Settings);
         y += px(62);
         back_here(Panel::Trophies);
-        if (menu_item("##trophies", "Trophies", trophies.summary().c_str(), y, panel == Panel::Trophies, true))
+        if (menu_item("##trophies", tr("Trophies"), trophies.summary().c_str(), y, panel == Panel::Trophies, true))
             open(Panel::Trophies);
         y += px(62);
-        if (menu_item("##quit", "Quit", nullptr, y, false, !working())) result = kQuit;
+        if (menu_item("##quit", tr("Quit"), nullptr, y, false, !working())) result = kQuit;
         return result;
     }
 
@@ -649,14 +686,13 @@ struct Launcher : Kit {
     {
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const float y = H - px(52);
-        char v[64];
-        snprintf(v, sizeof v, "Version %s", DOD3_VERSION_STRING);
-        dl->AddText(F.regular, px(13), ImVec2(px(72), y), alpha(kDim, 0.8f), v);
-        float x = px(72) + text_size(F.regular, 13, v).x + px(26);
+        const std::string v = trf("Version {1}", DOD3_VERSION_STRING);
+        dl->AddText(F.regular, px(13), ImVec2(px(72), y), alpha(kDim, 0.8f), v.c_str());
+        float x = px(72) + text_size(F.regular, 13, v.c_str()).x + px(26);
 #ifdef _WIN32
         /* a newer release: its Update panel */
         if (upd_found) {
-            const std::string t = "Update to " + upd.release.label;
+            const std::string t = trf("Update to {1}", upd.release.label);
             const ImVec2 us = text_size(F.semibold, 13, t.c_str());
             ImGui::SetCursorScreenPos(ImVec2(x - px(6), y - px(4)));
             const bool pressed = hit("##update", ImVec2(us.x + px(26), us.y + px(8)));
@@ -669,7 +705,7 @@ struct Launcher : Kit {
         }
 #endif
         /* Game Files: the installer, for the disc or the update */
-        const char* gf = "Game Files";
+        const char* gf = tr("Game Files");
         const ImVec2 gs = text_size(F.semibold, 13, gf);
         const ImVec2 gp(x, y);
         ImGui::SetCursorScreenPos(ImVec2(gp.x - px(6), gp.y - px(4)));
@@ -696,7 +732,7 @@ struct Launcher : Kit {
         ImGui::PushID(name.c_str());
         if (toggle("##on", on)) switch_mod(ids, name, !on);
         ImGui::PopID();
-        const char* t = on ? "On" : "Off";
+        const char* t = on ? tr("On") : tr("Off");
         const ImVec2 ls = text_size(F.semibold, 13, t);
         ImGui::GetWindowDrawList()->AddText(F.semibold, px(13), ImVec2(right - ts.x - px(10) - ls.x, y + (ts.y - ls.y) / 2),
                                             on ? kText : kDim, t);
@@ -712,22 +748,22 @@ struct Launcher : Kit {
         card_begin();
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const float right = card_x1 - px(18);
-        label(F.semibold, 19, kText, g.title);
+        label(F.semibold, 19, kText, tr(g.title));
         const ImVec2 tp = ImGui::GetItemRectMin();
         if (!(in > 0 && card_switch(ids, g.title, right, tp.y - px(1)))) {
             if (in == (int)g.parts.size())
-                pill(dl, ImVec2(right, tp.y + px(2)), "Installed", kOk);
+                pill(dl, ImVec2(right, tp.y + px(2)), tr("Installed"), kOk);
             else if (in > 0)
-                pill(dl, ImVec2(right, tp.y + px(2)), "Partly installed", kWarn);
+                pill(dl, ImVec2(right, tp.y + px(2)), tr("Partly installed"), kWarn);
             else
-                pill(dl, ImVec2(right, tp.y + px(2)), "Not installed", kFaint);
+                pill(dl, ImVec2(right, tp.y + px(2)), tr("Not installed"), kFaint);
         }
-        para(F.medium, 13, kDim, g.by);
+        para(F.medium, 13, kDim, tr(g.by));
         ImGui::Dummy(ImVec2(0, px(4)));
-        para(F.regular, 14, alpha(kText, 0.82f), g.about);
+        para(F.regular, 14, alpha(kText, 0.82f), tr(g.about));
         if (in > 0 && !on) {
             ImGui::Dummy(ImVec2(0, px(4)));
-            para(F.medium, 13, kWarn, kOffNote);
+            para(F.medium, 13, kWarn, tr(kOffNote));
         }
         if (const auto why = card_notes.find(g.title); why != card_notes.end()) {
             ImGui::Dummy(ImVec2(0, px(4)));
@@ -737,18 +773,18 @@ struct Launcher : Kit {
             ImGui::Dummy(ImVec2(0, px(4)));
             for (const ModPart& p : g.parts) {
                 const bool part_in = has_mod(have, p.id);
-                list_row(part_in ? kTickMark : kRingMark, part_in && on ? kOk : kFaint, p.name,
-                         part_in && on ? kText : kDim, p.needs);
+                list_row(part_in ? kTickMark : kRingMark, part_in && on ? kOk : kFaint, tr(p.name),
+                         part_in && on ? kText : kDim, p.needs ? tr(p.needs) : nullptr);
             }
         }
         if (&g == &kUndub && !have.dlc.count("ADDJAPANESEVOICE")) {
             ImGui::Dummy(ImVec2(0, px(4)));
-            para(F.medium, 13, kWarn, "Needs the Japanese Voice Pack: add its package on the DLC page first.");
+            para(F.medium, 13, kWarn, tr("Needs the Japanese Voice Pack: add its package on the DLC page first."));
         }
         if (in > 0) {
             ImGui::Dummy(ImVec2(0, px(8)));
             ImGui::PushID(g.title);
-            if (button("Remove", 0, ButtonKind::Danger)) start_remove(ids, g.title);
+            if (button(tr("Remove"), 0, ButtonKind::Danger)) start_remove(ids, g.title);
             ImGui::PopID();
         }
         card_end();
@@ -768,7 +804,7 @@ struct Launcher : Kit {
         }
         if (!all_on({ id })) {
             ImGui::Dummy(ImVec2(0, px(2)));
-            para(F.medium, 13, kWarn, kOffNote);
+            para(F.medium, 13, kWarn, tr(kOffNote));
         }
         if (const auto why = card_notes.find(name); why != card_notes.end()) {
             ImGui::Dummy(ImVec2(0, px(2)));
@@ -781,7 +817,7 @@ struct Launcher : Kit {
             }
         ImGui::Dummy(ImVec2(0, px(6)));
         ImGui::PushID(id.c_str());
-        if (button("Remove", 0, ButtonKind::Danger)) start_remove({ id }, name);
+        if (button(tr("Remove"), 0, ButtonKind::Danger)) start_remove({ id }, name);
         ImGui::PopID();
         card_end();
     }
@@ -795,20 +831,28 @@ struct Launcher : Kit {
         ImGui::SetCursorScreenPos(ImVec2(body.x, y));
         take_focus();
         add_buttons(p);
-        const float bx = ImGui::GetItemRectMax().x + px(18);
-        dl->AddText(F.regular, px(13), ImVec2(bx, y + px(4)), kDim, note, nullptr, body.x + size.x - bx);
+        foot_note(ImGui::GetItemRectMax().x + px(18), y, body.x + size.x, note);
+    }
+
+    /* the line of text beside a panel's buttons (their top at y): centred on
+     * them once it is longer than the two lines that fit below their top */
+    void foot_note(float x, float y, float right, const char* note)
+    {
+        const float h = text_size(F.regular, 13, note, right - x).y;
+        const float ty = std::min(y + px(4), y + (px(40) - h) / 2);
+        ImGui::GetWindowDrawList()->AddText(F.regular, px(13), ImVec2(x, ty), kDim, note, nullptr, right - x);
     }
 
     /* Add Files / Add Folder on the Mods panel; Add DLC Packages on the DLC one */
     void add_buttons(Panel p)
     {
         const bool mods = p == Panel::Mods;
-        if (button(mods ? "Add Files..." : "Add DLC Packages...", 0, ButtonKind::Main))
-            add(ui_pick_files(mods ? "Add mods" : "Add DLC packages", kModFilter));
+        if (button(mods ? tr("Add Files...") : tr("Add DLC Packages..."), 0, ButtonKind::Main))
+            add(ui_pick_files(mods ? tr("Add mods") : tr("Add DLC packages"), mod_filter()));
         if (mods) {
             ImGui::SameLine(0, px(10));
-            if (button("Add Folder...", 0)) {
-                const fs::path f = ui_pick_folder("A mod's folder (the DLC Undub's holds GAME and ISO)");
+            if (button(tr("Add Folder..."), 0)) {
+                const fs::path f = ui_pick_folder(tr("A mod's folder (the DLC Undub's holds GAME and ISO)"));
                 if (!f.empty()) add({ f });
             }
         }
@@ -817,8 +861,8 @@ struct Launcher : Kit {
     void mods_panel(ImVec2 body, ImVec2 size)
     {
         panel_foot(body, size,
-                   "Any mod package for the game (.pkg), a movie archive (.zip) or a mod's folder, as "
-                   "downloaded. Your own game files are never changed.",
+                   tr("Any mod package for the game (.pkg), a movie archive (.zip) or a mod's folder, as "
+                      "downloaded. Your own game files are never changed."),
                    Panel::Mods);
         ImGui::SetCursorScreenPos(body);
         ImGui::BeginChild("##mods", ImVec2(size.x, size.y - px(64)), ImGuiChildFlags_NavFlattened,
@@ -832,7 +876,7 @@ struct Launcher : Kit {
 
     void dlc_panel(ImVec2 body, ImVec2 size)
     {
-        panel_foot(body, size, "The PSN packages you own (UP0082-NPUB31251_00-...). No licence files are needed.",
+        panel_foot(body, size, tr("The PSN packages you own (UP0082-NPUB31251_00-...). No licence files are needed."),
                    Panel::Dlc);
         ImGui::SetCursorScreenPos(body);
         ImGui::BeginChild("##dlc", ImVec2(size.x, size.y - px(64)), ImGuiChildFlags_NavFlattened,
@@ -841,14 +885,14 @@ struct Launcher : Kit {
             const char* title;
             const char* prefix;
         };
-        const Group groups[] = { { "Story", "ADDSCENARIO" },
-                                 { "Voices", "ADDJAPANESEVOICE" },
-                                 { "Music", "ADDSONG" },
-                                 { "Outfits and Weapons", "ADDWEAPONCLOTHE" } };
+        const Group groups[] = { { TR_NOOP("Story"), "ADDSCENARIO" },
+                                 { TR_NOOP("Voices"), "ADDJAPANESEVOICE" },
+                                 { TR_NOOP("Music"), "ADDSONG" },
+                                 { TR_NOOP("Outfits and Weapons"), "ADDWEAPONCLOTHE" } };
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const float cw = (ImGui::GetContentRegionAvail().x - px(12)) / 2;
         for (const Group& g : groups) {
-            label(F.semibold, 13, kDim, g.title);
+            label(F.semibold, 13, kDim, tr(g.title));
             ImGui::Dummy(ImVec2(0, px(2)));
             int col = 0;
             for (const DlcInfo& d : known_dlc()) {
@@ -862,15 +906,17 @@ struct Launcher : Kit {
                     tick(dl, ImVec2(p.x + px(18), p.y + sz.y / 2), kOk);
                 else
                     ring(dl, ImVec2(p.x + px(18), p.y + sz.y / 2), kFaint);
-                const ImVec2 ts = text_size(F.medium, 14, d.name);
-                dl->AddText(F.medium, px(14), ImVec2(p.x + px(36), p.y + (sz.y - ts.y) / 2), in ? kText : kDim, d.name);
+                const std::string name = fit_line(F.medium, px(14), tr(d.name), sz.x - px(36) - px(14));
+                const ImVec2 ts = text_size(F.medium, 14, name.c_str());
+                dl->AddText(F.medium, px(14), ImVec2(p.x + px(36), p.y + (sz.y - ts.y) / 2), in ? kText : kDim,
+                            name.c_str());
                 col ^= 1;
             }
             ImGui::Dummy(ImVec2(0, px(10)));
         }
         para(F.regular, 13, kFaint,
-             "The Japanese Voice Pack brings Japanese voices to the main story (Change Outfits/Music > Voice), and "
-             "with the DLC Undub to the DLC chapters too.");
+             tr("The Japanese Voice Pack brings Japanese voices to the main story (Change Outfits/Music > Voice), and "
+                "with the DLC Undub to the DLC chapters too."));
         ImGui::EndChild();
     }
 
@@ -878,17 +924,17 @@ struct Launcher : Kit {
 
     void review_page()
     {
-        label(F.semibold, 19, kText, !removing.empty() ? "Remove" : "Ready to Install");
+        label(F.semibold, 19, kText, !removing.empty() ? trc("heading", "Remove") : tr("Ready to Install"));
         ImGui::Dummy(ImVec2(0, px(6)));
         auto row = [&](const std::string& name, uint64_t bytes, ImU32 col) {
             list_row(kDotMark, col, name.c_str(), kText, bytes ? size_text(bytes).c_str() : nullptr, kFaint, F.medium, 15);
             ImGui::Dummy(ImVec2(0, px(2)));
         };
-        for (const std::string& r : removing) row(r, 0, kErr);
-        if (plan.update.set()) row("Update 1.01", plan.update.bytes, kOk);
+        for (const std::string& r : removing) row(tr(r.c_str()), 0, kErr);
+        if (plan.update.set()) row(tr("Update 1.01"), plan.update.bytes, kOk);
         for (const Source& d : plan.dlc) row(d.name, d.bytes, kOk);
         for (const Source& m : plan.mods) {
-            row(m.name, m.bytes, kOk);
+            row(tr(m.name.c_str()), m.bytes, kOk);
             if (known_mod(m.id)) continue;
             for (const std::string& n : mod_notes(m.about)) para(F.regular, 13, kWarn, n.c_str());
         }
@@ -897,49 +943,57 @@ struct Launcher : Kit {
         for (const std::string& n : notes) para(F.regular, 14, kErr, n.c_str());
         if (needs_voice_pack(plan, have))
             para(F.medium, 14, kWarn,
-                 "The DLC Undub needs the Japanese Voice Pack: add its package too (or install it first).");
+                 tr("The DLC Undub needs the Japanese Voice Pack: add its package too (or install it first)."));
         if (remove_blocked())
             para(F.medium, 14, kWarn,
-                 "An older version of the setup installed this mod, without a list of its files. Add the 1.01 "
-                 "update package (Add Files) to remove it: the update puts back the files the mod replaced, "
-                 "and all the mods are removed.");
+                 tr("An older version of the setup installed this mod, without a list of its files. Add the 1.01 "
+                    "update package (Add Files) to remove it: the update puts back the files the mod replaced, "
+                    "and all the mods are removed."));
         if (remove_legacy && plan.update.set())
-            para(F.regular, 14, kDim, "All the installed mods are removed, and the update installed again.");
+            para(F.regular, 14, kDim, tr("All the installed mods are removed, and the update installed again."));
         const uint64_t need = plan.bytes(), space = free_bytes(base);
-        if (need) para(F.regular, 13, kFaint, ("Needs " + size_text(need) + "; " + size_text(space) + " free.").c_str());
+        if (need) para(F.regular, 13, kFaint, trf("Needs {1}; {2} free.", size_text(need), size_text(space)).c_str());
         const bool full = space && need > space;
-        if (full) para(F.medium, 14, kErr, "Not enough space on the drive.");
+        if (full) para(F.medium, 14, kErr, tr("Not enough space on the drive."));
         ImGui::Dummy(ImVec2(0, px(14)));
         const bool can = !checks.pending() && !plan_empty() && !needs_voice_pack(plan, have) && !remove_blocked() && !full;
         take_focus();
-        if (button(!removing.empty() ? "Remove" : "Install", 140, !removing.empty() ? ButtonKind::Danger : ButtonKind::Main, can) ||
+        const char* go = !removing.empty() ? tr("Remove") : tr("Install");
+        if (button(go, std::max(140.0f, button_width(go) / s),
+                   !removing.empty() ? ButtonKind::Danger : ButtonKind::Main, can) ||
             (tests.install && can && frames > 60))
             start_install();
         ImGui::SameLine(0, px(10));
-        if (button("Add Files...", 0, ButtonKind::Quiet, !checks.pending())) add(ui_pick_files("Add files", kModFilter));
+        if (button(tr("Add Files..."), 0, ButtonKind::Quiet, !checks.pending()))
+            add(ui_pick_files(tr("Add files"), mod_filter()));
         ImGui::SameLine(0, px(10));
-        if (button("Cancel", 0, ButtonKind::Quiet, !checks.pending())) end_flow();
+        if (button(tr("Cancel"), 0, ButtonKind::Quiet, !checks.pending())) end_flow();
     }
 
     void working_page()
     {
         install_progress(job.what(), job.done, job.total);
         ImGui::Dummy(ImVec2(0, px(14)));
-        if (button(job.cancel ? "Cancelling..." : "Cancel", 0, ButtonKind::Quiet, !job.cancel)) job.cancel = true;
+        if (button(job.cancel ? tr("Cancelling...") : tr("Cancel"), 0, ButtonKind::Quiet, !job.cancel))
+            job.cancel = true;
     }
 
     void result_page()
     {
         const bool good = flow == Flow::Done;
         label(F.semibold, 19, kText,
-              good ? (!removing.empty() ? "Removed" : "Installed") : job.cancel ? "Cancelled" : "Failed");
+              good         ? (!removing.empty() ? tr("Removed") : tr("Installed"))
+              : job.cancel ? tr("Cancelled")
+                           : tr("Failed"));
         ImGui::Dummy(ImVec2(0, px(6)));
         if (!good && !job.cancel) para(F.regular, 14, kErr, job.error.c_str());
         if (!good)
-            para(F.regular, 14, kDim, "The part that was being installed has been taken out again; the parts before it "
-                                      "stay.");
+            para(F.regular, 14, kDim,
+                 tr("The part that was being installed has been taken out again; the parts before it "
+                    "stay."));
         ImGui::Dummy(ImVec2(0, px(14)));
-        if (button("Done", 120, ButtonKind::Main)) end_flow();
+        const char* done = tr("Done");
+        if (button(done, std::max(120.0f, button_width(done) / s), ButtonKind::Main)) end_flow();
     }
 
     void flow_page(ImVec2 body, ImVec2 size)
@@ -971,7 +1025,7 @@ struct Launcher : Kit {
         if (upd.collect() && upd.found) {
             upd_found = true;
             upd_notes = note_lines(upd.release.notes);
-            say(upd.release.label + " is out: Update, at the bottom");
+            say(trf("{1} is out: Update, at the bottom", upd.release.label));
             if (tests.update) {
                 open_panel(Panel::Update);
                 start_update();
@@ -999,9 +1053,10 @@ struct Launcher : Kit {
             ImGui::SetCursorScreenPos(body);
             ImGui::BeginChild("##updating", size, ImGuiChildFlags_NavFlattened, ImGuiWindowFlags_NoBackground);
             if (ujob->ok) {   /* installed, but the new one could not be started */
-                label(F.semibold, 19, kText, "Installed");
+                label(F.semibold, 19, kText, tr("Installed"));
                 ImGui::Dummy(ImVec2(0, px(6)));
-                para(F.regular, 14, kDim, ("Close the launcher and start dod3.exe again to play " + r.label + ".").c_str());
+                para(F.regular, 14, kDim,
+                     trf("Close the launcher and start dod3.exe again to play {1}.", r.label).c_str());
             } else {
                 const int step = ujob->step;
                 const uint64_t done = ujob->done, total = ujob->total;
@@ -1010,16 +1065,16 @@ struct Launcher : Kit {
                 progress(total ? (float)((double)done / (double)total) : 0.0f);
                 ImGui::Dummy(ImVec2(0, px(8)));
                 para(F.regular, 13, kDim,
-                     step == UpdateJob::kInstalling ? (std::to_string(done) + " of " + std::to_string(total) + " files").c_str()
-                     : step == UpdateJob::kChecking ? "Its SHA-256 against the one GitHub lists"
-                                                     : (size_text(done) + " of " + size_text(total)).c_str());
+                     step == UpdateJob::kInstalling ? trf("{1} of {2} files", done, total).c_str()
+                     : step == UpdateJob::kChecking ? tr("Its SHA-256 against the one GitHub lists")
+                                                     : trf("{1} of {2}", size_text(done), size_text(total)).c_str());
                 ImGui::Dummy(ImVec2(0, px(14)));
                 if (step < UpdateJob::kInstalling) {
                     take_focus();
-                    if (button(ujob->cancel ? "Cancelling..." : "Cancel", 0, ButtonKind::Quiet, !ujob->cancel))
+                    if (button(ujob->cancel ? tr("Cancelling...") : tr("Cancel"), 0, ButtonKind::Quiet, !ujob->cancel))
                         ujob->cancel = true;
                 } else {
-                    para(F.regular, 13, kFaint, "The launcher starts again when it is done.");
+                    para(F.regular, 13, kFaint, tr("The launcher starts again when it is done."));
                 }
             }
             ImGui::EndChild();
@@ -1031,27 +1086,25 @@ struct Launcher : Kit {
         dl->AddLine(ImVec2(body.x, y - px(16)), ImVec2(body.x + size.x, y - px(16)), kLine);
         ImGui::SetCursorScreenPos(ImVec2(body.x, y));
         take_focus();
-        if (button("Install Update", 0, ButtonKind::Main)) start_update();
+        if (button(tr("Install Update"), 0, ButtonKind::Main)) start_update();
         ImGui::SameLine(0, px(10));
-        if (button("Release Page", 0)) open_in_browser(r.page);
-        const float bx = ImGui::GetItemRectMax().x + px(18);
-        dl->AddText(F.regular, px(13), ImVec2(bx, y + px(4)), kDim,
-                    "Your game, saves and settings stay as they are. The launcher starts again when it is done.",
-                    nullptr, body.x + size.x - bx);
+        if (button(tr("Release Page"), 0)) open_in_browser(r.page);
+        foot_note(ImGui::GetItemRectMax().x + px(18), y, body.x + size.x,
+                  tr("Your game, saves and settings stay as they are. The launcher starts again when it is done."));
         ImGui::SetCursorScreenPos(body);
         ImGui::BeginChild("##update", ImVec2(size.x, size.y - px(64)), ImGuiChildFlags_NavFlattened,
                           ImGuiWindowFlags_NoBackground);
         label(F.semibold, 19, kText, ("Drakengard 3 Recompiled " + r.label).c_str());
         std::vector<std::string> about;
-        if (!r.date.empty()) about.push_back("Released " + r.date);
-        if (r.size) about.push_back(size_text(r.size) + " download");
-        about.push_back("you have " + std::string(DOD3_VERSION_STRING));
+        if (!r.date.empty()) about.push_back(trf("Released {1}", r.date));
+        if (r.size) about.push_back(trf("{1} download", size_text(r.size)));
+        about.push_back(trf("you have {1}", DOD3_VERSION_STRING));
         para(F.regular, 13, kDim, join(about).c_str());
         if (ujob && !ujob->error.empty()) {
             ImGui::Dummy(ImVec2(0, px(6)));
             para(F.medium, 14, ujob->cancel ? kDim : kErr, ujob->error.c_str());
             if (ujob->changed)
-                para(F.regular, 13, kWarn, "Unzip the release from its page into this folder to finish.");
+                para(F.regular, 13, kWarn, tr("Unzip the release from its page into this folder to finish."));
         }
         ImGui::Dummy(ImVec2(0, px(10)));
         for (const NoteLine& n : upd_notes) {
@@ -1090,7 +1143,7 @@ struct Launcher : Kit {
     {
         std::string other;
         const int i = current(r, &other);
-        return i >= 0 ? r.choices[i].second : other;
+        return i >= 0 ? tr(r.choices[i].second) : other;
     }
 
     void set_value(const Dod3RowSpec& r, int i)
@@ -1123,7 +1176,8 @@ struct Launcher : Kit {
         const float sw = px(250);   /* the value's box, at the right */
         const ImVec2 p = ImGui::GetCursorScreenPos();
         const float sx = p.x + w - sw - px(10), dw = sx - p.x - px(34);
-        const ImVec2 ds = text_size(F.regular, 13, r.desc, dw);
+        const char* desc = tr(r.desc);
+        const ImVec2 ds = text_size(F.regular, 13, desc, dw);
         const float h = std::max(px(62), px(33) + ds.y + px(13));
         hit("##row", ImVec2(w, h));
         const bool hot = hot_item();
@@ -1139,12 +1193,12 @@ struct Launcher : Kit {
             if (!dir && ImGui::IsItemActivated() && !ImGui::IsMouseClicked(0)) dir = 1;   /* Enter, Space, a pad's confirm */
         }
         dl->AddRectFilled(p, p + ImVec2(w, h), IM_COL32(255, 255, 255, (int)(10 * a)), px(10));
-        dl->AddText(F.semibold, px(15), ImVec2(p.x + px(14), p.y + px(11)), kText, r.label);
-        dl->AddText(F.regular, px(13), ImVec2(p.x + px(14), p.y + px(33)), kDim, r.desc, nullptr, dw);
+        dl->AddText(F.semibold, px(15), ImVec2(p.x + px(14), p.y + px(11)), kText, tr(r.label));
+        dl->AddText(F.regular, px(13), ImVec2(p.x + px(14), p.y + px(33)), kDim, desc, nullptr, dw);
         /* the value between two arrows */
         std::string other;
         const int cur = current(r, &other);
-        const std::string vt = cur >= 0 ? r.choices[cur].second : "Custom (" + other + ")";
+        const std::string vt = cur >= 0 ? tr(r.choices[cur].second) : trf("Custom ({1})", other);
         const float cy = p.y + h / 2;
         const ImVec2 b0(sx, cy - px(17)), b1(sx + sw, cy + px(17));
         dl->AddRectFilled(b0, b1, IM_COL32(255, 255, 255, (int)(12 + 10 * a)), px(9));
@@ -1198,12 +1252,12 @@ struct Launcher : Kit {
         }
         dl->AddRectFilled(p, p + ImVec2(w, h), IM_COL32(255, 255, 255, (int)(9 * a)), px(9));
         if (capture == i) dl->AddRect(p, p + ImVec2(w, h), alpha(kAccentHi, 0.9f), px(9), 0, px(1.5f));
-        const ImVec2 ls = text_size(F.medium, 14, b.label);
-        dl->AddText(F.medium, px(14), ImVec2(p.x + px(14), p.y + (h - ls.y) / 2), kText, b.label);
-        /* the keys, as caps */
-        float x = p.x + px(190);
+        const ImVec2 ls = text_size(F.medium, 14, tr(b.label));
+        dl->AddText(F.medium, px(14), ImVec2(p.x + px(14), p.y + (h - ls.y) / 2), kText, tr(b.label));
+        /* the keys, as caps, clear of the longest label */
+        float x = p.x + std::max(px(190), px(14) + bind_labels_w + px(24));
         if (capture == i) {
-            const char* t = "Press a key or a mouse button  \xC2\xB7  Esc cancels";
+            const char* t = tr("Press a key or a mouse button  \xC2\xB7  Esc cancels");
             const ImVec2 ts = text_size(F.medium, 13, t);
             dl->AddText(F.medium, px(13), ImVec2(x, p.y + (h - ts.y) / 2), kAccentHi, t);
         } else {
@@ -1223,7 +1277,7 @@ struct Launcher : Kit {
                 dl->AddText(F.semibold, px(13), ImVec2(x + px(10), p.y + (h - ts.y) / 2), kText, k.c_str());
                 x = c1.x + px(8);
             }
-            if (!any) dl->AddText(F.regular, px(13), ImVec2(x, p.y + (h - ls.y) / 2), kFaint, "Not set");
+            if (!any) dl->AddText(F.regular, px(13), ImVec2(x, p.y + (h - ls.y) / 2), kFaint, tr("Not set"));
         }
         /* Reset, when it is not the default */
         ImGui::SameLine(0, px(kGap));
@@ -1234,9 +1288,10 @@ struct Launcher : Kit {
         const bool rh = hot_item();
         ImGui::EndDisabled();
         if (custom) {
-            const ImVec2 ts = text_size(F.semibold, 13, "Reset");
+            const char* t = tr("Reset");
+            const ImVec2 ts = text_size(F.semibold, 13, t);
             dl->AddText(F.semibold, px(13), ImVec2(rp.x + (px(kResetW) - ts.x) / 2, rp.y + (h - ts.y) / 2),
-                        rh ? kText : kDim, "Reset");
+                        rh ? kText : kDim, t);
         }
         if (reset && custom && cooldown == 0) {
             put(b.key, nullptr);
@@ -1263,7 +1318,7 @@ struct Launcher : Kit {
         if (name) {
             const Bind& b = kBinds[capture];
             put(b.key, name);
-            save({ { b.key, name } }, std::string(b.label) + ": " + name);
+            save({ { b.key, name } }, std::string(tr(b.label)) + ": " + name);
         }
         if (name || stop) {
             capture = -1;
@@ -1282,7 +1337,8 @@ struct Launcher : Kit {
         }
         float x = body.x;
         for (int t = 0; t < kTabs; t++) {
-            const ImVec2 ts = text_size(F.semibold, 14, kTabNames[t]);
+            const char* name = tr(kTabNames[t]);
+            const ImVec2 ts = text_size(F.semibold, 14, name);
             const ImVec2 p(x, body.y), sz(ts.x + px(32), px(36));
             ImGui::SetCursorScreenPos(p);
             ImGui::PushID(t);
@@ -1294,7 +1350,7 @@ struct Launcher : Kit {
             else if (hot)
                 dl->AddRectFilled(p, p + sz, IM_COL32(255, 255, 255, 12), px(18));
             dl->AddText(F.semibold, px(14), ImVec2(p.x + px(16), p.y + (sz.y - ts.y) / 2), t == tab ? kText : kDim,
-                        kTabNames[t]);
+                        name);
             x += sz.x + px(6);
         }
         const float top = px(52);
@@ -1310,15 +1366,18 @@ struct Launcher : Kit {
         for (const Dod3RowSpec* r : list) setting_row(*r);
         if (tab == kControls) {
             ImGui::Dummy(ImVec2(0, px(14)));
-            label(F.semibold, 13, kDim, "KEYBOARD");
+            label(F.semibold, 13, kDim, tr("KEYBOARD"));
             para(F.regular, 13, kFaint,
-                 "Click a row, then press the key or mouse button for it. The game's Controller Settings page says "
-                 "what each button does.");
+                 tr("Click a row, then press the key or mouse button for it. The game's Controller Settings page says "
+                    "what each button does."));
             ImGui::Dummy(ImVec2(0, px(6)));
+            bind_labels_w = 0;
+            for (const Bind& b : kBinds)
+                bind_labels_w = std::max(bind_labels_w, text_size(F.medium, 14, tr(b.label)).x);
             for (int i = 0; i < (int)std::size(kBinds); i++) bind_row(i);
         }
         ImGui::Dummy(ImVec2(0, px(14)));
-        if (button("Restore Defaults", 0, ButtonKind::Quiet, capture < 0)) {
+        if (button(tr("Restore Defaults"), 0, ButtonKind::Quiet, capture < 0)) {
             std::vector<std::pair<std::string, const char*>> reset;
             for (const Dod3RowSpec* r : list) {
                 put(r->key, r->choices[r->def].first);
@@ -1329,7 +1388,7 @@ struct Launcher : Kit {
                     put(b.key, nullptr);
                     reset.push_back({ b.key, nullptr });
                 }
-            save(reset, "Defaults restored");
+            save(reset, tr("Defaults restored"));
         }
         ImGui::Dummy(ImVec2(0, px(8)));
         ImGui::EndChild();
@@ -1346,7 +1405,7 @@ struct Launcher : Kit {
         if (job.collect()) {
             refresh();
             flow = job.ok ? Flow::Done : Flow::Failed;
-            if (job.ok) say(!removing.empty() ? "Removed" : "Installed");
+            if (job.ok) say(!removing.empty() ? tr("Removed") : tr("Installed"));
         }
 
         int restart = kGoOn;
@@ -1363,16 +1422,17 @@ struct Launcher : Kit {
 
         if (panel != Panel::None) {
             ImVec2 body, size;
-            const char* heading = panel == Panel::Mods       ? "Mods"
-                                  : panel == Panel::Dlc      ? "DLC"
-                                  : panel == Panel::Trophies ? "Trophies"
-                                  : panel == Panel::Update   ? "Update"
-                                                             : "Settings";
-            const char* sub = panel == Panel::Mods     ? "Fan-made additions, installed beside your own game files."
-                              : panel == Panel::Dlc    ? "The downloadable content you own."
-                              : panel == Panel::Trophies ? "Earned as you play; kept with your saves."
-                              : panel == Panel::Update ? "A newer release of the port, from its GitHub page."
-                                                       : "Saved to dod3.ini as you change them; used at the next start.";
+            const char* heading = panel == Panel::Mods       ? tr("Mods")
+                                  : panel == Panel::Dlc      ? tr("DLC")
+                                  : panel == Panel::Trophies ? tr("Trophies")
+                                  : panel == Panel::Update   ? trc("heading", "Update")
+                                                             : tr("Settings");
+            const char* sub =
+                panel == Panel::Mods       ? tr("Fan-made additions, installed beside your own game files.")
+                : panel == Panel::Dlc      ? tr("The downloadable content you own.")
+                : panel == Panel::Trophies ? tr("Earned as you play; kept with your saves.")
+                : panel == Panel::Update   ? tr("A newer release of the port, from its GitHub page.")
+                                           : tr("Saved to dod3.ini as you change them; used at the next start.");
             const bool close = panel_frame(heading, sub, panel_in(), true, &body, &size);
             if (panel == Panel::Settings)
                 settings_panel(body, size);
@@ -1520,7 +1580,7 @@ int run_launcher(const fs::path& base)
     {
         L.prog = update_program_dir();
         std::string from;
-        if (update_cleanup(L.prog, &from)) L.say("Updated from " + from + " to " + DOD3_VERSION_STRING);
+        if (update_cleanup(L.prog, &from)) L.say(trf("Updated from {1} to {2}", from, DOD3_VERSION_STRING));
         const char* e = getenv("DOD3_UPDATE_CHECK");
         const auto it = L.kv.find("DOD3_UPDATE_CHECK");
         if (e ? strcmp(e, "0") != 0 : it == L.kv.end() || it->second != "0") L.upd.start();

@@ -410,6 +410,25 @@ if(WIN32 OR APPLE OR DOD3_LINUX)
     endforeach()
     file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/gen/launcher_fonts.h" CONTENT "${_font_h}" @ONLY)
 endif()
+# The launcher's and the setup's translations (src/lang.h): each lang/<code>.po,
+# as an array in gen/launcher_langs.h. A file of the same name in a lang folder
+# beside the executable is read instead.
+file(GLOB _lang_files CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/lang/*.po")
+list(SORT _lang_files)
+set(_lang_h "/* Generated from lang/*.po by CMakeLists.txt. */\n#include <stddef.h>\n")
+set(_lang_rows "")
+foreach(_po ${_lang_files})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_po}")
+    get_filename_component(_code "${_po}" NAME_WE)
+    file(READ "${_po}" _hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," _bytes "${_hex}")
+    string(MAKE_C_IDENTIFIER "${_code}" _id)
+    string(APPEND _lang_h "static const unsigned char kLang_${_id}[] = {${_bytes}};\n")
+    string(APPEND _lang_rows "    { \"${_code}\", kLang_${_id}, sizeof kLang_${_id} },\n")
+endforeach()
+string(APPEND _lang_h "static const struct {\n    const char* code;\n    const unsigned char* data;\n    size_t size;\n"
+                      "} kLangFiles[] = {\n${_lang_rows}    { 0, 0, 0 },\n};\n")
+file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/gen/launcher_langs.h" CONTENT "${_lang_h}" @ONLY)
 
 # The port's own sources, on every platform, one list per module under src/
 # (the SPU-side ones -- src/patches/spu_hooks.c and src/apu -- are in
@@ -460,6 +479,7 @@ endif()
 set(PORT_SOURCES
     src/main.cpp
     src/util.cpp
+    src/lang.cpp                     # the launcher's and the setup's text in the player's language
     src/install/iso.cpp              # the disc reader, which the game uses too
     ${PORT_CPU_SOURCES}
     ${PORT_INPUT_SOURCES}

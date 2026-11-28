@@ -3,6 +3,7 @@
 #include "install/keys_builtin.h"
 #include "install/crypto.h"
 #include "cpu/eboot.h"
+#include "lang.h"
 
 #include <cstring>
 #include <fstream>
@@ -16,15 +17,15 @@ const std::vector<KeyField>& needed_keys()
 {
 #if DOD3_EBOOT == 101
     static const std::vector<KeyField> k = {
-        { "npdrm_erk", "NPDRM ERK (key revision 0x1C)", 32 },
-        { "npdrm_riv", "NPDRM RIV (key revision 0x1C)", 16 },
-        { "klic_free", "NP klic free", 16 },
-        { "klic_key", "NP klic key", 16 },
+        { "npdrm_erk", TR_NOOP("NPDRM ERK (key revision 0x1C)"), 32 },
+        { "npdrm_riv", TR_NOOP("NPDRM RIV (key revision 0x1C)"), 16 },
+        { "klic_free", TR_NOOP("NP klic free"), 16 },
+        { "klic_key", TR_NOOP("NP klic key"), 16 },
     };
 #else
     static const std::vector<KeyField> k = {
-        { "app_erk", "APP ERK (key revision 0x1C)", 32 },
-        { "app_riv", "APP RIV (key revision 0x1C)", 16 },
+        { "app_erk", TR_NOOP("APP ERK (key revision 0x1C)"), 32 },
+        { "app_riv", TR_NOOP("APP RIV (key revision 0x1C)"), 16 },
     };
 #endif
     return k;
@@ -61,10 +62,10 @@ SelfKeys Keys::self_keys() const
 std::string key_problem(const KeyField& f, const std::string& text, std::vector<uint8_t>* bytes)
 {
     std::vector<uint8_t> b;
-    if (!from_hex(text, &b)) return "not hex";
+    if (!from_hex(text, &b)) return dod3::tr("not hex");
     if (b.size() != f.bytes) {
-        return std::to_string(b.size()) + " bytes; this key is " + std::to_string(f.bytes) + " (" +
-               std::to_string(f.bytes * 2) + " hex digits)";
+        return dod3::trnf(b.size(), "{1} byte; this key is {2} ({3} hex digits)",
+                          "{1} bytes; this key is {2} ({3} hex digits)", b.size(), f.bytes, f.bytes * 2);
     }
     if (bytes) *bytes = b;
     return "";
@@ -86,7 +87,7 @@ bool keys_parse(const std::string& text, Keys* k, std::string* err)
         };
         if (trim(line).empty()) continue;
         if (eq == std::string::npos) {
-            *err = "line " + std::to_string(n) + " is not name=hex";
+            *err = dod3::trf("line {1} is not name=hex", n);
             return false;
         }
         const std::string name = trim(line.substr(0, eq)), value = trim(line.substr(eq + 1));
@@ -108,7 +109,7 @@ bool keys_load(const fs::path& file, Keys* k, std::string* err)
 {
     std::ifstream f(file, std::ios::binary);
     if (!f) {
-        *err = "cannot read the key file";
+        *err = dod3::tr("cannot read the key file");
         return false;
     }
     std::stringstream ss;

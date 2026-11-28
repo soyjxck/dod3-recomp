@@ -24,6 +24,7 @@
 #include "ui/setup_shared.h"   /* the files added and the install, on their own threads */
 #include "install/install.h"
 #include "install/crypto.h"    /* to_hex */
+#include "lang.h"              /* tr: the text in the player's language */
 #include "util.h"
 #include "app_version.h"       /* generated: the port's version label */
 
@@ -39,6 +40,10 @@ namespace dod3setup {
 
 namespace {
 
+using dod3::tr;
+using dod3::trc;
+using dod3::trf;
+using dod3::trnf;
 using dod3::utf8;
 using namespace look;
 
@@ -115,12 +120,13 @@ struct Wizard : Kit {
     }
     void add_files(bool dlc)
     {
-        add(ui_pick_files(dlc ? "Add DLC packages" : "Add Drakengard 3 files",
-                          { { "Drakengard 3 files (.iso, .pkg, .zip)", "*.iso;*.pkg;*.zip" }, { "All files", "*.*" } }));
+        add(ui_pick_files(
+            dlc ? tr("Add DLC packages") : tr("Add Drakengard 3 files"),
+            { { tr("Drakengard 3 files (.iso, .pkg, .zip)"), "*.iso;*.pkg;*.zip" }, { tr("All files"), "*.*" } }));
     }
     void add_folder()
     {
-        const fs::path p = ui_pick_folder("The folder that holds PS3_GAME, or a mod's folder");
+        const fs::path p = ui_pick_folder(tr("The folder that holds PS3_GAME, or a mod's folder"));
         if (!p.empty()) add({ p });
     }
 
@@ -241,7 +247,7 @@ struct Wizard : Kit {
     void adding_line(uint64_t bytes)
     {
         if (!bytes) return;
-        para(F.regular, 13, kFaint, ("Adding " + size_text(bytes)).c_str());
+        para(F.regular, 13, kFaint, trf("Adding {1}", size_text(bytes)).c_str());
         ImGui::Dummy(ImVec2(0, px(4)));
     }
 
@@ -262,9 +268,9 @@ struct Wizard : Kit {
     };
     static State state_of(bool added, bool installed, bool required)
     {
-        if (added) return { "Added", kOk };
-        if (installed) return { "Installed", kOk };
-        return required ? State{ "Required", kWarn } : State{ "Optional", kFaint };
+        if (added) return { tr("Added"), kOk };
+        if (installed) return { tr("Installed"), kOk };
+        return required ? State{ tr("Required"), kWarn } : State{ tr("Optional"), kFaint };
     }
     void need_row(const char* name, const char* about, State st)
     {
@@ -281,45 +287,47 @@ struct Wizard : Kit {
     void page_welcome()
     {
         card_begin();
-        need_row("The game",
-                 update_required() ? "The disc, as a decrypted .iso or the folder holding PS3_GAME; or the US PSN "
-                                     "package (.pkg)."
-                                   : "The disc, as a decrypted .iso or the folder holding PS3_GAME.",
+        need_row(tr("The game"),
+                 update_required() ? tr("The disc, as a decrypted .iso or the folder holding PS3_GAME; or the US PSN "
+                                        "package (.pkg).")
+                                   : tr("The disc, as a decrypted .iso or the folder holding PS3_GAME."),
                  state_of(plan.disc.set(), have.disc, true));
         if (update_required())
-            need_row("Update 1.01", "The update package, UP0082-BLUS31197_00-DOD3PATCH0000000 (.pkg).",
+            need_row(tr("Update 1.01"), tr("The update package, UP0082-BLUS31197_00-DOD3PATCH0000000 (.pkg)."),
                      state_of(plan.update.set(), have.update, true));
-        need_row("DLC", "The DLC packages (.pkg) you own. No licence files are needed.",
+        need_row(tr("DLC"), tr("The DLC packages (.pkg) you own. No licence files are needed."),
                  state_of(!plan.dlc.empty(), !have.dlc.empty(), false));
         if (update_required())
-            need_row("Mods", "Fan-made additions: the Spanish translation, the DLC Undub, any other mod package.",
+            need_row(tr("Mods"),
+                     tr("Fan-made additions: the Spanish translation, the DLC Undub, any other mod package."),
                      state_of(!plan.mods.empty(), !have.mods.empty(), false));
         if (need_keys())
-            need_row("Keys",
-                     update_required() ? "The keys that open the update's EBOOT.BIN, the game's executable."
-                                       : "The keys that open the disc's EBOOT.BIN, the game's executable.",
+            need_row(tr("Keys"),
+                     update_required() ? tr("The keys that open the update's EBOOT.BIN, the game's executable.")
+                                       : tr("The keys that open the disc's EBOOT.BIN, the game's executable."),
                      state_of(keys_ok(), false, true));
         card_end();
         para(F.regular, 13, kDim,
-             have.ready() ? "Add files on the next pages to replace any of the game's, or to add DLC."
-                          : "Files can be added on any page; each one is recognised by itself. Nothing is changed "
-                            "in the files you add.");
+             have.ready() ? tr("Add files on the next pages to replace any of the game's, or to add DLC.")
+                          : tr("Files can be added on any page; each one is recognised by itself. Nothing is changed "
+                               "in the files you add."));
         ImGui::Dummy(ImVec2(0, px(2)));
-        path_line(F.regular, 13, kFaint, have.ready() ? "Installed in " : "Installing to ", base);
+        path_line(F.regular, 13, kFaint, have.ready() ? tr("Installed in ") : tr("Installing to "), base);
     }
 
     void game_card(const char* title, const char* id_line, const char* need, const Source& src, bool installed,
                    const char* kind)
     {
         card_begin();
-        card_title(title, src.set() ? "Added" : installed ? "Installed" : "Needed", src.set() || installed ? kOk : kWarn);
+        card_title(title, src.set() ? tr("Added") : installed ? tr("Installed") : tr("Needed"),
+                   src.set() || installed ? kOk : kWarn);
         para(F.medium, 13, kDim, id_line);
         ImGui::Dummy(ImVec2(0, px(4)));
         if (src.set()) {
             path_line(F.regular, 13, alpha(kText, 0.82f), "", src.path);
             para(F.regular, 13, kFaint, (std::string(kind) + " \xC2\xB7 " + size_text(src.bytes)).c_str());
         } else {
-            para(F.regular, 14, alpha(kText, 0.82f), installed ? "Installed. Add it again to replace it." : need);
+            para(F.regular, 14, alpha(kText, 0.82f), installed ? tr("Installed. Add it again to replace it.") : need);
         }
         card_end();
     }
@@ -328,18 +336,21 @@ struct Wizard : Kit {
     {
         std::error_code ec;
         const bool folder = fs::is_directory(plan.disc.path, ec);
-        game_card("Game",
-                  update_required() ? "The disc (BLUS31197) or the US PSN package (NPUB31251)" : "The disc (BLUS31197)",
+        game_card(tr("Game"),
+                  update_required() ? tr("The disc (BLUS31197) or the US PSN package (NPUB31251)")
+                                    : tr("The disc (BLUS31197)"),
                   update_required()
-                      ? "Add a decrypted .iso or the PSN package (UP0082-NPUB31251_00-DOD3MAINGAME0000) with Add "
-                        "Files, or the folder holding PS3_GAME with Add Folder."
-                      : "Add a decrypted .iso with Add Files, or the folder holding PS3_GAME with Add Folder.",
-                  plan.disc, have.disc, plan.disc.psn ? "PSN package" : folder ? "Disc folder" : "Disc image");
+                      ? tr("Add a decrypted .iso or the PSN package (UP0082-NPUB31251_00-DOD3MAINGAME0000) with Add "
+                           "Files, or the folder holding PS3_GAME with Add Folder.")
+                      : tr("Add a decrypted .iso with Add Files, or the folder holding PS3_GAME with Add Folder."),
+                  plan.disc, have.disc,
+                  plan.disc.psn ? tr("PSN package") : folder ? tr("Disc folder") : tr("Disc image"));
         if (update_required())
-            game_card("Update 1.01", "UP0082-BLUS31197_00-DOD3PATCH0000000",
-                      "Add the update package (.pkg) with Add Files: the disc release's, which the PSN release takes "
-                      "too.",
-                      plan.update, have.update, "Package");
+            game_card(
+                tr("Update 1.01"), "UP0082-BLUS31197_00-DOD3PATCH0000000",
+                tr("Add the update package (.pkg) with Add Files: the disc release's, which the PSN release takes "
+                   "too."),
+                plan.update, have.update, tr("Package"));
         status_lines();
     }
 
@@ -349,10 +360,10 @@ struct Wizard : Kit {
             const char* title;
             const char* prefix;
         };
-        const Group groups[] = { { "STORY", "ADDSCENARIO" },
-                                 { "VOICES", "ADDJAPANESEVOICE" },
-                                 { "MUSIC", "ADDSONG" },
-                                 { "OUTFITS AND WEAPONS", "ADDWEAPONCLOTHE" } };
+        const Group groups[] = { { TR_NOOP("STORY"), "ADDSCENARIO" },
+                                 { TR_NOOP("VOICES"), "ADDJAPANESEVOICE" },
+                                 { TR_NOOP("MUSIC"), "ADDSONG" },
+                                 { TR_NOOP("OUTFITS AND WEAPONS"), "ADDWEAPONCLOTHE" } };
         ImDrawList* dl = ImGui::GetWindowDrawList();
         const float cw = (ImGui::GetContentRegionAvail().x - px(12)) / 2;
         uint64_t adding = 0;
@@ -360,7 +371,7 @@ struct Wizard : Kit {
         adding_line(adding);
         status_lines();
         for (const Group& g : groups) {
-            label(F.semibold, 12, kDim, g.title);
+            label(F.semibold, 12, kDim, tr(g.title));
             ImGui::Dummy(ImVec2(0, px(2)));
             int col = 0;
             for (const DlcInfo& d : known_dlc()) {
@@ -379,14 +390,18 @@ struct Wizard : Kit {
                     tick(dl, ImVec2(p.x + px(18), p.y + sz.y / 2), kOk);
                 else
                     ring(dl, ImVec2(p.x + px(18), p.y + sz.y / 2), kFaint);
-                const ImVec2 ts = text_size(F.medium, 14, d.name);
-                dl->AddText(F.medium, px(14), ImVec2(p.x + px(36), p.y + (sz.y - ts.y) / 2), added || in ? kText : kDim,
-                            d.name);
-                if (const char* st = added ? "Added" : in ? "Installed" : nullptr) {
+                /* its state at the right, the name in the room before it */
+                float room = sz.x - px(36) - px(14);
+                if (const char* st = added ? tr("Added") : in ? tr("Installed") : nullptr) {
                     const ImVec2 ss = text_size(F.semibold, 12, st);
                     dl->AddText(F.semibold, px(12), ImVec2(p.x + sz.x - ss.x - px(14), p.y + (sz.y - ss.y) / 2),
                                 added ? kOk : kFaint, st);
+                    room -= ss.x + px(10);
                 }
+                const std::string name = fit_line(F.medium, px(14), tr(d.name), room);
+                const ImVec2 ts = text_size(F.medium, 14, name.c_str());
+                dl->AddText(F.medium, px(14), ImVec2(p.x + px(36), p.y + (sz.y - ts.y) / 2), added || in ? kText : kDim,
+                            name.c_str());
                 col ^= 1;
             }
             ImGui::Dummy(ImVec2(0, px(10)));
@@ -407,30 +422,30 @@ struct Wizard : Kit {
         for (const std::string& id : in) off = off && !mod_enabled(base, id);
         card_begin();
         if (added)
-            card_title(g.title, "Added", kOk);
+            card_title(tr(g.title), tr("Added"), kOk);
         else if (off)
-            card_title(g.title, "Switched off", kFaint);
+            card_title(tr(g.title), tr("Switched off"), kFaint);
         else if (in.size() == g.parts.size())
-            card_title(g.title, "Installed", kOk);
+            card_title(tr(g.title), tr("Installed"), kOk);
         else if (!in.empty())
-            card_title(g.title, "Partly installed", kWarn);
+            card_title(tr(g.title), tr("Partly installed"), kWarn);
         else
-            card_title(g.title, "Not added", kFaint);
-        para(F.medium, 13, kDim, g.by);
+            card_title(tr(g.title), tr("Not added"), kFaint);
+        para(F.medium, 13, kDim, tr(g.by));
         ImGui::Dummy(ImVec2(0, px(4)));
-        para(F.regular, 14, alpha(kText, 0.82f), g.about);
+        para(F.regular, 14, alpha(kText, 0.82f), tr(g.about));
         if (g.parts.size() > 1) {
             ImGui::Dummy(ImVec2(0, px(4)));
             for (const ModPart& p : g.parts) {
                 const bool a = is_added(p.id), i = has_mod(have, p.id);
-                const char* after = a ? "added" : i ? "installed" : p.needs;
-                list_row(a || i ? kTickMark : kRingMark, a || i ? kOk : kFaint, p.name, a || i ? kText : kDim, after,
-                         a ? kOk : kFaint);
+                const char* after = a ? tr("added") : i ? tr("installed") : p.needs ? tr(p.needs) : nullptr;
+                list_row(a || i ? kTickMark : kRingMark, a || i ? kOk : kFaint, tr(p.name), a || i ? kText : kDim,
+                         after, a ? kOk : kFaint);
             }
         }
         if (&g == &kUndub && needs_voice_pack(plan, have)) {
             ImGui::Dummy(ImVec2(0, px(4)));
-            para(F.medium, 13, kWarn, "Needs the Japanese Voice Pack: add its package on the DLC page too.");
+            para(F.medium, 13, kWarn, tr("Needs the Japanese Voice Pack: add its package on the DLC page too."));
         }
         card_end();
     }
@@ -455,7 +470,7 @@ struct Wizard : Kit {
         for (const Source& m : plan.mods)
             if (!known_mod(m.id)) {
                 card_begin();
-                card_title(m.name.c_str(), "Added", kOk);
+                card_title(m.name.c_str(), tr("Added"), kOk);
                 about_lines(m.about);
                 card_end();
             }
@@ -465,36 +480,37 @@ struct Wizard : Kit {
             if (listed) continue;
             const bool on = mod_enabled(base, m.first);
             card_begin();
-            card_title(m.second.c_str(), on ? "Installed" : "Switched off", on ? kOk : kFaint);
+            card_title(m.second.c_str(), on ? tr("Installed") : tr("Switched off"), on ? kOk : kFaint);
             if (!abouts.count(m.first)) abouts[m.first] = mod_info(base, m.first);
             about_lines(abouts[m.first]);
             card_end();
         }
         if (plan.mods.empty() && have.mods.empty())
-            para(F.regular, 13, kFaint, "Any other mod package for the game (.pkg) can be added too.");
+            para(F.regular, 13, kFaint, tr("Any other mod package for the game (.pkg) can be added too."));
         if (!have.mods.empty())
-            para(F.regular, 13, kFaint, "Installed mods are taken out with Remove, in the launcher's Mods page.");
+            para(F.regular, 13, kFaint, tr("Installed mods are taken out with Remove, in the launcher's Mods page."));
     }
 
     void page_keys()
     {
         ImDrawList* dl = ImGui::GetWindowDrawList();
-        para(F.regular, 14, alpha(kText, 0.82f),
-             update_required()
-                 ? "The game's executable is made from the update's EBOOT.BIN, which is encrypted. Enter the keys "
-                   "that open it, as hex. They are checked by decrypting it, and kept in this install for next time."
-                 : "The game's executable is made from the disc's EBOOT.BIN, which is encrypted. Enter the keys "
-                   "that open it, as hex. They are checked by decrypting it, and kept in this install for next time.");
+        para(
+            F.regular, 14, alpha(kText, 0.82f),
+            update_required()
+                ? tr("The game's executable is made from the update's EBOOT.BIN, which is encrypted. Enter the keys "
+                     "that open it, as hex. They are checked by decrypting it, and kept in this install for next time.")
+                : tr("The game's executable is made from the disc's EBOOT.BIN, which is encrypted. Enter the keys "
+                     "that open it, as hex. They are checked by decrypting it, and kept in this install for next "
+                     "time."));
         ImGui::Dummy(ImVec2(0, px(8)));
         const auto& f = needed_keys();
         for (size_t i = 0; i < f.size(); i++) {
             std::vector<uint8_t> b;
             const bool empty = boxes[i].text[0] == 0;
             const std::string problem = empty ? "" : key_problem(f[i], boxes[i].text, &b);
-            char bytes[32];
-            snprintf(bytes, sizeof bytes, "%zu bytes", f[i].bytes);
+            const std::string bytes = trnf(f[i].bytes, "{1} byte", "{1} bytes", f[i].bytes);
             const ImVec2 c = ImGui::GetCursorScreenPos();
-            list_row(kNoMark, 0, f[i].label, kText, bytes, kFaint, F.semibold, 15);
+            list_row(kNoMark, 0, tr(f[i].label), kText, bytes.c_str(), kFaint, F.semibold, 15);
             if (!empty) {   /* at the line's end: well-formed, or not */
                 const float right = c.x + ImGui::GetContentRegionAvail().x - px(8);
                 const float mid = c.y + ImGui::GetItemRectSize().y / 2;
@@ -512,16 +528,15 @@ struct Wizard : Kit {
             if (!problem.empty()) para(F.regular, 13, kErr, problem.c_str());
             ImGui::Dummy(ImVec2(0, px(8)));
         }
-        if (button("Load Key File...", 0)) {
-            const auto picked = ui_pick_files("A key file (name=hex lines)",
-                                              { { "Key files (.txt)", "*.txt" }, { "All files", "*.*" } });
+        if (button(tr("Load Key File..."), 0)) {
+            const auto picked = ui_pick_files(tr("A key file (name=hex lines)"),
+                                              { { tr("Key files (.txt)"), "*.txt" }, { tr("All files"), "*.*" } });
             if (!picked.empty()) {
                 Keys k;
                 std::string err;
                 if (keys_load(picked[0], &k, &err)) {
                     fill_boxes(k);
-                    key_note = std::to_string(k.v.size()) + " of " + std::to_string(f.size()) + " keys found in " +
-                               utf8(picked[0].filename());
+                    key_note = trf("{1} of {2} keys found in {3}", k.v.size(), f.size(), utf8(picked[0].filename()));
                 } else {
                     key_note = utf8(picked[0].filename()) + ": " + err;
                 }
@@ -536,15 +551,17 @@ struct Wizard : Kit {
         ImGui::Dummy(ImVec2(0, px(8)));
         if (!eboot_source()) {
             para(F.regular, 14, kDim,
-                 update_required() ? "Add the update package on the Game Files page: the executable is made from it."
-                                   : "Add the disc on the Game Files page: the executable is made from it.");
+                 update_required()
+                     ? tr("Add the update package on the Game Files page: the executable is made from it.")
+                     : tr("Add the disc on the Game Files page: the executable is made from it."));
         } else if (running_gen >= 0) {
-            para(F.regular, 14, kDim, "Checking the keys...");
+            para(F.regular, 14, kDim, tr("Checking the keys..."));
         } else if (keys_ok()) {
-            list_row(kTickMark, kOk, "These keys open the game's executable.", kText, nullptr, kFaint, F.medium, 14);
+            list_row(kTickMark, kOk, tr("These keys open the game's executable."), kText, nullptr, kFaint, F.medium,
+                     14);
         } else if (checked_gen == key_gen && key_result == KeyCheck::Wrong) {
             para(F.medium, 14, kErr,
-                 "These keys do not open EBOOT.BIN. Check each one against your key set (key revision 0x1C).");
+                 tr("These keys do not open EBOOT.BIN. Check each one against your key set (key revision 0x1C)."));
         } else if (checked_gen == key_gen && key_result == KeyCheck::Failed) {
             para(F.medium, 14, kErr, key_msg.c_str());
         }
@@ -554,7 +571,7 @@ struct Wizard : Kit {
     {
         if (!anything() && !make_elf_needed()) {
             para(F.regular, 14, kDim,
-                 have.ready() ? "Everything added is installed already." : "Add the game's files first.");
+                 have.ready() ? tr("Everything added is installed already.") : tr("Add the game's files first."));
             return;
         }
         auto row = [&](const std::string& name, uint64_t bytes) {
@@ -562,25 +579,25 @@ struct Wizard : Kit {
             ImGui::Dummy(ImVec2(0, px(2)));
         };
         card_begin();
-        if (plan.disc.set()) row(plan.disc.psn ? "Game (PSN package)" : "Game disc", plan.disc.bytes);
-        if (plan.update.set()) row("Update 1.01", plan.update.bytes);
+        if (plan.disc.set()) row(plan.disc.psn ? tr("Game (PSN package)") : tr("Game disc"), plan.disc.bytes);
+        if (plan.update.set()) row(tr("Update 1.01"), plan.update.bytes);
         if (plan.eboot.set())
             row("EBOOT.ELF", plan.eboot.bytes);
         else if (make_elf_needed())
-            row(need_keys()         ? "The game's executable, made with your keys"
-                : update_required() ? "The game's executable, made from the update"
-                                    : "The game's executable, made from the disc",
+            row(need_keys()         ? tr("The game's executable, made with your keys")
+                : update_required() ? tr("The game's executable, made from the update")
+                                    : tr("The game's executable, made from the disc"),
                 made_eboot_bytes());
         for (const Source& d : plan.dlc) row(d.name, d.bytes);
-        for (const Source& m : plan.mods) row(m.name, m.bytes);
+        for (const Source& m : plan.mods) row(tr(m.name.c_str()), m.bytes);
         card_end();
         const uint64_t need = need_bytes(), space = free_bytes(base);
-        para(F.regular, 14, kDim, ("Needs " + size_text(need) + "; " + size_text(space) + " free on the drive.").c_str());
-        path_line(F.regular, 13, kFaint, "To ", base);
+        para(F.regular, 14, kDim, trf("Needs {1}; {2} free on the drive.", size_text(need), size_text(space)).c_str());
+        path_line(F.regular, 13, kFaint, tr("To "), base);
         if (space && need > space) {
             ImGui::Dummy(ImVec2(0, px(4)));
             para(F.medium, 14, kErr,
-                 ("Not enough space. Free " + size_text(need - space) + ", or install fewer DLC packs.").c_str());
+                 trf("Not enough space. Free {1}, or install fewer DLC packs.", size_text(need - space)).c_str());
         }
     }
 
@@ -591,13 +608,13 @@ struct Wizard : Kit {
         std::string rate;
         if (job.seconds() > 3 && d > 0 && d < t) {
             const double per_s = d / job.seconds(), left = (t - d) / per_s;
-            char r[96];
-            snprintf(r, sizeof r, "  \xC2\xB7  %.0f MB/s  \xC2\xB7  about %d min %02d s left", per_s / 1048576.0,
-                     (int)left / 60, (int)left % 60);
-            rate = r;
+            char speed[32], sec[8];
+            snprintf(speed, sizeof speed, "%.0f", per_s / 1048576.0);
+            snprintf(sec, sizeof sec, "%02d", (int)left % 60);
+            rate = trf("  \xC2\xB7  {1} MB/s  \xC2\xB7  about {2} min {3} s left", speed, (int)left / 60, sec);
         }
         install_progress(job.what(), d, t, rate);
-        if (job.cancel) para(F.regular, 13, kWarn, "Cancelling...");
+        if (job.cancel) para(F.regular, 13, kWarn, tr("Cancelling..."));
     }
 
     void page_done()
@@ -607,15 +624,14 @@ struct Wizard : Kit {
             list_row(in ? kTickMark : kRingMark, in ? kOk : kFaint, name, kText, after, kFaint, F.medium, 15);
             ImGui::Dummy(ImVec2(0, px(2)));
         };
-        row(true, "The game", nullptr);
-        if (update_required()) row(true, "Update 1.01", nullptr);
-        char dlc[64];
-        snprintf(dlc, sizeof dlc, "%zu of %zu", have.dlc.size(), known_dlc().size());
-        row(!have.dlc.empty(), "DLC", dlc);
+        row(true, tr("The game"), nullptr);
+        if (update_required()) row(true, tr("Update 1.01"), nullptr);
+        const std::string dlc = trf("{1} of {2}", have.dlc.size(), known_dlc().size());
+        row(!have.dlc.empty(), tr("DLC"), dlc.c_str());
         if (update_required()) {
             std::vector<std::string> names;
-            for (const auto& m : have.mods) names.push_back(m.second);
-            row(!names.empty(), "Mods", names.empty() ? "none" : nullptr);
+            for (const auto& m : have.mods) names.push_back(tr(m.second.c_str()));
+            row(!names.empty(), tr("Mods"), names.empty() ? tr("none") : nullptr);
             if (!names.empty()) {
                 std::string list;
                 for (const std::string& n : names) list += (list.empty() ? "" : ", ") + n;
@@ -626,7 +642,7 @@ struct Wizard : Kit {
         }
         card_end();
         para(F.regular, 14, alpha(kText, 0.82f),
-             "From now on the game opens on its launcher: Play, and the mods, the DLC and the settings.");
+             tr("From now on the game opens on its launcher: Play, and the mods, the DLC and the settings."));
     }
 
     void page_failed()
@@ -635,8 +651,8 @@ struct Wizard : Kit {
             para(F.medium, 14, kErr, job.error.c_str());
             ImGui::Dummy(ImVec2(0, px(6)));
         }
-        para(F.regular, 14, kDim, "The part that was being installed has been taken out again; the parts before it "
-                                  "stay.");
+        para(F.regular, 14, kDim, tr("The part that was being installed has been taken out again; the parts before it "
+                                     "stay."));
     }
 
     void start_install()
@@ -655,36 +671,26 @@ struct Wizard : Kit {
         char t[64];
         switch (p) {
         case Page::GameFiles:
-            if (!plan.disc.set() && !have.disc) return "The game is needed";
-            if (update_required() && !plan.update.set() && !have.update) return "The update is needed";
-            return plan.disc.set() || plan.update.set() ? "Added" : "Installed";
+            if (!plan.disc.set() && !have.disc) return tr("The game is needed");
+            if (update_required() && !plan.update.set() && !have.update) return tr("The update is needed");
+            return plan.disc.set() || plan.update.set() ? tr("Added") : tr("Installed");
         case Page::Dlc:
-            if (!plan.dlc.empty()) {
-                snprintf(t, sizeof t, "%zu added", plan.dlc.size());
-                return t;
-            }
-            if (!have.dlc.empty()) {
-                snprintf(t, sizeof t, "%zu of %zu installed", have.dlc.size(), known_dlc().size());
-                return t;
-            }
-            return "Optional";
+            if (!plan.dlc.empty()) return trnf(plan.dlc.size(), "{1} added", "{1} added", plan.dlc.size());
+            if (!have.dlc.empty()) return trf("{1} of {2} installed", have.dlc.size(), known_dlc().size());
+            return tr("Optional");
         case Page::Mods:
-            if (!plan.mods.empty()) {
-                snprintf(t, sizeof t, "%zu added", plan.mods.size());
-                return t;
-            }
-            if (!have.mods.empty()) {
-                snprintf(t, sizeof t, "%zu installed", have.mods.size());
-                return t;
-            }
-            return "Optional";
-        case Page::Keys: return keys_ok() ? "Checked" : "Needed for the executable";
+            if (!plan.mods.empty()) return trnf(plan.mods.size(), "{1} added", "{1} added", plan.mods.size());
+            if (!have.mods.empty()) return trnf(have.mods.size(), "{1} installed", "{1} installed", have.mods.size());
+            return tr("Optional");
+        case Page::Keys: return keys_ok() ? tr("Checked") : tr("Needed for the executable");
         case Page::Confirm:
             if (page == Page::Installing) {
                 snprintf(t, sizeof t, "%d%%", (int)(100.0 * (double)job.done / (double)job.total));
                 return t;
             }
-            return page == Page::Done ? "Done" : page == Page::Failed ? (job.cancel ? "Cancelled" : "Failed") : "";
+            return page == Page::Done     ? tr("Done")
+                   : page == Page::Failed ? (job.cancel ? tr("Cancelled") : tr("Failed"))
+                                          : "";
         default: return "";
         }
     }
@@ -695,10 +701,12 @@ struct Wizard : Kit {
             const char* label;
             Page page;
         };
-        std::vector<Step> list = { { "Welcome", Page::Welcome }, { "Game Files", Page::GameFiles }, { "DLC", Page::Dlc } };
-        if (update_required()) list.push_back({ "Mods", Page::Mods });   /* mods are for the 1.01 build */
-        if (need_keys() || page == Page::Keys) list.push_back({ "Keys", Page::Keys });
-        list.push_back({ "Install", Page::Confirm });
+        std::vector<Step> list = { { tr("Welcome"), Page::Welcome },
+                                   { tr("Game Files"), Page::GameFiles },
+                                   { tr("DLC"), Page::Dlc } };
+        if (update_required()) list.push_back({ tr("Mods"), Page::Mods });   /* mods are for the 1.01 build */
+        if (need_keys() || page == Page::Keys) list.push_back({ tr("Keys"), Page::Keys });
+        list.push_back({ trc("heading", "Install"), Page::Confirm });
         const Page shown = locked() ? Page::Confirm : page;
         int at = 0;
         for (size_t i = 0; i < list.size(); i++)
@@ -746,9 +754,8 @@ struct Wizard : Kit {
                 dl->AddText(F.regular, px(13), ImVec2(lx, y + px(25)), cur ? kDim : alpha(kDim, 0.7f), note.c_str());
             y += step;
         }
-        char v[64];
-        snprintf(v, sizeof v, "Version %s  \xC2\xB7  Setup", DOD3_VERSION_STRING);
-        dl->AddText(F.regular, px(13), ImVec2(px(72), H - px(52)), alpha(kDim, 0.8f), v);
+        const std::string v = trf("Version {1}  \xC2\xB7  Setup", DOD3_VERSION_STRING);
+        dl->AddText(F.regular, px(13), ImVec2(px(72), H - px(52)), alpha(kDim, 0.8f), v.c_str());
     }
 
     /* ---- the foot: what a page adds on the left, the way on at the right ---- */
@@ -800,49 +807,55 @@ struct Wizard : Kit {
         const bool busy = checks.pending() > 0;
         /* adding, on the pages that take files */
         if (page == Page::GameFiles || page == Page::Mods) {
-            if (button("Add Files...", 0, page == Page::GameFiles && !base_ready() ? ButtonKind::Main : ButtonKind::Quiet)) add_files(false);
+            if (button(tr("Add Files..."), 0,
+                       page == Page::GameFiles && !base_ready() ? ButtonKind::Main : ButtonKind::Quiet))
+                add_files(false);
             ImGui::SameLine(0, px(10));
-            if (button("Add Folder...", 0)) add_folder();
+            if (button(tr("Add Folder..."), 0)) add_folder();
         } else if (page == Page::Dlc) {
-            if (button("Add DLC Packages...", 0)) add_files(true);
+            if (button(tr("Add DLC Packages..."), 0)) add_files(true);
         } else if (page == Page::Done) {
-            if (button("Add More", 0)) go(Page::Dlc);
+            if (button(tr("Add More"), 0)) go(Page::Dlc);
         }
         /* from the launcher (an install there already), closing goes back to it */
-        const char* close = have.ready() ? "Close" : "Quit";
+        const char* close = have.ready() ? tr("Close") : tr("Quit");
         int result = kGoOn;
         switch (page) {
         case Page::Welcome:
             if (have.ready()) {
-                switch (nav(y, right, { { .label = "Close" }, { .label = "Play" }, { .label = "Next", .primary = true } })) {
+                switch (nav(
+                    y, right,
+                    { { .label = tr("Close") }, { .label = tr("Play") }, { .label = tr("Next"), .primary = true } })) {
                 case 0: result = kQuit; break;
                 case 1: result = kPlay; break;
                 case 2: go(Page::GameFiles); break;
                 }
             } else {
-                switch (nav(y, right, { { .label = "Quit" }, { .label = "Next", .primary = true } })) {
+                switch (nav(y, right, { { .label = tr("Quit") }, { .label = tr("Next"), .primary = true } })) {
                 case 0: result = kQuit; break;
                 case 1: go(Page::GameFiles); break;
                 }
             }
             break;
         case Page::GameFiles:
-            switch (nav(y, right, { { .label = "Back", .back = true },
-                                    { .label = "Next", .primary = true, .enabled = base_ready() && !busy } })) {
+            switch (nav(y, right, { { .label = tr("Back"), .back = true },
+                                    { .label = tr("Next"), .primary = true, .enabled = base_ready() && !busy } })) {
             case 0: go(Page::Welcome); break;
             case 1: go(Page::Dlc); break;
             }
             break;
         case Page::Dlc:
-            switch (nav(y, right, { { .label = "Back", .back = true },
-                                    { .label = plan.dlc.empty() ? "Skip" : "Next", .primary = true, .enabled = !busy } })) {
+            switch (
+                nav(y, right,
+                    { { .label = tr("Back"), .back = true },
+                      { .label = plan.dlc.empty() ? tr("Skip") : tr("Next"), .primary = true, .enabled = !busy } })) {
             case 0: go(Page::GameFiles); break;
             case 1: go(update_required() ? Page::Mods : need_keys() ? Page::Keys : Page::Confirm); break;
             }
             break;
         case Page::Mods:
-            switch (nav(y, right, { { .label = "Back", .back = true },
-                                    { .label = plan.mods.empty() ? "Skip" : "Next",
+            switch (nav(y, right, { { .label = tr("Back"), .back = true },
+                                    { .label = plan.mods.empty() ? tr("Skip") : tr("Next"),
                                       .primary = true,
                                       .enabled = !busy && !needs_voice_pack(plan, have) } })) {
             case 0: go(Page::Dlc); break;
@@ -850,7 +863,9 @@ struct Wizard : Kit {
             }
             break;
         case Page::Keys:
-            switch (nav(y, right, { { .label = "Back", .back = true }, { .label = "Next", .primary = true, .enabled = keys_ok() } })) {
+            switch (nav(y, right,
+                        { { .label = tr("Back"), .back = true },
+                          { .label = tr("Next"), .primary = true, .enabled = keys_ok() } })) {
             case 0: go(update_required() ? Page::Mods : Page::Dlc); break;
             case 1: go(Page::Confirm); break;
             }
@@ -858,8 +873,8 @@ struct Wizard : Kit {
         case Page::Confirm: {
             const Page prev = need_keys() ? Page::Keys : update_required() ? Page::Mods : Page::Dlc;
             if (!anything() && !make_elf_needed()) {
-                switch (nav(y, right, { { .label = "Back", .back = true },
-                                        { .label = have.ready() ? "Play" : "Game Files", .primary = true } })) {
+                switch (nav(y, right, { { .label = tr("Back"), .back = true },
+                                        { .label = have.ready() ? tr("Play") : tr("Game Files"), .primary = true } })) {
                 case 0: go(prev); break;
                 case 1:
                     if (have.ready())
@@ -870,8 +885,10 @@ struct Wizard : Kit {
                 }
             } else {
                 const uint64_t need = need_bytes(), space = free_bytes(base);
-                switch (nav(y, right, { { .label = "Back", .back = true },
-                                        { .label = "Install", .primary = true, .enabled = !busy && !(space && need > space) } })) {
+                switch (nav(
+                    y, right,
+                    { { .label = tr("Back"), .back = true },
+                      { .label = tr("Install"), .primary = true, .enabled = !busy && !(space && need > space) } })) {
                 case 0: go(prev); break;
                 case 1: start_install(); break;
                 }
@@ -879,17 +896,18 @@ struct Wizard : Kit {
             break;
         }
         case Page::Installing:
-            if (nav(y, right, { { .label = job.cancel ? "Cancelling..." : "Cancel", .enabled = !job.cancel } }) == 0)
+            if (nav(y, right,
+                    { { .label = job.cancel ? tr("Cancelling...") : tr("Cancel"), .enabled = !job.cancel } }) == 0)
                 job.cancel = true;
             break;
         case Page::Done:
-            switch (nav(y, right, { { .label = close }, { .label = "Play", .primary = true } })) {
+            switch (nav(y, right, { { .label = close }, { .label = tr("Play"), .primary = true } })) {
             case 0: result = kQuit; break;
             case 1: result = kPlay; break;
             }
             break;
         case Page::Failed:
-            switch (nav(y, right, { { .label = close }, { .label = "Back", .primary = true } })) {
+            switch (nav(y, right, { { .label = close }, { .label = tr("Back"), .primary = true } })) {
             case 0: result = kQuit; break;
             case 1: go(Page::Confirm); break;
             }
@@ -904,22 +922,28 @@ struct Wizard : Kit {
     {
         switch (page) {
         case Page::Welcome:
-            return have.ready() ? std::make_pair("Game Files",
-                                                 "Drakengard 3 is installed. Add DLC here, or replace any of the game's files.")
-                                : std::make_pair("Welcome", "Drakengard 3 Recompiled installs the game from your own copy of it.");
+            return have.ready()
+                       ? std::make_pair(
+                             tr("Game Files"),
+                             tr("Drakengard 3 is installed. Add DLC here, or replace any of the game's files."))
+                       : std::make_pair(tr("Welcome"),
+                                        tr("Drakengard 3 Recompiled installs the game from your own copy of it."));
         case Page::GameFiles:
-            return { "Game Files", update_required() ? "The game and its 1.01 update." : "The game disc." };
-        case Page::Dlc: return { "DLC", "Optional: the packs you own. More can be added later, from the launcher." };
-        case Page::Mods: return { "Mods", "Optional: fan-made additions, installed beside your own game files." };
-        case Page::Keys: return { "Keys", "The keys that open the game's executable, EBOOT.BIN." };
+            return { tr("Game Files"), update_required() ? tr("The game and its 1.01 update.") : tr("The game disc.") };
+        case Page::Dlc:
+            return { tr("DLC"), tr("Optional: the packs you own. More can be added later, from the launcher.") };
+        case Page::Mods:
+            return { tr("Mods"), tr("Optional: fan-made additions, installed beside your own game files.") };
+        case Page::Keys: return { tr("Keys"), tr("The keys that open the game's executable, EBOOT.BIN.") };
         case Page::Confirm:
-            return { "Install", anything() || make_elf_needed() ? "Ready to install." : "Nothing new to install." };
+            return { trc("heading", "Install"),
+                     anything() || make_elf_needed() ? tr("Ready to install.") : tr("Nothing new to install.") };
         case Page::Installing:
-            return { "Installing", "The game's files are copied beside the game; this takes a few minutes." };
-        case Page::Done: return { "Installed", "Drakengard 3 is ready to play." };
+            return { tr("Installing"), tr("The game's files are copied beside the game; this takes a few minutes.") };
+        case Page::Done: return { tr("Installed"), tr("Drakengard 3 is ready to play.") };
         case Page::Failed:
-            return job.cancel ? std::make_pair("Cancelled", "Nothing more was installed.")
-                              : std::make_pair("Installation Failed", "Something went wrong while installing.");
+            return job.cancel ? std::make_pair(tr("Cancelled"), tr("Nothing more was installed."))
+                              : std::make_pair(tr("Installation Failed"), tr("Something went wrong while installing."));
         }
         return { "", nullptr };
     }

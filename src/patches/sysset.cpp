@@ -70,6 +70,7 @@
 #include "cpu/eboot.h"   /* the EBOOT version's addresses */
 #include "cpu/ppu.h"
 #include "patches/sysset.h"
+#include "lang.h"   /* TR_NOOP: the rows' text, for the launcher's translations */
 #ifdef _WIN32
 #define strcasecmp _stricmp   /* the CRT's spelling */
 #endif
@@ -531,56 +532,56 @@ void apply_player_settings()
 void dod3_sysset_rows(std::vector<Dod3RowSpec>& rows)
 {
     rows.push_back({ "DOD3_SHADOWS",
-                     "Shadow Quality",
-                     "Sharper, more defined shadows.",
-                     { { nullptr, "Original" }, { "high", "High" }, { "ultra", "Ultra" } },
+                     TR_NOOP("Shadow Quality"),
+                     TR_NOOP("Sharper, more defined shadows."),
+                     { { nullptr, TR_NOOP("Original") }, { "high", TR_NOOP("High") }, { "ultra", TR_NOOP("Ultra") } },
                      0,
                      false,
                      nullptr });
     rows.push_back({ "DOD3_MOTION_BLUR",
-                     "Motion Blur",
-                     "Blur on fast movement of the camera and characters.",
-                     { { nullptr, "On" }, { "0", "Off" } },
+                     TR_NOOP("Motion Blur"),
+                     TR_NOOP("Blur on fast movement of the camera and characters."),
+                     { { nullptr, TR_NOOP("On") }, { "0", TR_NOOP("Off") } },
                      0,
                      true,
                      set_motion_blur });
     rows.push_back({ "DOD3_POSTFX",
-                     "Post-Processing",
-                     "Depth of field, bloom and the game's colour grading.",
-                     { { nullptr, "On" }, { "0", "Off" } },
+                     TR_NOOP("Post-Processing"),
+                     TR_NOOP("Depth of field, bloom and the game's colour grading."),
+                     { { nullptr, TR_NOOP("On") }, { "0", TR_NOOP("Off") } },
                      0,
                      true,
                      set_postfx });
 #ifdef DOD3_FN_UBER_CREATE_PROXY
     rows.push_back({ "DOD3_DOF",
-                     "Depth of Field",
-                     "The blur of what is near and far. Off keeps the bloom.",
-                     { { nullptr, "On" }, { "0", "Off" } },
+                     TR_NOOP("Depth of Field"),
+                     TR_NOOP("The blur of what is near and far. Off keeps the bloom."),
+                     { { nullptr, TR_NOOP("On") }, { "0", TR_NOOP("Off") } },
                      0,
                      true,
                      set_dof });
 #endif
     rows.push_back({ "DOD3_DRAW_DISTANCE",
-                     "Draw Distance",
-                     "How far away props, plants and other scenery are drawn.",
-                     { { nullptr, "Original" }, { "2", "2x" }, { "3", "3x" }, { "5", "5x" }, { "10", "10x" } },
+                     TR_NOOP("Draw Distance"),
+                     TR_NOOP("How far away props, plants and other scenery are drawn."),
+                     { { nullptr, TR_NOOP("Original") }, { "2", "2x" }, { "3", "3x" }, { "5", "5x" }, { "10", "10x" } },
                      0,
                      true,
                      set_draw_distance });
 #ifdef DOD3_FN_TREE_CREATE_PROXY
     rows.push_back({ "DOD3_TREE_LOD",
-                     "Tree Detail",
-                     "How far trees show and stay detailed. From the next area.",
-                     { { nullptr, "Original" }, { "2", "2x" }, { "3", "3x" }, { "5", "5x" }, { "10", "10x" } },
+                     TR_NOOP("Tree Detail"),
+                     TR_NOOP("How far trees show and stay detailed. From the next area."),
+                     { { nullptr, TR_NOOP("Original") }, { "2", "2x" }, { "3", "3x" }, { "5", "5x" }, { "10", "10x" } },
                      0,
                      true,
                      set_tree_lod });
 #endif
 #ifdef DOD3_FN_HUD_BLOOD_DRAW
     rows.push_back({ "DOD3_SCREEN_BLOOD",
-                     "Blood on Screen",
-                     "Blood splashes and the low-health border over the screen.",
-                     { { nullptr, "On" }, { "border", "Border Only" }, { "0", "Off" } },
+                     TR_NOOP("Blood on Screen"),
+                     TR_NOOP("Blood splashes and the low-health border over the screen."),
+                     { { nullptr, TR_NOOP("On") }, { "border", TR_NOOP("Border Only") }, { "0", TR_NOOP("Off") } },
                      0,
                      true,
                      set_screen_blood,

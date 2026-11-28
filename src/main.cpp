@@ -48,6 +48,7 @@
 #include "patches/prompts.h"            /* the button prompts in the pad's own glyphs */
 #include "patches/sysset.h"             /* the engine's graphics switches */
 #include "util.h"
+#include "lang.h"                      /* the launcher's and the setup's language */
 #include "app_version.h"              /* generated: the port's version label */
 #include "install/crypto.h"
 #include "install/install.h"           /* the release layout (the installer) */
@@ -2096,6 +2097,13 @@ int main(int argc, char** argv)
     }
     const bool force_setup = argc >= 2 && !strcmp(argv[1], "--setup");
     if (argv[0]) s_exe_path = argv[0];   /* dod3.ini is found beside it, the launcher's before the game's */
+    /* The launcher's and the setup's language (lang.h): DOD3_UI_LANGUAGE, else
+     * the system's; a translation is looked for beside the executable too. */
+    auto init_ui_language = [] {
+        const size_t slash = s_exe_path.find_last_of("/\\");
+        dod3::lang_init(std::filesystem::path(slash == std::string::npos ? std::string() : s_exe_path.substr(0, slash)),
+                        std::filesystem::path(dod3_settings_path_now()));
+    };
     if (argc < 2 || force_setup) {
 #ifdef _WIN32
         wchar_t dir[MAX_PATH] = L"";
@@ -2105,6 +2113,7 @@ int main(int argc, char** argv)
         if (const wchar_t* tb = _wgetenv(L"DOD3_INSTALL_BASE"))
             if (*tb) wcsncpy_s(dir, tb, _TRUNCATE);
         SetCurrentDirectoryW(dir);
+        init_ui_language();
         if (dod3_setup_win(dir, force_setup ? 1 : 0) != 0) return 1;
 #elif defined(__APPLE__)
         /* Not the app's folder -- a signed .app is read-only, and a
@@ -2120,6 +2129,7 @@ int main(int argc, char** argv)
             return 1;
         }
         dod3_mac_log_to_file();
+        init_ui_language();
         if (dod3_setup_mac(data, force_setup ? 1 : 0) != 0) return 1;
 #elif defined(__linux__)
         /* The executable's folder, as on Windows, unless it cannot be written
@@ -2134,6 +2144,7 @@ int main(int argc, char** argv)
         }
         dod3_linux_log_to_file();
         /* dod3.ini is the data folder's from here (the executable's may be read-only) */
+        init_ui_language();   /* (translations beside the real executable; the settings below are the data folder's) */
         s_exe_path = std::string(data) + "/dod3";
         if (dod3_setup_linux(data, force_setup ? 1 : 0) != 0) return 1;
 #else

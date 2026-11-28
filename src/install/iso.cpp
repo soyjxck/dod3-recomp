@@ -1,6 +1,7 @@
 /* The installer's disc reader: see install/iso.h. */
 #include "install/iso.h"
 #include "install/crypto.h"
+#include "lang.h"
 #include "util.h"
 
 #include <algorithm>
@@ -147,12 +148,12 @@ bool walk(Iso& iso, uint32_t lba, uint32_t len, const std::string& prefix, bool 
           int depth, std::string* err)
 {
     if (depth > 32) {
-        *err = "the disc image's folders nest too deep (not an ISO 9660 image?)";
+        *err = dod3::tr("the disc image's folders nest too deep (not an ISO 9660 image?)");
         return false;
     }
     std::vector<uint8_t> dir(len);
     if (!iso.read((uint64_t)lba * kSector, dir.data(), len)) {
-        *err = "the disc image is truncated";
+        *err = dod3::tr("the disc image is truncated");
         return false;
     }
     for (uint32_t o = 0; o < len;) {
@@ -168,7 +169,7 @@ bool walk(Iso& iso, uint32_t lba, uint32_t len, const std::string& prefix, bool 
         o += rl;
         if (nl == 1 && (r[33] == 0 || r[33] == 1)) continue;            /* . and .. */
         if (flags & 0x80) {
-            *err = "the disc image has a file split over several extents, which is not supported";
+            *err = dod3::tr("the disc image has a file split over several extents, which is not supported");
             return false;
         }
         const std::string name = iso_name(r + 33, nl, joliet);
@@ -187,7 +188,7 @@ bool list_iso(const fs::path& p, std::vector<DiscFile>* files, std::string* err)
     Iso iso;
     iso.f.open(p, std::ios::binary);
     if (!iso.f) {
-        *err = "the disc image could not be opened";
+        *err = dod3::tr("the disc image could not be opened");
         return false;
     }
     uint8_t vd[kSector];
@@ -209,7 +210,7 @@ bool list_iso(const fs::path& p, std::vector<DiscFile>* files, std::string* err)
         if (vd[0] == 255) break;
     }
     if (!have_pvd) {
-        *err = "this is not an ISO 9660 disc image";
+        *err = dod3::tr("this is not an ISO 9660 disc image");
         return false;
     }
     if (have_svd) {
@@ -229,7 +230,7 @@ bool list_folder(const fs::path& p, std::vector<DiscFile>* files, std::string* e
         files->push_back({ rel, 0, (uint64_t)it->file_size(ec) });
     }
     if (ec) {
-        *err = "the folder could not be read: " + ec.message();
+        *err = dod3::trf("the folder could not be read: {1}", dod3::error_text(ec));
         return false;
     }
     return true;
@@ -298,33 +299,34 @@ bool open_disc(const fs::path& source, Disc* disc, std::string* err)
     std::vector<uint8_t> sfo;
     std::string tid, ver;
     if (!read_disc_file(*disc, "PS3_GAME/PARAM.SFO", &sfo) || !param_sfo(sfo, &tid, &ver)) {
-        *err =
-            disc->is_iso
-                ? "no PS3_GAME/PARAM.SFO in this disc image: it is not a PS3 game disc, or it is still disc-encrypted"
-                : "no PS3_GAME/PARAM.SFO in this folder: choose the folder that contains PS3_GAME";
+        *err = disc->is_iso
+                   ? dod3::tr("no PS3_GAME/PARAM.SFO in this disc image: it is not a PS3 game disc, or it is still "
+                              "disc-encrypted")
+                   : dod3::tr("no PS3_GAME/PARAM.SFO in this folder: choose the folder that contains PS3_GAME");
         return false;
     }
     if (tid != kTitleId) {
-        *err = "this is " + tid + ", not Drakengard 3 (US) " + kTitleId + ". Only the US disc is supported.";
+        *err = dod3::trf("this is {1}, not Drakengard 3 (US) {2}. Only the US disc is supported.", tid, kTitleId);
         return false;
     }
     if (ver != kAppVer) {
-        *err = "this disc is version " + ver + "; only version " + kAppVer + " is supported.";
+        *err = dod3::trf("this disc is version {1}; only version {2} is supported.", ver, kAppVer);
         return false;
     }
     std::vector<uint8_t> eboot;
     if (!read_disc_file(*disc, "PS3_GAME/USRDIR/EBOOT.BIN", &eboot)) {
-        *err = "the disc has no PS3_GAME/USRDIR/EBOOT.BIN";
+        *err = dod3::tr("the disc has no PS3_GAME/USRDIR/EBOOT.BIN");
         return false;
     }
     Sha256 s;
     s.update(eboot.data(), eboot.size());
     if (s.hex() != kEbootBinSha256) {
         *err = disc->is_iso
-                   ? "this disc image's EBOOT.BIN does not match the supported release. If the image came "
-                     "straight from a disc drive it is still disc-encrypted: make a decrypted one "
-                     "(for example with PS3 Disc Dumper)."
-                   : "this folder's EBOOT.BIN does not match the supported release (BLUS31197 v01.00, no update).";
+                   ? dod3::tr("this disc image's EBOOT.BIN does not match the supported release. If the image came "
+                              "straight from a disc drive it is still disc-encrypted: make a decrypted one "
+                              "(for example with PS3 Disc Dumper).")
+                   : dod3::tr("this folder's EBOOT.BIN does not match the supported release (BLUS31197 v01.00, no "
+                              "update).");
         return false;
     }
     return true;
@@ -339,7 +341,7 @@ bool copy_disc(const Disc& disc, const fs::path& dest, const std::function<bool(
     if (disc.is_iso) {
         iso.open(disc.source, std::ios::binary);
         if (!iso) {
-            *err = "the disc image could not be opened";
+            *err = dod3::tr("the disc image could not be opened");
             return false;
         }
     }
@@ -350,7 +352,7 @@ bool copy_disc(const Disc& disc, const fs::path& dest, const std::function<bool(
         fs::create_directories(to.parent_path(), ec);
         std::ofstream out(to, std::ios::binary | std::ios::trunc);
         if (!out) {
-            *err = "could not write " + utf8(to);
+            *err = dod3::trf("could not write {1}", utf8(to));
             return false;
         }
         std::ifstream in;
@@ -359,7 +361,7 @@ bool copy_disc(const Disc& disc, const fs::path& dest, const std::function<bool(
         else {
             in.open(disc.source / fs::u8path(f.path), std::ios::binary);
             if (!in) {
-                *err = "could not read " + f.path;
+                *err = dod3::trf("could not read {1}", f.path);
                 return false;
             }
         }
@@ -368,18 +370,18 @@ bool copy_disc(const Disc& disc, const fs::path& dest, const std::function<bool(
             const size_t n = (size_t)(left < (4u << 20) ? left : (4u << 20));
             src.read(buf.get(), (std::streamsize)n);
             if ((size_t)src.gcount() != n) {
-                *err = "a read failed in " + f.path + " (the disc image is truncated?)";
+                *err = dod3::trf("a read failed in {1} (the disc image is truncated?)", f.path);
                 return false;
             }
             out.write(buf.get(), (std::streamsize)n);
             if (!out) {
-                *err = "a write failed for " + utf8(to) + " (disk full?)";
+                *err = dod3::trf("a write failed for {1} (disk full?)", utf8(to));
                 return false;
             }
             left -= n;
             done += n;
             if (!progress(done, disc.total)) {
-                *err = "cancelled";
+                *err = dod3::tr("cancelled");
                 return false;
             }
         }
